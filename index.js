@@ -1,10 +1,12 @@
 /**
- * GujiGuji v0.3.2: a modular phone shell with an isolated chat app.
+ * GujiGuji v0.3.3: a modular phone shell with an isolated chat app.
  * No direct host-module imports; uses only the documented context surface.
  */
 
 const ROOT_ID = 'st-little-phone-root';
 const DATA_KEY = 'st_little_phone_v1';
+const SETTINGS_KEY = 'gujiguji';
+const WAND_ENTRY_ID = 'gujiguji-wand-entry';
 const CONTEXT_MESSAGE_LIMIT = 24;
 const CHARACTER_TEXT_LIMIT = 9000;
 const DIAGNOSTIC_LIMIT = 24;
@@ -26,6 +28,7 @@ let chatChangedHandler = null;
 let listeningSource = null;
 let listeningEvent = null;
 let bootstrapTimer = null;
+let wandAttempts = 0;
 let extensionEnabled = true;
 let statusText = '';
 let statusKind = 'info';
@@ -42,6 +45,31 @@ function context() {
     } catch {
         return null;
     }
+}
+
+function floatLauncherEnabled() {
+    return context()?.extensionSettings?.[SETTINGS_KEY]?.floatingLauncher === true;
+}
+
+function updateLauncherVisibility() {
+    if (nodes?.launcher) nodes.launcher.hidden = !floatLauncherEnabled();
+    if (nodes?.floatingLauncher) nodes.floatingLauncher.checked = floatLauncherEnabled();
+}
+
+function setFloatLauncherEnabled(value) {
+    const ctx = context();
+    if (!ctx?.extensionSettings || typeof ctx.saveSettingsDebounced !== 'function') {
+        setStatus('酒馆设置接口尚未就绪，请稍后再试。', 'error');
+        updateLauncherVisibility();
+        return;
+    }
+    if (!ctx.extensionSettings[SETTINGS_KEY] || typeof ctx.extensionSettings[SETTINGS_KEY] !== 'object') {
+        ctx.extensionSettings[SETTINGS_KEY] = {};
+    }
+    ctx.extensionSettings[SETTINGS_KEY].floatingLauncher = Boolean(value);
+    ctx.saveSettingsDebounced();
+    updateLauncherVisibility();
+    setStatus(value ? '已开启悬浮按钮；魔法棒入口仍然可用。' : '已关闭悬浮按钮；请从魔法棒进入咕叽咕机。');
 }
 
 function localDateTime() {
@@ -358,6 +386,7 @@ function render() {
     nodes.homeMessageCount.textContent = `${data?.messages?.filter(message => message.from !== 'system').length || 0} 条聊天记录`;
     nodes.time.value = data?.storyTime || localDateTime();
     renderFriendship(data);
+    updateLauncherVisibility();
     if (data) renderMessages(data);
     else {
         nodes.messages.replaceChildren();
@@ -599,6 +628,45 @@ async function copyDiagnostics() {
     }
 }
 
+function openPhone() {
+    if (!mounted || !root) return;
+    root.classList.add('lp-open');
+    nodes.launcher.setAttribute('aria-label', '隐藏咕叽咕机');
+    setScreen('home');
+    render();
+}
+
+function closePhone() {
+    if (!mounted || !root) return;
+    root.classList.remove('lp-open');
+    nodes.launcher.setAttribute('aria-label', '打开咕叽咕机');
+}
+
+function installWandEntry() {
+    const menu = document.getElementById('extensionsMenu');
+    if (!menu) return false;
+    if (document.getElementById(WAND_ENTRY_ID)) return true;
+
+    const container = document.createElement('div');
+    container.id = WAND_ENTRY_ID;
+    container.className = 'extension_container';
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'list-group-item flex-container flexGap5 gujiguji-wand-button';
+    button.setAttribute('aria-label', '打开咕叽咕机');
+    const icon = document.createElement('span');
+    icon.className = 'fa-solid fa-mobile-screen-button extensionsMenuExtensionButton';
+    icon.setAttribute('aria-hidden', 'true');
+    const title = document.createElement('span');
+    title.textContent = '咕叽咕机';
+    button.append(icon, title);
+    button.addEventListener('click', openPhone);
+    container.append(button);
+    menu.append(container);
+    recordActivity('启动入口', '魔法棒菜单已注册「咕叽咕机」。', 'success');
+    return true;
+}
+
 function makeUI() {
     const container = document.createElement('div');
     container.id = ROOT_ID;
@@ -612,7 +680,7 @@ function makeUI() {
         </header>
         <section class="lp-screen lp-home" data-lp-screen="home" aria-label="手机桌面">
           <div class="lp-home-hero">
-            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.3.2</div>
+            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.3.3</div>
             <div class="lp-home-time" data-lp="homeTime">故事时间</div>
             <div class="lp-home-character" data-lp="homeCharacter">等待进入角色存档</div>
           </div>
@@ -661,6 +729,9 @@ function makeUI() {
           </div>
         </section>
         <section class="lp-screen lp-settings" data-lp-screen="settings" aria-label="小手机设置" hidden>
+          <h2>打开方式</h2>
+          <p>默认从酒馆的魔法棒菜单选择「咕叽咕机」打开。也可以额外开启悬浮按钮。</p>
+          <label class="lp-entry-option"><input type="checkbox" data-lp="floatingLauncher" /> 在聊天页面显示悬浮按钮</label>
           <h2>故事时间</h2>
           <p>这里设置的是小手机的剧情时间；它可以早于正文开始，不会自动修改正文时间。</p>
           <div class="lp-timebar">
@@ -692,28 +763,24 @@ function mount() {
     nodes = Object.fromEntries(['title', 'name', 'subtitle', 'back', 'close', 'time',
         'homeTime', 'homeCharacter', 'homeMessageCount', 'homeLogCount',
         'friendLabel', 'friendActions',
-        'friendSetup', 'friendSave', 'status', 'settingsStatus', 'activity', 'diagnosticToggle',
+        'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus', 'activity', 'diagnosticToggle',
         'diagnostics', 'diagnosticState', 'copyDiagnostics', 'clearDiagnostics',
         'messages', 'input', 'retry', 'send', 'launcher']
         .map(key => [key, root.querySelector(`[data-lp="${key}"]`)]));
 
     nodes.launcher.addEventListener('click', () => {
         const opening = !root.classList.contains('lp-open');
-        root.classList.toggle('lp-open', opening);
-        nodes.launcher.setAttribute('aria-label', root.classList.contains('lp-open') ? '隐藏咕叽咕机' : '打开咕叽咕机');
-        if (opening) setScreen('home');
-        render();
+        if (opening) openPhone();
+        else closePhone();
     });
-    nodes.close.addEventListener('click', () => {
-        root.classList.remove('lp-open');
-        nodes.launcher.setAttribute('aria-label', '打开咕叽咕机');
-    });
+    nodes.close.addEventListener('click', closePhone);
     nodes.back.addEventListener('click', () => setScreen('home'));
     root.addEventListener('click', event => {
         const button = event.target.closest('button[data-lp-open]');
         if (button && root.contains(button)) setScreen(button.dataset.lpOpen);
     });
     nodes.time.addEventListener('change', saveStoryTime);
+    nodes.floatingLauncher.addEventListener('change', event => setFloatLauncherEnabled(event.target.checked));
     nodes.send.addEventListener('click', send);
     nodes.retry.addEventListener('click', retryLastReply);
     nodes.friendSave.addEventListener('click', saveManualFriendship);
@@ -738,8 +805,7 @@ function mount() {
         if (event.key === 'Escape') {
             if (activeScreen !== 'home') setScreen('home');
             else {
-                root.classList.remove('lp-open');
-                nodes.launcher.setAttribute('aria-label', '打开咕叽咕机');
+                closePhone();
                 nodes.launcher.focus();
             }
         }
@@ -779,6 +845,7 @@ function unmount() {
     listeningSource = null;
     listeningEvent = null;
     chatChangedHandler = null;
+    document.getElementById(WAND_ENTRY_ID)?.remove();
     root?.remove();
     root = null;
     nodes = null;
@@ -788,7 +855,7 @@ function unmount() {
 }
 
 function bindReady() {
-    if (!extensionEnabled || mounted) return;
+    if (!extensionEnabled) return;
     if (!document.body) {
         // The phone shell does not require a SillyTavern context to appear.
         // Wait only for the document body, never for host event API shape.
@@ -802,7 +869,21 @@ function bindReady() {
     }
     if (bootstrapTimer) clearTimeout(bootstrapTimer);
     bootstrapTimer = null;
-    mount();
+    if (!mounted) mount();
+    if (!installWandEntry()) {
+        // On SillyTavern 1.19 the wand menu is normally ready before extensions,
+        // but retry briefly for hosts that inject it after our entry module.
+        if (wandAttempts++ < 30) {
+            bootstrapTimer = setTimeout(() => {
+                bootstrapTimer = null;
+                bindReady();
+            }, 500);
+        } else {
+            recordError('魔法棒入口', new Error('酒馆没有提供 #extensionsMenu，无法添加咕叽咕机入口。'));
+        }
+    } else {
+        wandAttempts = 0;
+    }
 }
 
 // activate runs on every successful page-load activation; enable runs when the
@@ -813,6 +894,7 @@ export function onDisable() {
     extensionEnabled = false;
     if (bootstrapTimer) clearTimeout(bootstrapTimer);
     bootstrapTimer = null;
+    wandAttempts = 0;
     unmount();
 }
 
