@@ -1,8 +1,10 @@
 # 咕叽咕机 · GujiGuji
 
-SillyTavern 第三方前端扩展，版本 **0.3.0（测试版）**。GitHub 仓库：<https://github.com/yuyun-akf/guji-guji>。
+SillyTavern 第三方前端扩展，版本 **0.3.1（测试版）**。GitHub 仓库：<https://github.com/yuyun-akf/guji-guji>。
 
 这是用于验证手机桌面、核心聊天与存档的起步版本；代码已完成静态检查，但**尚未在你的 SillyDroid / Termux / SillyTavern 1.19.0 真机环境中验证**。请先备份需要测试的酒馆聊天存档。
+
+**0.3.1 启动修复：** 增加 `activate` 生命周期钩子，避免仅等待可能已经触发过的 `APP_READY` 事件。启用或刷新后的启动过程会直接检查宿主上下文并挂载手机按钮。更新后应出现右下角紫色 `☏`，点击才是本插件的桌面；带「动态／联系人／消息」的 QQ 风格界面属于另一套 UI。
 
 ## 本版可做什么
 
