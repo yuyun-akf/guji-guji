@@ -1,10 +1,17 @@
 # 咕叽咕机 · GujiGuji
 
-SillyTavern 第三方前端扩展，版本 **0.3.1（测试版）**。GitHub 仓库：<https://github.com/yuyun-akf/guji-guji>。
+SillyTavern 第三方前端扩展，版本 **0.3.2（启动诊断测试版）**。GitHub 仓库：<https://github.com/yuyun-akf/guji-guji>。
 
 这是用于验证手机桌面、核心聊天与存档的起步版本；代码已完成静态检查，但**尚未在你的 SillyDroid / Termux / SillyTavern 1.19.0 真机环境中验证**。请先备份需要测试的酒馆聊天存档。
 
-**0.3.1 启动修复：** 增加 `activate` 生命周期钩子，避免仅等待可能已经触发过的 `APP_READY` 事件。启用或刷新后的启动过程会直接检查宿主上下文并挂载手机按钮。更新后应出现右下角紫色 `☏`，点击才是本插件的桌面；带「动态／联系人／消息」的 QQ 风格界面属于另一套 UI。
+**0.3.2 启动诊断：** 新增独立入口 `bootstrap.js`，先显示深紫色的「咕叽咕机 · 启动检查 0.3.2」浮层，再载入主模块。手机按钮现在不以获取酒馆上下文为启动前提；即使没有选角色，也应先看到右下角紫色 `☏`。
+
+- `B1`：启动入口执行，正在读取主模块；`B2`：主模块载入；`B4`：手机按钮已创建且有可见的尺寸。
+- `B3`：主模块载入但没有创建按钮，或按钮布局不可见；`B-ERR`：主模块读取或初始化出错，旁边会显示脱敏的错误摘要。
+- **如果诊断浮层完全没有出现**，说明这份新版入口没有被当前页面执行，需要进一步查扩展脚本加载、实际安装的仓库/版本或缓存。
+- 可以点击浮层右上角 `×` 关闭。请截图它当前显示的代码，**不用提供 SillyDroid 的服务器运行日志**。
+
+这是定位启动问题的测试版本，不能仅凭 GitHub 更新成功就宣称在手机上验收成功。右下角紫色 `☏` 才是本插件的桌面；带「动态／联系人／消息」的 QQ 风格界面属于另一套 UI。
 
 ## 本版可做什么
 
@@ -35,7 +42,7 @@ SillyTavern 第三方前端扩展，版本 **0.3.1（测试版）**。GitHub 仓
 
 ### 通过 GitHub 仓库安装或更新（推荐）
 
-在酒馆的 `扩展 → 安装扩展 / Install Extension` 中输入仓库地址 `https://github.com/yuyun-akf/guji-guji`。仓库根目录直接包含 `manifest.json`、`index.js` 和 `style.css`，这是官方支持的第三方扩展安装方式。
+在酒馆的 `扩展 → 安装扩展 / Install Extension` 中输入仓库地址 `https://github.com/yuyun-akf/guji-guji`。仓库根目录直接包含 `manifest.json`、`bootstrap.js`、`index.js` 和 `style.css`，这是官方支持的第三方扩展安装方式。
 
 如果此前安装了旧版，请从酒馆的扩展管理器更新此仓库的扩展，再刷新页面。不要同时安装两个不同文件夹的副本。
 
@@ -43,7 +50,7 @@ SillyTavern 第三方前端扩展，版本 **0.3.1（测试版）**。GitHub 仓
 
 ### 手动本地安装
 
-1. 将本插件源文件放在一个独立文件夹中，例如 `guji-guji/`，文件夹内直接有 `manifest.json`、`index.js`、`style.css`。
+1. 将本插件源文件放在一个独立文件夹中，例如 `guji-guji/`，文件夹内直接有 `manifest.json`、`bootstrap.js`、`index.js`、`style.css`。
 2. 将文件夹复制到目标 SillyTavern 的扩展目录，如 `data/<user-handle>/extensions/guji-guji/`。实际用户目录取决于酒馆部署方式。
 3. 重启或刷新 SillyTavern，启用扩展；进入一张单人角色卡的聊天存档。
 4. 右下角出现 `☏` 后点击打开手机桌面，再点「咕叽聊」。
