@@ -1,5 +1,5 @@
 /**
- * GujiGuji v0.3.1: a modular phone shell with an isolated chat app.
+ * GujiGuji v0.3.2: a modular phone shell with an isolated chat app.
  * No direct host-module imports; uses only the documented context surface.
  */
 
@@ -612,7 +612,7 @@ function makeUI() {
         </header>
         <section class="lp-screen lp-home" data-lp-screen="home" aria-label="手机桌面">
           <div class="lp-home-hero">
-            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.3.1</div>
+            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.3.2</div>
             <div class="lp-home-time" data-lp="homeTime">故事时间</div>
             <div class="lp-home-character" data-lp="homeCharacter">等待进入角色存档</div>
           </div>
@@ -789,10 +789,9 @@ function unmount() {
 
 function bindReady() {
     if (!extensionEnabled || mounted) return;
-    const ctx = context();
-    if (!document.body || !ctx?.eventSource || !ctx?.event_types) {
-        // A third-party extension may load after APP_READY has already fired.
-        // Poll for the live context, rather than waiting for an event we may miss.
+    if (!document.body) {
+        // The phone shell does not require a SillyTavern context to appear.
+        // Wait only for the document body, never for host event API shape.
         if (!bootstrapTimer) {
             bootstrapTimer = setTimeout(() => {
                 bootstrapTimer = null;
