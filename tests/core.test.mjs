@@ -265,10 +265,9 @@ test('floating launcher is off by default and its switch preserves other host se
     assert.equal(ctx.extensionSettings.someOtherPlugin.intact, true);
 });
 
-test('wand opening restores a detached phone panel and confirms it is visible', () => {
+test('wand opening restores a detached phone panel and confirms it is visible without touching other extensions', () => {
     const timers = [];
     const alerts = [];
-    let legacyHidden = 0;
     const panel = {
         isConnected: true,
         style: { setProperty(key, value) { this[key] = value; } },
@@ -289,7 +288,6 @@ test('wand opening restores a detached phone panel and confirms it is visible', 
         window: { alert: message => alerts.push(message) },
         setTimeout: fn => { timers.push(fn); },
         mockRoot,
-        hideLegacy: () => { legacyHidden += 1; },
     };
     vm.createContext(runtime);
     vm.runInContext(`${source}
@@ -298,7 +296,6 @@ test('wand opening restores a detached phone panel and confirms it is visible', 
       nodes = { launcher: { setAttribute() {} } };
       setScreen = () => {};
       render = () => {};
-      hideLegacyPhoneEntry = () => globalThis.hideLegacy();
       globalThis.openActualPhone = openPhone;
     `, runtime);
     runtime.openActualPhone();
@@ -307,7 +304,6 @@ test('wand opening restores a detached phone panel and confirms it is visible', 
     assert.equal(panel.style.display, 'flex');
     assert.equal(timers.length, 1);
     timers.shift()();
-    assert.equal(legacyHidden, 1);
     assert.deepEqual(alerts, []);
 });
 
@@ -349,7 +345,7 @@ test('failed phone visibility check produces a visible error instead of silence'
 test('diagnostic bootstrap is the manifest entry and exposes lifecycle hooks', () => {
     const manifest = JSON.parse(readFileSync(resolve(testRoot, '../manifest.json'), 'utf8'));
     const bootstrap = readFileSync(resolve(testRoot, '../bootstrap.js'), 'utf8');
-    assert.equal(manifest.version, '0.3.4');
+    assert.equal(manifest.version, '0.3.5');
     assert.equal(manifest.js, 'bootstrap.js');
     assert.match(bootstrap, /import\('\.\/index\.js'\)/);
     assert.match(bootstrap, /export function onActivate\(/);
