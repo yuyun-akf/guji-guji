@@ -79,8 +79,19 @@ async function writeData(ctx, data) {
     if (!ctx?.chatMetadata || typeof ctx.saveMetadata !== 'function') {
         throw new Error('当前酒馆未提供可用的聊天存档接口。');
     }
+    const previous = ctx.chatMetadata[DATA_KEY];
     ctx.chatMetadata[DATA_KEY] = data;
-    await ctx.saveMetadata();
+    try {
+        await ctx.saveMetadata();
+    } catch (error) {
+        // A rejected persistence call must not leave an unsaved phantom
+        // message that would be duplicated by the user's next send/retry.
+        if (ctx.chatMetadata[DATA_KEY] === data) {
+            if (previous === undefined) delete ctx.chatMetadata[DATA_KEY];
+            else ctx.chatMetadata[DATA_KEY] = previous;
+        }
+        throw error;
+    }
 }
 
 function captureSession(ctx) {
@@ -371,6 +382,7 @@ function makeMessage(from, text, storyTime) {
 async function saveStoryTime() {
     const ctx = context();
     if (!selectedCharacter(ctx) || busy) return;
+    const session = captureSession(ctx);
     const time = nodes.time.value;
     if (!/^\d{4}-\d\d-\d\dT\d\d:\d\d$/.test(time)) {
         setStatus('请选择有效的故事日期和时间。');
@@ -380,7 +392,10 @@ async function saveStoryTime() {
     data.storyTime = time;
     try {
         await writeData(ctx, data);
-        setStatus('手机时间已保存。它不会自动改动正文时间。');
+        if (sameSession(session)) {
+            setStatus('手机时间已保存。它不会自动改动正文时间。');
+            render();
+        }
     } catch (error) {
         setStatus(recordError('保存故事时间', error), 'error');
     }
