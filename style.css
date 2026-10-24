@@ -127,12 +127,146 @@
   color-scheme: light;
 }
 
-#st-little-phone-root .lp-status {
+#st-little-phone-root [hidden] {
+  display: none !important;
+}
+
+#st-little-phone-root .lp-friendship {
   flex: 0 0 auto;
+  padding: 5px 12px 8px;
+  border-bottom: 1px solid var(--lp-border);
+  background: #fcf9ff;
+}
+
+#st-little-phone-root .lp-friend-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 5px 9px;
+}
+
+#st-little-phone-root .lp-friend-label {
+  font-size: 12px;
+  color: #715a94;
+  font-weight: 600;
+}
+
+#st-little-phone-root .lp-friend-label[data-state="blocked"] {
+  color: #9a4555;
+}
+
+#st-little-phone-root .lp-friend-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+#st-little-phone-root .lp-friend-actions button,
+#st-little-phone-root .lp-friend-editor button,
+#st-little-phone-root .lp-diagnostic-head button {
+  border: 1px solid #d9c9e6;
+  background: #fff;
+  color: #70568c;
+  font: inherit;
+  font-size: 11px;
+  border-radius: 8px;
+  min-height: 32px;
+  padding: 5px 9px;
+  cursor: pointer;
+}
+
+#st-little-phone-root .lp-friend-setup {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #898092;
+}
+
+#st-little-phone-root .lp-friend-setup summary {
+  cursor: pointer;
+  width: fit-content;
+}
+
+#st-little-phone-root .lp-friend-editor {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+#st-little-phone-root .lp-friend-editor select {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 1px solid var(--lp-border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--lp-ink);
+  padding: 5px;
+  font-size: 12px;
+}
+
+#st-little-phone-root .lp-statusrow {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 5px 12px;
+}
+
+#st-little-phone-root .lp-status {
+  flex: 1 1 auto;
   min-height: 20px;
-  padding: 0 14px 5px;
+  min-width: 0;
   font-size: 11px;
   color: #79639a;
+  overflow-wrap: anywhere;
+}
+
+#st-little-phone-root .lp-status[data-kind="error"] {
+  color: #b34855;
+}
+
+#st-little-phone-root .lp-diagnostic-toggle {
+  flex: 0 0 auto;
+  background: transparent;
+  border: 0;
+  padding: 0 3px;
+  color: #7d668c;
+  text-decoration: underline;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+#st-little-phone-root .lp-activity {
+  padding: 5px 14px;
+  color: #6d578b;
+  background: #f2eafb;
+  font-size: 12px;
+}
+
+#st-little-phone-root .lp-diagnostics {
+  flex: 0 1 auto;
+  max-height: 135px;
+  overflow-y: auto;
+  margin: 0 11px 8px;
+  padding: 9px;
+  border: 1px solid #efd9dd;
+  background: #fff7f8;
+  border-radius: 10px;
+  color: #664e56;
+  font-size: 11px;
+}
+
+#st-little-phone-root .lp-diagnostic-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+#st-little-phone-root .lp-diagnostics p {
+  margin: 7px 0;
+  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
@@ -193,6 +327,39 @@
   border-radius: 16px 16px 4px 16px;
 }
 
+#st-little-phone-root .lp-message.lp-system {
+  align-self: center;
+  align-items: center;
+  max-width: 94%;
+  text-align: center;
+}
+
+#st-little-phone-root .lp-system .lp-bubble {
+  padding: 6px 10px;
+  border: none;
+  background: #ece7ee;
+  color: #746b78;
+  border-radius: 9px;
+  font-size: 11px;
+}
+
+#st-little-phone-root .lp-typing {
+  padding: 7px 10px;
+  border-radius: 12px;
+  background: #f0eaf5;
+  color: #76618c;
+  font-size: 12px;
+  animation: lp-typing-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes lp-typing-pulse {
+  50% { opacity: .55; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #st-little-phone-root .lp-typing { animation: none; }
+}
+
 #st-little-phone-root .lp-message-time {
   color: #988da1;
   font-size: 10px;
@@ -201,12 +368,21 @@
 
 #st-little-phone-root .lp-composer {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
   gap: 8px;
   flex: 0 0 auto;
   padding: 11px;
   background: var(--lp-paper);
   border-top: 1px solid var(--lp-border);
+}
+
+#st-little-phone-root .lp-composer button.lp-retry {
+  order: -1;
+  width: 100%;
+  height: 31px;
+  background: #e8dff2;
+  color: #644d80;
 }
 
 #st-little-phone-root .lp-composer textarea {
