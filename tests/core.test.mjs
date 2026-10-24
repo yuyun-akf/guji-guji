@@ -83,6 +83,7 @@ test('phone opens into a launcher with one send-and-generate action', () => {
     assert.match(html, /data-lp="homeLogCount"/);
     assert.match(html, /data-lp="diagnosticState"/);
     assert.match(html, /data-lp="send">发送并生成/);
+    assert.match(html, /data-lp="floatingLauncher"/);
     assert.equal((html.match(/data-lp="send"/g) || []).length, 1);
     assert.equal((html.match(/data-lp="generate"/g) || []).length, 0);
     assert.match(html, /相册/);
@@ -159,6 +160,7 @@ test('activation mounts even if APP_READY fired before the extension was loaded'
     vm.createContext(runtime);
     vm.runInContext(`${source}
       mount = () => { if (!mounted) { mounted = true; globalThis.mountCount(); } };
+      installWandEntry = () => true;
       globalThis.activate = onActivate;
     `, runtime);
     // The host never emits APP_READY again; direct page activation must suffice.
@@ -181,6 +183,7 @@ test('phone shell mounts immediately even when the host context is not ready', (
     vm.createContext(runtime);
     vm.runInContext(`${source}
       mount = () => { if (!mounted) { mounted = true; globalThis.mountCount(); } };
+      installWandEntry = () => true;
       globalThis.activate = onActivate;
     `, runtime);
     runtime.activate();
@@ -188,10 +191,74 @@ test('phone shell mounts immediately even when the host context is not ready', (
     assert.equal(scheduled.length, 0);
 });
 
+test('wand entry registers exactly once and opens the shared phone UI', () => {
+    let opens = 0;
+    class NodeStub {
+        constructor(tag) { this.tag = tag; this.children = []; this.listeners = {}; }
+        append(...children) { this.children.push(...children); }
+        setAttribute(key, value) { this[key] = value; }
+        addEventListener(name, fn) { this.listeners[name] = fn; }
+    }
+    const menu = new NodeStub('div');
+    menu.id = 'extensionsMenu';
+    const find = (node, id) => node.id === id ? node : node.children.map(child => find(child, id)).find(Boolean);
+    const runtime = {
+        console, Date, structuredClone,
+        document: {
+            getElementById: id => find(menu, id),
+            createElement: tag => new NodeStub(tag),
+        },
+        window: {},
+        markOpen: () => { opens += 1; },
+    };
+    vm.createContext(runtime);
+    vm.runInContext(`${source}
+      openPhone = () => globalThis.markOpen();
+      globalThis.registerWand = installWandEntry;
+    `, runtime);
+    assert.equal(runtime.registerWand(), true);
+    assert.equal(runtime.registerWand(), true);
+    assert.equal(menu.children.length, 1);
+    const button = menu.children[0].children[0];
+    assert.equal(button['aria-label'], '打开咕叽咕机');
+    assert.equal(button.children[1].textContent, '咕叽咕机');
+    button.listeners.click();
+    assert.equal(opens, 1);
+});
+
+test('floating launcher is off by default and its switch preserves other host settings', () => {
+    let saves = 0;
+    const ctx = {
+        extensionSettings: { someOtherPlugin: { intact: true } },
+        saveSettingsDebounced() { saves += 1; },
+    };
+    const runtime = {
+        console, Date, structuredClone,
+        window: { SillyTavern: { getContext: () => ctx } },
+    };
+    vm.createContext(runtime);
+    vm.runInContext(`${source}
+      nodes = { launcher: {}, floatingLauncher: {}, status: {dataset: {}},
+                settingsStatus: {dataset: {}}, diagnosticState: {} };
+      globalThis.enabled = floatLauncherEnabled;
+      globalThis.change = setFloatLauncherEnabled;
+      globalThis.launcher = nodes.launcher;
+    `, runtime);
+    assert.equal(runtime.enabled(), false);
+    runtime.change(true);
+    assert.equal(runtime.enabled(), true);
+    assert.equal(runtime.launcher.hidden, false);
+    runtime.change(false);
+    assert.equal(runtime.enabled(), false);
+    assert.equal(runtime.launcher.hidden, true);
+    assert.equal(saves, 2);
+    assert.equal(ctx.extensionSettings.someOtherPlugin.intact, true);
+});
+
 test('diagnostic bootstrap is the manifest entry and exposes lifecycle hooks', () => {
     const manifest = JSON.parse(readFileSync(resolve(testRoot, '../manifest.json'), 'utf8'));
     const bootstrap = readFileSync(resolve(testRoot, '../bootstrap.js'), 'utf8');
-    assert.equal(manifest.version, '0.3.2');
+    assert.equal(manifest.version, '0.3.3');
     assert.equal(manifest.js, 'bootstrap.js');
     assert.match(bootstrap, /import\('\.\/index\.js'\)/);
     assert.match(bootstrap, /export function onActivate\(/);
