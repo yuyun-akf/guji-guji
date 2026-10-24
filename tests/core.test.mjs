@@ -144,3 +144,51 @@ test('failed persistence rolls back the in-memory phone value for safe retry', a
     await assert.rejects(writeData(ctx, changed), /保存失败/);
     assert.equal(ctx.chatMetadata.st_little_phone_v1, oldData);
 });
+
+test('activation mounts even if APP_READY fired before the extension was loaded', () => {
+    let mounts = 0;
+    const readyContext = { eventSource: { on() {} }, event_types: { APP_READY: 'app_ready' } };
+    const runtime = {
+        console, Date, structuredClone,
+        document: { body: {} },
+        window: { SillyTavern: { getContext: () => readyContext } },
+        setTimeout: () => { throw new Error('Unexpected readiness wait'); },
+        clearTimeout() {},
+        mountCount: () => { mounts += 1; },
+    };
+    vm.createContext(runtime);
+    vm.runInContext(`${source}
+      mount = () => { if (!mounted) { mounted = true; globalThis.mountCount(); } };
+      globalThis.activate = onActivate;
+    `, runtime);
+    // The host never emits APP_READY again; direct page activation must suffice.
+    runtime.activate();
+    runtime.activate();
+    assert.equal(mounts, 1);
+});
+
+test('late context availability retries without relying on an APP_READY event', () => {
+    let mounts = 0;
+    let available = false;
+    const scheduled = [];
+    const readyContext = { eventSource: { on() {} }, event_types: { APP_READY: 'app_ready' } };
+    const runtime = {
+        console, Date, structuredClone,
+        document: { body: {} },
+        window: { SillyTavern: { getContext: () => available ? readyContext : null } },
+        setTimeout: fn => { scheduled.push(fn); return scheduled.length; },
+        clearTimeout() {},
+        mountCount: () => { mounts += 1; },
+    };
+    vm.createContext(runtime);
+    vm.runInContext(`${source}
+      mount = () => { if (!mounted) { mounted = true; globalThis.mountCount(); } };
+      globalThis.activate = onActivate;
+    `, runtime);
+    runtime.activate();
+    assert.equal(mounts, 0);
+    assert.equal(scheduled.length, 1);
+    available = true;
+    scheduled.shift()();
+    assert.equal(mounts, 1);
+});
