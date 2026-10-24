@@ -1,5 +1,5 @@
 /**
- * GujiGuji v0.3.0: a modular phone shell with an isolated chat app.
+ * GujiGuji v0.3.1: a modular phone shell with an isolated chat app.
  * No direct host-module imports; uses only the documented context surface.
  */
 
@@ -25,7 +25,8 @@ let busyJobId = 0;
 let chatChangedHandler = null;
 let listeningSource = null;
 let listeningEvent = null;
-let readyBound = false;
+let bootstrapTimer = null;
+let extensionEnabled = true;
 let statusText = '';
 let statusKind = 'info';
 let busyKind = '';
@@ -36,7 +37,8 @@ const SCREENS = new Set(['home', 'chat', 'settings', 'diagnostics']);
 
 function context() {
     try {
-        return window.SillyTavern?.getContext?.() ?? null;
+        const host = window.SillyTavern ?? (typeof SillyTavern !== 'undefined' ? SillyTavern : null);
+        return host?.getContext?.() ?? null;
     } catch {
         return null;
     }
@@ -610,7 +612,7 @@ function makeUI() {
         </header>
         <section class="lp-screen lp-home" data-lp-screen="home" aria-label="手机桌面">
           <div class="lp-home-hero">
-            <div class="lp-home-greeting">咕叽咕机 · GujiGuji</div>
+            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.3.1</div>
             <div class="lp-home-time" data-lp="homeTime">故事时间</div>
             <div class="lp-home-character" data-lp="homeCharacter">等待进入角色存档</div>
           </div>
@@ -786,18 +788,33 @@ function unmount() {
 }
 
 function bindReady() {
-    if (readyBound) return;
+    if (!extensionEnabled || mounted) return;
     const ctx = context();
-    if (!ctx?.eventSource || !ctx?.event_types?.APP_READY) {
-        // Load order can differ across SillyDroid and browser-hosted Tavern.
-        setTimeout(bindReady, 500);
+    if (!document.body || !ctx?.eventSource || !ctx?.event_types) {
+        // A third-party extension may load after APP_READY has already fired.
+        // Poll for the live context, rather than waiting for an event we may miss.
+        if (!bootstrapTimer) {
+            bootstrapTimer = setTimeout(() => {
+                bootstrapTimer = null;
+                bindReady();
+            }, 500);
+        }
         return;
     }
-    readyBound = true;
-    ctx.eventSource.on(ctx.event_types.APP_READY, mount);
+    if (bootstrapTimer) clearTimeout(bootstrapTimer);
+    bootstrapTimer = null;
+    mount();
 }
 
-export function onEnable() { mount(); }
-export function onDisable() { unmount(); }
+// activate runs on every successful page-load activation; enable runs when the
+// user changes the extension's enabled state. They are not interchangeable.
+export function onActivate() { extensionEnabled = true; bindReady(); }
+export function onEnable() { extensionEnabled = true; bindReady(); }
+export function onDisable() {
+    extensionEnabled = false;
+    if (bootstrapTimer) clearTimeout(bootstrapTimer);
+    bootstrapTimer = null;
+    unmount();
+}
 
 bindReady();
