@@ -1,10 +1,10 @@
 /**
- * GujiGuji v0.3.2 diagnostic entry point.
+ * GujiGuji v0.3.3 diagnostic entry point.
  * This file deliberately avoids SillyTavern APIs until the main module loads.
  */
 const DIAG_ID = 'gujiguji-bootstrap-diagnostic';
 const ROOT_ID = 'st-little-phone-root';
-const VERSION = '0.3.2';
+const VERSION = '0.3.3';
 
 let mainPromise = null;
 let mainModule = null;
@@ -71,14 +71,19 @@ function checkInterface() {
     checkTimer = null;
     if (!enabled) return;
     const mounted = document.getElementById(ROOT_ID);
+    const wand = document.getElementById('gujiguji-wand-entry');
     const launcher = mounted?.querySelector('.lp-launcher');
-    if (launcher) {
+    if (mounted && wand?.querySelector('.gujiguji-wand-button')) {
+        report('B4', '已加入魔法棒菜单：咕叽咕机。悬浮按钮默认关闭。');
+        // Successful startup should not leave a floating diagnostic on screen.
+        setTimeout(() => { if (enabled) diagnosticNode?.remove(); }, 1600);
+    } else if (launcher) {
         const rect = launcher.getBoundingClientRect();
         const style = getComputedStyle(launcher);
         const visible = rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
         report(visible ? 'B4' : 'B3', visible
-            ? '手机按钮已创建。请找右下角的紫色 ☏，若仍看不到请截图。'
-            : '手机按钮已创建，但布局不可见。请截图此诊断框。');
+            ? '悬浮按钮已创建，但魔法棒入口尚未注册。请截图。'
+            : '魔法棒入口没有注册成功；请截图此诊断框。');
     } else {
         report('B3', '主模块已加载，但没有发现手机界面（可能是初始化失败）');
     }
