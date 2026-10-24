@@ -78,6 +78,147 @@
   border-bottom: 1px solid var(--lp-border);
 }
 
+#st-little-phone-root .lp-heading {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+#st-little-phone-root .lp-back {
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid #e7dced;
+  border-radius: 11px;
+  background: #ffffffb8;
+  color: #6f568c;
+  font-size: 28px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+#st-little-phone-root .lp-screen {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+#st-little-phone-root .lp-home {
+  gap: 15px;
+  padding: 16px 14px 18px;
+  overflow-y: auto;
+  background: linear-gradient(160deg, #faf2ff 0%, #f5f2fc 48%, #fffafd 100%);
+}
+
+#st-little-phone-root .lp-home-hero {
+  padding: 21px 17px;
+  border: 1px solid #efdef7;
+  border-radius: 23px;
+  background: linear-gradient(135deg, #f1dff7 0%, #dce9fb 100%);
+  box-shadow: 0 8px 23px #7361931c;
+}
+
+#st-little-phone-root .lp-home-greeting {
+  color: #71578f;
+  font-size: 12px;
+  letter-spacing: .3px;
+}
+
+#st-little-phone-root .lp-home-time {
+  margin-top: 11px;
+  font-size: clamp(20px, 5vw, 27px);
+  font-weight: 750;
+  color: #423754;
+  overflow-wrap: anywhere;
+}
+
+#st-little-phone-root .lp-home-character {
+  margin-top: 8px;
+  color: #635473;
+  font-size: 12px;
+}
+
+#st-little-phone-root .lp-home-summary {
+  padding-left: 3px;
+  font-size: 12px;
+  color: #83738c;
+}
+
+#st-little-phone-root .lp-app-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 13px 9px;
+}
+
+#st-little-phone-root .lp-app-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  min-width: 0;
+  gap: 3px;
+  padding: 5px 1px 7px;
+  border: 0;
+  border-radius: 13px;
+  background: transparent;
+  color: #463950;
+  font: inherit;
+  font-size: 12px;
+  text-align: center;
+  cursor: pointer;
+}
+
+#st-little-phone-root .lp-app-tile:active {
+  background: #b8a4d12e;
+}
+
+#st-little-phone-root .lp-app-tile small {
+  font-size: 10px;
+  color: #8b8195;
+  overflow-wrap: anywhere;
+}
+
+#st-little-phone-root .lp-app-icon {
+  display: grid;
+  place-items: center;
+  width: clamp(49px, 15vw, 60px);
+  height: clamp(49px, 15vw, 60px);
+  margin-bottom: 3px;
+  border: 1px solid #ece2f0;
+  border-radius: 17px;
+  background: #fffdfedb;
+  box-shadow: 0 6px 14px #4e3d6830;
+  font-size: 29px;
+}
+
+#st-little-phone-root .lp-app-chat { background: #ddf5e2; }
+#st-little-phone-root .lp-app-log { background: #fff0d6; }
+#st-little-phone-root .lp-app-settings { background: #e6e8ff; }
+
+#st-little-phone-root .lp-app-soon {
+  opacity: .57;
+  cursor: default;
+}
+
+#st-little-phone-root .lp-home-note {
+  margin: auto 6px 0;
+  padding: 12px;
+  color: #7c7183;
+  background: #ffffff8a;
+  border-radius: 12px;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+#st-little-phone-root .lp-chat-contact {
+  padding: 8px 13px;
+  color: #78648c;
+  background: #fcf8ff;
+  border-bottom: 1px solid var(--lp-border);
+  font-size: 12px;
+}
+
 #st-little-phone-root .lp-title {
   font-weight: 700;
   font-size: 16px;
@@ -227,14 +368,21 @@
 
 #st-little-phone-root .lp-diagnostic-toggle {
   flex: 0 0 auto;
-  background: transparent;
-  border: 0;
-  padding: 0 3px;
+  border: 1px solid #dcd0ec;
+  border-radius: 9px;
+  background: #f5edfc;
+  padding: 5px 9px;
   color: #7d668c;
-  text-decoration: underline;
   font: inherit;
   font-size: 11px;
+  font-weight: 650;
   cursor: pointer;
+}
+
+#st-little-phone-root .lp-diagnostic-toggle.lp-has-error {
+  border-color: #e7a9b2;
+  background: #fff0f2;
+  color: #a83d50;
 }
 
 #st-little-phone-root .lp-activity {
@@ -245,17 +393,44 @@
 }
 
 #st-little-phone-root .lp-diagnostics {
-  flex: 0 1 auto;
-  max-height: 135px;
+  gap: 10px;
+  padding: 13px;
+  color: #594e66;
+  background: #fbf9fe;
+}
+
+#st-little-phone-root .lp-diagnostic-state {
+  flex: 0 0 auto;
+  padding: 11px;
+  border: 1px solid #e6daee;
+  border-radius: 12px;
+  background: #f2edfa;
+  font-size: 12px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+#st-little-phone-root .lp-diagnostic-note {
+  margin: 0;
+  color: #7c7183;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+#st-little-phone-root .lp-diagnostic-list {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
-  margin: 0 11px 8px;
-  padding: 9px;
-  border: 1px solid #efd9dd;
-  background: #fff7f8;
-  border-radius: 10px;
-  color: #664e56;
+  overscroll-behavior: contain;
+  padding: 0 10px;
+  border: 1px solid #ebe1f1;
+  background: #fff;
+  border-radius: 12px;
   font-size: 11px;
 }
+
+#st-little-phone-root .lp-log-error { color: #a33d4f; }
+#st-little-phone-root .lp-log-success { color: #387454; }
 
 #st-little-phone-root .lp-diagnostic-head {
   display: flex;
@@ -268,6 +443,51 @@
   margin: 7px 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+#st-little-phone-root .lp-clear-logs,
+#st-little-phone-root .lp-settings-link {
+  padding: 10px 13px;
+  border: 1px solid #e0d3ea;
+  border-radius: 11px;
+  background: #fff;
+  color: #735690;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+#st-little-phone-root .lp-settings {
+  gap: 10px;
+  overflow-y: auto;
+  padding: 17px 14px;
+  background: #fffbff;
+}
+
+#st-little-phone-root .lp-settings h2 {
+  margin: 8px 0 0;
+  font-size: 15px;
+}
+
+#st-little-phone-root .lp-settings p {
+  margin: 0;
+  color: #85758c;
+  font-size: 12px;
+}
+
+#st-little-phone-root .lp-settings .lp-timebar {
+  padding: 11px 0;
+  flex-wrap: wrap;
+}
+
+#st-little-phone-root .lp-settings-status {
+  min-height: 18px;
+  color: #76618c;
+  font-size: 12px;
+}
+
+#st-little-phone-root .lp-settings-status[data-kind="error"] {
+  color: #b34855;
 }
 
 #st-little-phone-root .lp-messages {
