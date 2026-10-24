@@ -48,12 +48,19 @@
 
 #st-little-phone-root .lp-panel {
   display: none;
-  position: absolute;
-  right: max(14px, env(safe-area-inset-right));
-  bottom: max(82px, calc(env(safe-area-inset-bottom) + 80px));
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  right: auto;
+  bottom: auto;
+  transform: translate(-50%, -50%);
+  margin: 0;
+  padding: 0;
   width: min(380px, calc(100vw - 20px));
-  height: min(670px, calc(100dvh - 110px));
-  min-height: 300px;
+  height: min(670px, calc(100dvh - 32px));
+  max-width: none;
+  max-height: calc(100dvh - 20px);
+  min-height: min(300px, calc(100dvh - 32px));
   flex-direction: column;
   overflow: hidden;
   background: var(--lp-paper);
@@ -61,6 +68,10 @@
   border-radius: 22px;
   box-shadow: 0 14px 42px #24172e66;
   pointer-events: auto;
+}
+
+#st-little-phone-root .lp-panel::backdrop {
+  background: rgba(21, 15, 30, 0.36);
 }
 
 #st-little-phone-root.lp-open .lp-panel {
@@ -672,10 +683,12 @@
 
 @media (max-width: 480px) {
   #st-little-phone-root .lp-panel {
-    right: 8px;
+    left: 50%;
+    right: auto;
+    top: 50%;
+    bottom: auto;
     width: calc(100vw - 16px);
-    bottom: max(76px, calc(env(safe-area-inset-bottom) + 75px));
-    height: min(680px, calc(100dvh - 90px));
+    height: calc(100dvh - 32px);
     border-radius: 19px;
   }
 }
