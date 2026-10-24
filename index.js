@@ -1,5 +1,5 @@
 /**
- * GujiGuji v0.3.3: a modular phone shell with an isolated chat app.
+ * GujiGuji v0.3.4: a modular phone shell with an isolated chat app.
  * No direct host-module imports; uses only the documented context surface.
  */
 
@@ -29,6 +29,8 @@ let listeningSource = null;
 let listeningEvent = null;
 let bootstrapTimer = null;
 let wandAttempts = 0;
+let wandEntry = null;
+let hiddenLegacyEntry = null;
 let extensionEnabled = true;
 let statusText = '';
 let statusKind = 'info';
@@ -629,23 +631,75 @@ async function copyDiagnostics() {
 }
 
 function openPhone() {
-    if (!mounted || !root) return;
-    root.classList.add('lp-open');
-    nodes.launcher.setAttribute('aria-label', '隐藏咕叽咕机');
-    setScreen('home');
-    render();
+    try {
+        if (!mounted || !root) mount();
+        if (!mounted || !root || !nodes) throw new Error('手机界面尚未初始化');
+        // A themed or re-rendered body may contain/clip fixed-position children.
+        // Keep the overlay at the document root so its fixed layer uses the viewport.
+        if (root.parentElement !== document.documentElement) document.documentElement.append(root);
+        const panel = root.querySelector('.lp-panel');
+        if (!panel) throw new Error('找不到手机主屏容器');
+        root.classList.add('lp-open');
+        panel.style.setProperty('display', 'flex', 'important');
+        nodes.launcher.setAttribute('aria-label', '隐藏咕叽咕机');
+        setScreen('home');
+        render();
+        setTimeout(() => {
+            if (!root?.classList.contains('lp-open')) return;
+            const bounds = panel.getBoundingClientRect();
+            const topElement = document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2);
+            const exposed = Boolean(topElement && panel.contains(topElement));
+            if (!panel.isConnected || bounds.width < 100 || bounds.height < 100 || !exposed) {
+                const detail = `手机界面不可见或被遮挡（${Math.round(bounds.width)}×${Math.round(bounds.height)}，顶部命中：${topElement?.tagName || '无'}）`;
+                recordError('打开手机', new Error(detail));
+                window.alert(`咕叽咕机启动错误：${detail}`);
+            } else {
+                hideLegacyPhoneEntry();
+            }
+        }, 650);
+    } catch (error) {
+        const detail = recordError('打开手机', error);
+        window.alert(`咕叽咕机启动错误：${detail}`);
+    }
+}
+
+function hideLegacyPhoneEntry() {
+    if (hiddenLegacyEntry) return;
+    const menu = document.getElementById('extensionsMenu');
+    if (!menu) return;
+    const matches = [...menu.querySelectorAll('.list-group-item')]
+        .filter(item => !item.closest(`#${WAND_ENTRY_ID}`) && item.textContent?.trim() === '手机');
+    // Avoid hiding an unrelated item if the host has multiple ambiguous matches.
+    if (matches.length !== 1) return;
+    const node = matches[0].closest('.extension_container') || matches[0];
+    hiddenLegacyEntry = { node, display: node.style.display, hidden: node.hidden };
+    node.hidden = true;
+    node.style.display = 'none';
+    recordActivity('手机入口', '新版主屏显示成功，已临时隐藏旧「手机」菜单项。', 'success');
+}
+
+function restoreLegacyPhoneEntry() {
+    if (!hiddenLegacyEntry) return;
+    const { node, display, hidden } = hiddenLegacyEntry;
+    node.style.display = display;
+    node.hidden = hidden;
+    hiddenLegacyEntry = null;
 }
 
 function closePhone() {
     if (!mounted || !root) return;
     root.classList.remove('lp-open');
+    root.querySelector('.lp-panel')?.style.removeProperty('display');
     nodes.launcher.setAttribute('aria-label', '打开咕叽咕机');
 }
 
 function installWandEntry() {
     const menu = document.getElementById('extensionsMenu');
     if (!menu) return false;
-    if (document.getElementById(WAND_ENTRY_ID)) return true;
+    const previous = document.getElementById(WAND_ENTRY_ID);
+    if (previous?.isConnected && previous === wandEntry) return true;
+    // A prior module instance can leave a button with a stale click handler.
+    previous?.remove();
 
     const container = document.createElement('div');
     container.id = WAND_ENTRY_ID;
@@ -663,6 +717,7 @@ function installWandEntry() {
     button.addEventListener('click', openPhone);
     container.append(button);
     menu.append(container);
+    wandEntry = container;
     recordActivity('启动入口', '魔法棒菜单已注册「咕叽咕机」。', 'success');
     return true;
 }
@@ -680,7 +735,7 @@ function makeUI() {
         </header>
         <section class="lp-screen lp-home" data-lp-screen="home" aria-label="手机桌面">
           <div class="lp-home-hero">
-            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.3.3</div>
+            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.3.4</div>
             <div class="lp-home-time" data-lp="homeTime">故事时间</div>
             <div class="lp-home-character" data-lp="homeCharacter">等待进入角色存档</div>
           </div>
@@ -845,7 +900,9 @@ function unmount() {
     listeningSource = null;
     listeningEvent = null;
     chatChangedHandler = null;
+    restoreLegacyPhoneEntry();
     document.getElementById(WAND_ENTRY_ID)?.remove();
+    wandEntry = null;
     root?.remove();
     root = null;
     nodes = null;
