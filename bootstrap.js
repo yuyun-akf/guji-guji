@@ -1,10 +1,10 @@
 /**
- * GujiGuji v0.3.4 diagnostic entry point.
+ * GujiGuji v0.3.5 diagnostic entry point.
  * This file deliberately avoids SillyTavern APIs until the main module loads.
  */
 const DIAG_ID = 'gujiguji-bootstrap-diagnostic';
 const ROOT_ID = 'st-little-phone-root';
-const VERSION = '0.3.4';
+const VERSION = '0.3.5';
 
 let mainPromise = null;
 let mainModule = null;
