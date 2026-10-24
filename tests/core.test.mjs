@@ -84,6 +84,7 @@ test('phone opens into a launcher with one send-and-generate action', () => {
     assert.match(html, /data-lp="diagnosticState"/);
     assert.match(html, /data-lp="send">发送并生成/);
     assert.match(html, /data-lp="floatingLauncher"/);
+    assert.match(html, /<dialog class="lp-panel"/);
     assert.equal((html.match(/data-lp="send"/g) || []).length, 1);
     assert.equal((html.match(/data-lp="generate"/g) || []).length, 0);
     assert.match(html, /相册/);
@@ -265,14 +266,15 @@ test('floating launcher is off by default and its switch preserves other host se
     assert.equal(ctx.extensionSettings.someOtherPlugin.intact, true);
 });
 
-test('wand opening restores a detached phone panel and confirms it is visible without touching other extensions', () => {
+test('wand opens a native top-layer modal despite Android WebView returning no hit-test element', () => {
     const timers = [];
     const alerts = [];
+    let shown = 0;
     const panel = {
         isConnected: true,
-        style: { setProperty(key, value) { this[key] = value; } },
-        getBoundingClientRect: () => ({ left: 10, top: 10, width: 320, height: 520 }),
-        contains: node => node === panel,
+        open: false,
+        showModal() { shown += 1; this.open = true; },
+        getBoundingClientRect: () => ({ left: 20, top: 20, right: 340, bottom: 540, width: 320, height: 520 }),
     };
     const classes = new Set();
     const mockRoot = {
@@ -281,11 +283,11 @@ test('wand opening restores a detached phone panel and confirms it is visible wi
         classList: { add: name => classes.add(name), contains: name => classes.has(name) },
         querySelector: selector => selector === '.lp-panel' ? panel : null,
     };
-    const documentElement = { append(node) { node.parentElement = this; node.isConnected = true; } };
+    const body = { append(node) { node.parentElement = this; node.isConnected = true; } };
     const runtime = {
         console, Date, structuredClone,
-        document: { documentElement, elementFromPoint: () => panel },
-        window: { alert: message => alerts.push(message) },
+        document: { body, documentElement: { clientWidth: 360, clientHeight: 720 }, elementFromPoint: () => null },
+        window: { alert: message => alerts.push(message), innerWidth: 360, innerHeight: 720 },
         setTimeout: fn => { timers.push(fn); },
         mockRoot,
     };
@@ -299,27 +301,49 @@ test('wand opening restores a detached phone panel and confirms it is visible wi
       globalThis.openActualPhone = openPhone;
     `, runtime);
     runtime.openActualPhone();
-    assert.equal(mockRoot.parentElement, documentElement);
+    assert.equal(mockRoot.parentElement, body);
     assert.equal(classes.has('lp-open'), true);
-    assert.equal(panel.style.display, 'flex');
+    assert.equal(shown, 1);
+    assert.equal(panel.open, true);
     assert.equal(timers.length, 1);
     timers.shift()();
     assert.deepEqual(alerts, []);
 });
 
-test('failed phone visibility check produces a visible error instead of silence', () => {
+test('closing the phone releases the modal top layer', () => {
+    let closed = 0;
+    const classes = new Set(['lp-open']);
+    const panel = { open: true, close() { closed += 1; this.open = false; } };
+    const runtime = { console, Date, structuredClone, classSet: classes, panel };
+    vm.createContext(runtime);
+    vm.runInContext(`${source}
+      mounted = true;
+      root = {
+        classList: { remove: key => globalThis.classSet.delete(key) },
+        querySelector: () => globalThis.testPanel,
+      };
+      nodes = { launcher: { setAttribute() {} } };
+      globalThis.testPanel = globalThis.panel;
+      globalThis.closeActualPhone = closePhone;
+    `, runtime);
+    runtime.closeActualPhone();
+    assert.equal(closed, 1);
+    assert.equal(classes.has('lp-open'), false);
+});
+
+test('modal entirely outside the viewport produces a visible diagnostic error', () => {
     const alerts = [];
     const timers = [];
     const panel = {
         isConnected: true,
-        style: { setProperty() {} },
-        getBoundingClientRect: () => ({ left: 0, top: 0, width: 320, height: 500 }),
-        contains: () => false,
+        open: false,
+        showModal() { this.open = true; },
+        getBoundingClientRect: () => ({ left: 800, top: 700, right: 1120, bottom: 1200, width: 320, height: 500 }),
     };
     const runtime = {
         console, Date, structuredClone,
-        document: { documentElement: {}, elementFromPoint: () => ({ tagName: 'DIV' }) },
-        window: { alert: message => alerts.push(message) },
+        document: { body: { append() {} }, documentElement: { clientWidth: 360, clientHeight: 720 } },
+        window: { alert: message => alerts.push(message), innerWidth: 360, innerHeight: 720 },
         setTimeout: fn => { timers.push(fn); },
         panelForTest: panel,
     };
@@ -327,7 +351,7 @@ test('failed phone visibility check produces a visible error instead of silence'
     vm.runInContext(`${source}
       mounted = true;
       root = {
-        parentElement: document.documentElement,
+        parentElement: document.body,
         classList: { add() {}, contains: () => true },
         querySelector: () => globalThis.testPanel,
       };
@@ -339,13 +363,13 @@ test('failed phone visibility check produces a visible error instead of silence'
     `, runtime);
     runtime.tryOpen();
     timers.shift()();
-    assert.match(alerts[0], /手机界面不可见或被遮挡/);
+    assert.match(alerts[0], /手机主屏未进入可见区域/);
 });
 
 test('diagnostic bootstrap is the manifest entry and exposes lifecycle hooks', () => {
     const manifest = JSON.parse(readFileSync(resolve(testRoot, '../manifest.json'), 'utf8'));
     const bootstrap = readFileSync(resolve(testRoot, '../bootstrap.js'), 'utf8');
-    assert.equal(manifest.version, '0.3.5');
+    assert.equal(manifest.version, '0.3.6');
     assert.equal(manifest.js, 'bootstrap.js');
     assert.match(bootstrap, /import\('\.\/index\.js'\)/);
     assert.match(bootstrap, /export function onActivate\(/);
