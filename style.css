@@ -639,6 +639,37 @@
   opacity: .55;
 }
 
+#st-little-phone-root .lp-entry-option {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 12px;
+  border: 1px solid var(--lp-border);
+  border-radius: 12px;
+  background: #f6f1fa;
+  cursor: pointer;
+}
+
+#st-little-phone-root .lp-entry-option input {
+  width: 17px;
+  height: 17px;
+  accent-color: #927bbe;
+}
+
+#gujiguji-wand-entry .gujiguji-wand-button {
+  width: 100%;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+#gujiguji-wand-entry .gujiguji-wand-button:focus-visible {
+  outline: 2px solid #927bbe;
+  outline-offset: 2px;
+}
+
 @media (max-width: 480px) {
   #st-little-phone-root .lp-panel {
     right: 8px;
