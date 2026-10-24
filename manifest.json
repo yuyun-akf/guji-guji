@@ -1,0 +1,15 @@
+{
+  "display_name": "咕叽咕机 · GujiGuji",
+  "author": "GujiGuji contributors",
+  "version": "0.1.0",
+  "minimum_client_version": "1.19.0",
+  "loading_order": 100,
+  "js": "index.js",
+  "css": "style.css",
+  "homePage": "https://github.com/yuyun-akf/guji-guji",
+  "auto_update": false,
+  "hooks": {
+    "enable": "onEnable",
+    "disable": "onDisable"
+  }
+}
