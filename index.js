@@ -1,5 +1,5 @@
 /**
- * GujiGuji v0.2.0: an isolated SillyTavern phone chat prototype.
+ * GujiGuji v0.3.0: a modular phone shell with an isolated chat app.
  * No direct host-module imports; uses only the documented context surface.
  */
 
@@ -29,9 +29,10 @@ let readyBound = false;
 let statusText = '';
 let statusKind = 'info';
 let busyKind = '';
-let diagnosticOpen = false;
+let activeScreen = 'home';
 let lifecycleToken = 0;
 const diagnostics = [];
+const SCREENS = new Set(['home', 'chat', 'settings', 'diagnostics']);
 
 function context() {
     try {
@@ -146,6 +147,11 @@ function setStatus(message, kind = 'info') {
         nodes.status.textContent = statusText;
         nodes.status.dataset.kind = kind;
     }
+    if (nodes?.settingsStatus) {
+        nodes.settingsStatus.textContent = statusText;
+        nodes.settingsStatus.dataset.kind = kind;
+    }
+    if (nodes && !busy) nodes.diagnosticState.textContent = statusText || '空闲：当前没有正在运行的请求。';
 }
 
 function redactDiagnostic(text) {
@@ -157,31 +163,57 @@ function redactDiagnostic(text) {
         .slice(0, 600);
 }
 
+function recordActivity(stage, detail, kind = 'info', code = '') {
+    const entry = {
+        at: new Date().toLocaleTimeString(), stage,
+        code: redactDiagnostic(code), detail: redactDiagnostic(detail), kind,
+    };
+    diagnostics.unshift(entry);
+    diagnostics.length = Math.min(diagnostics.length, DIAGNOSTIC_LIMIT);
+    renderDiagnostics();
+    return entry;
+}
+
 function recordError(stage, error) {
     const code = error?.status ?? error?.statusCode ?? error?.code ?? error?.cause?.status ?? '';
     const detail = redactDiagnostic(error?.message || error);
-    const entry = { at: new Date().toLocaleTimeString(), stage, code: redactDiagnostic(code), detail };
-    diagnostics.unshift(entry);
-    diagnostics.length = Math.min(diagnostics.length, DIAGNOSTIC_LIMIT);
+    const entry = recordActivity(stage, detail, 'error', code);
     console.error('[GujiGuji]', stage, entry.detail);
-    renderDiagnostics();
     return `操作失败：${detail}${code ? `（${redactDiagnostic(code)}）` : ''}`;
 }
 
 function renderDiagnostics() {
     if (!nodes?.diagnostics) return;
     nodes.diagnostics.replaceChildren();
+    const failures = diagnostics.filter(entry => entry.kind === 'error').length;
+    nodes.diagnosticToggle.textContent = failures ? `⚠ 查看日志（${failures} 条错误）` : '查看运行日志';
+    nodes.diagnosticToggle.classList.toggle('lp-has-error', failures > 0);
+    nodes.homeLogCount.textContent = failures ? `${failures} 条错误` : `${diagnostics.length} 条记录`;
     if (!diagnostics.length) {
         const empty = document.createElement('p');
-        empty.textContent = '暂无插件捕获的错误。这里不会读取手机或酒馆的全部后台日志。';
+        empty.textContent = '目前没有运行记录。发送消息后会显示请求开始、结束或错误。';
         nodes.diagnostics.append(empty);
         return;
     }
     for (const entry of diagnostics) {
         const item = document.createElement('p');
+        item.className = `lp-log-${entry.kind}`;
         item.textContent = `[${entry.at}] ${entry.stage}${entry.code ? ` · ${entry.code}` : ''}\n${entry.detail}`;
         nodes.diagnostics.append(item);
     }
+}
+
+function setScreen(screen) {
+    if (!SCREENS.has(screen) || !nodes) return;
+    activeScreen = screen;
+    for (const section of root.querySelectorAll('[data-lp-screen]')) {
+        section.hidden = section.dataset.lpScreen !== screen;
+    }
+    nodes.back.hidden = screen === 'home';
+    const titles = { home: '咕叽咕机', chat: '咕叽聊', settings: '手机设置', diagnostics: '运行日志' };
+    nodes.title.textContent = titles[screen];
+    if (screen === 'diagnostics') renderDiagnostics();
+    if (screen === 'chat') nodes.messages.scrollTop = nodes.messages.scrollHeight;
 }
 
 function updateBusy() {
@@ -193,10 +225,13 @@ function updateBusy() {
     nodes.send.disabled = busy || !isFriend;
     nodes.input.disabled = busy || !isFriend;
     nodes.time.disabled = busy || !ready;
-    nodes.send.textContent = busy ? '生成中…' : '发送';
+    nodes.send.textContent = busy ? '等待回复…' : '发送并生成';
     nodes.activity.hidden = !busy;
     const elapsed = busy ? `（已等待 ${Math.floor((Date.now() - busyStartedAt) / 1000)} 秒）` : '';
     nodes.activity.textContent = `${busyKind === 'friend' ? '正在等待角色处理好友申请…' : '对方正在输入…'}${elapsed}`;
+    nodes.diagnosticState.textContent = busy
+        ? `${busyKind === 'friend' ? '好友申请处理中' : '正在请求模型回复'} · ${Math.floor((Date.now() - busyStartedAt) / 1000)} 秒`
+        : statusText || '空闲：当前没有正在运行的请求。';
     const lastMessage = data?.messages?.at(-1);
     const canRetry = Boolean(isFriend && !busy && lastMessage?.from === 'user');
     nodes.retry.hidden = !canRetry;
@@ -304,7 +339,10 @@ function render() {
     const data = char ? readData(ctx) : null;
 
     nodes.name.textContent = char ? getCharacterName(char) : '请先选择角色';
-    nodes.subtitle.textContent = char ? '独立手机聊天 · 不写入正文' : '暂不支持群聊或未选择角色的状态';
+    nodes.subtitle.textContent = char ? '故事中的小手机 · 独立聊天' : '请先选择单人角色存档';
+    nodes.homeCharacter.textContent = char ? `与 ${getCharacterName(char)} 的故事` : '等待进入角色存档';
+    nodes.homeTime.textContent = (data?.storyTime || localDateTime()).replace('T', ' ');
+    nodes.homeMessageCount.textContent = `${data?.messages?.filter(message => message.from !== 'system').length || 0} 条聊天记录`;
     nodes.time.value = data?.storyTime || localDateTime();
     renderFriendship(data);
     if (data) renderMessages(data);
@@ -317,6 +355,7 @@ function render() {
     }
     updateBusy();
     setStatus(statusText, statusKind);
+    setScreen(activeScreen);
 }
 
 function makeMessage(from, text, storyTime) {
@@ -347,10 +386,11 @@ async function saveStoryTime() {
     }
 }
 
-async function runReply(ctx, char, data, session) {
-    const job = startBusy('reply');
+async function runReply(ctx, char, data, session, existingJob = null) {
+    const job = existingJob ?? startBusy('reply');
     if (sameSession(session)) renderMessages(data);
     setStatus('正在生成角色回复，请稍候…');
+    recordActivity('开始生成', '已将当前手机对话交给酒馆生成接口，正在等待模型返回。');
     try {
         const result = await generateWithTimeout(ctx, {
             systemPrompt: createSystemPrompt(char, data),
@@ -361,6 +401,7 @@ async function runReply(ctx, char, data, session) {
         if (!reply) throw new Error('模型返回了空消息或不支持的回复类型。');
         data.messages.push(makeMessage('character', reply, data.storyTime));
         await writeData(ctx, data);
+        recordActivity('生成成功', '已收到角色回复并保存到当前手机聊天存档。', 'success');
         if (sameSession(session)) setStatus('已收到回复。');
     } catch (error) {
         const message = recordError('生成角色回复', error);
@@ -401,11 +442,13 @@ async function send() {
     data.messages.push(makeMessage('user', content, data.storyTime));
 
     const job = startBusy('reply');
+    recordActivity('发送消息', '正在将玩家消息保存到当前手机存档。');
+    setStatus('正在发送消息，并将自动生成角色回复…');
     try {
         await writeData(ctx, data);
         if (!sameSession(session)) return;
         nodes.input.value = '';
-        await runReply(ctx, char, data, session);
+        await runReply(ctx, char, data, session, job);
     } catch (error) {
         const message = recordError('保存用户消息', error);
         if (sameSession(session)) setStatus(message, 'error');
@@ -436,6 +479,7 @@ async function changeFriendship(nextState, notice) {
     try {
         await writeData(ctx, data);
         if (!sameSession(session)) return false;
+        recordActivity('好友关系', `当前状态已更新为：${FRIEND_LABELS[nextState]}。`, 'success');
         setStatus(`好友关系已更新：${FRIEND_LABELS[nextState]}。`);
         return true;
     } catch (error) {
@@ -462,6 +506,7 @@ async function reviewOutgoingRequest() {
     const job = startBusy('friend');
     renderFriendship(data);
     setStatus('好友申请已发出，正在等待角色决定…');
+    recordActivity('好友申请', '已请求模型判断角色是否接受好友申请。');
     try {
         const profilePrompt = createSystemPrompt(char, data);
         const result = await generateWithTimeout(ctx, {
@@ -478,6 +523,7 @@ async function reviewOutgoingRequest() {
         const next = verdict === 'ACCEPT' ? 'friends' : 'stranger';
         rememberFriendship(data, next, verdict === 'ACCEPT' ? '对方同意了你的好友申请。' : '对方拒绝了你的好友申请。');
         await writeData(ctx, data);
+        recordActivity('好友申请结果', verdict === 'ACCEPT' ? '角色同意了好友申请。' : '角色拒绝了好友申请。', 'success');
         if (sameSession(session)) setStatus(verdict === 'ACCEPT' ? '对方通过了好友申请。' : '对方暂时没有同意好友申请。');
     } catch (error) {
         const message = recordError('处理好友申请', error);
@@ -542,48 +588,80 @@ function makeUI() {
     container.innerHTML = `
       <section class="lp-panel" role="dialog" aria-label="咕叽咕机" aria-modal="false">
         <header class="lp-header">
-          <div><div class="lp-title" data-lp="name">咕叽咕机</div>
-               <div class="lp-subtitle" data-lp="subtitle">独立手机聊天</div></div>
+          <button type="button" class="lp-back" data-lp="back" aria-label="返回手机桌面" hidden>‹</button>
+          <div class="lp-heading"><div class="lp-title" data-lp="title">咕叽咕机</div>
+               <div class="lp-subtitle" data-lp="subtitle">故事中的小手机</div></div>
           <button type="button" class="lp-close" data-lp="close" aria-label="关闭咕叽咕机">×</button>
         </header>
-        <div class="lp-timebar">
-          <label for="lp-story-time">故事时间</label>
-          <input id="lp-story-time" type="datetime-local" data-lp="time" aria-label="小手机故事时间" />
-        </div>
-        <div class="lp-friendship">
-          <div class="lp-friend-main">
-            <span class="lp-friend-label" data-lp="friendLabel">已是好友</span>
-            <div class="lp-friend-actions" data-lp="friendActions"></div>
+        <section class="lp-screen lp-home" data-lp-screen="home" aria-label="手机桌面">
+          <div class="lp-home-hero">
+            <div class="lp-home-greeting">咕叽咕机 · GujiGuji</div>
+            <div class="lp-home-time" data-lp="homeTime">故事时间</div>
+            <div class="lp-home-character" data-lp="homeCharacter">等待进入角色存档</div>
           </div>
-          <details class="lp-friend-setup">
-            <summary>按已有剧情设定好友状态</summary>
-            <div class="lp-friend-editor">
-              <select data-lp="friendSetup" aria-label="设定当前存档的好友状态">
-                <option value="friends">已是好友</option>
-                <option value="stranger">未加好友</option>
-                <option value="outgoing">我已发送申请</option>
-                <option value="incoming">对方向我申请</option>
-                <option value="blocked">已拉黑</option>
-              </select>
-              <button type="button" data-lp="friendSave">应用设定</button>
+          <div class="lp-home-summary" data-lp="homeMessageCount">0 条聊天记录</div>
+          <div class="lp-app-grid" aria-label="小手机应用">
+            <button type="button" class="lp-app-tile" data-lp-open="chat"><span class="lp-app-icon lp-app-chat">💬</span><span>咕叽聊</span><small>可使用</small></button>
+            <button type="button" class="lp-app-tile" data-lp-open="diagnostics"><span class="lp-app-icon lp-app-log">🛠️</span><span>运行日志</span><small data-lp="homeLogCount">0 条记录</small></button>
+            <button type="button" class="lp-app-tile" data-lp-open="settings"><span class="lp-app-icon lp-app-settings">⚙️</span><span>设置</span><small>故事时间</small></button>
+            <div class="lp-app-tile lp-app-soon" aria-label="相册，待开发"><span class="lp-app-icon">🖼️</span><span>相册</span><small>待开发</small></div>
+            <div class="lp-app-tile lp-app-soon" aria-label="购物，待开发"><span class="lp-app-icon">🛍️</span><span>购物</span><small>待开发</small></div>
+            <div class="lp-app-tile lp-app-soon" aria-label="外卖，待开发"><span class="lp-app-icon">🥡</span><span>外卖</span><small>待开发</small></div>
+          </div>
+          <p class="lp-home-note">现在先把聊天打磨好；相册、购物和外卖会按模块逐个开发。</p>
+        </section>
+        <section class="lp-screen lp-chat" data-lp-screen="chat" aria-label="咕叽聊" hidden>
+          <div class="lp-chat-contact">联系人：<strong data-lp="name">角色</strong></div>
+          <div class="lp-friendship">
+            <div class="lp-friend-main">
+              <span class="lp-friend-label" data-lp="friendLabel">已是好友</span>
+              <div class="lp-friend-actions" data-lp="friendActions"></div>
             </div>
-          </details>
-        </div>
-        <div class="lp-statusrow">
-          <div class="lp-status" data-lp="status" role="status" aria-live="polite"></div>
-          <button type="button" class="lp-diagnostic-toggle" data-lp="diagnosticToggle" aria-expanded="false">诊断</button>
-        </div>
-        <div class="lp-activity" data-lp="activity" role="status" aria-live="polite" hidden></div>
-        <div class="lp-diagnostics" data-lp="diagnosticBox" hidden>
-          <div class="lp-diagnostic-head"><strong>本次运行的插件错误</strong><button type="button" data-lp="copyDiagnostics">复制诊断</button></div>
-          <div data-lp="diagnostics"></div>
-        </div>
-        <div class="lp-messages" data-lp="messages" role="log" aria-label="手机聊天记录"></div>
-        <div class="lp-composer">
-          <textarea data-lp="input" rows="1" placeholder="发消息…" aria-label="手机消息内容"></textarea>
-          <button type="button" class="lp-retry" data-lp="retry" hidden>重试回复</button>
-          <button type="button" data-lp="send">发送</button>
-        </div>
+            <details class="lp-friend-setup">
+              <summary>按已有剧情设定好友状态</summary>
+              <div class="lp-friend-editor">
+                <select data-lp="friendSetup" aria-label="设定当前存档的好友状态">
+                  <option value="friends">已是好友</option>
+                  <option value="stranger">未加好友</option>
+                  <option value="outgoing">我已发送申请</option>
+                  <option value="incoming">对方向我申请</option>
+                  <option value="blocked">已拉黑</option>
+                </select>
+                <button type="button" data-lp="friendSave">应用设定</button>
+              </div>
+            </details>
+          </div>
+          <div class="lp-statusrow">
+            <div class="lp-status" data-lp="status" role="status" aria-live="polite"></div>
+            <button type="button" class="lp-diagnostic-toggle" data-lp="diagnosticToggle">查看运行日志</button>
+          </div>
+          <div class="lp-activity" data-lp="activity" role="status" aria-live="polite" hidden></div>
+          <div class="lp-messages" data-lp="messages" role="log" aria-label="手机聊天记录"></div>
+          <div class="lp-composer">
+            <textarea data-lp="input" rows="1" placeholder="输入消息…" aria-label="手机消息内容"></textarea>
+            <button type="button" class="lp-retry" data-lp="retry" hidden>重新生成上一条回复</button>
+            <button type="button" data-lp="send">发送并生成</button>
+          </div>
+        </section>
+        <section class="lp-screen lp-settings" data-lp-screen="settings" aria-label="小手机设置" hidden>
+          <h2>故事时间</h2>
+          <p>这里设置的是小手机的剧情时间；它可以早于正文开始，不会自动修改正文时间。</p>
+          <div class="lp-timebar">
+            <label for="lp-story-time">手机当前时间</label>
+            <input id="lp-story-time" type="datetime-local" data-lp="time" aria-label="小手机故事时间" />
+          </div>
+          <div class="lp-settings-status" data-lp="settingsStatus" role="status" aria-live="polite"></div>
+          <h2>小手机功能</h2>
+          <p>聊天记录按当前角色和存档保存。后续可以继续加入相册、购物、外卖等独立 App。</p>
+          <button type="button" class="lp-settings-link" data-lp-open="diagnostics">查看运行日志与 API 错误 →</button>
+        </section>
+        <section class="lp-screen lp-diagnostics" data-lp-screen="diagnostics" aria-label="运行日志与报错" hidden>
+          <div class="lp-diagnostic-state" data-lp="diagnosticState" role="status" aria-live="polite">空闲</div>
+          <p class="lp-diagnostic-note">这里记录咕叽咕机发起的生成和保存操作、返回结果及捕获的报错。无法直接读取 SillyDroid 或酒馆服务端的全部后台日志。</p>
+          <div class="lp-diagnostic-head"><strong>本次打开页面后的记录</strong><button type="button" data-lp="copyDiagnostics">复制日志</button></div>
+          <div class="lp-diagnostic-list" data-lp="diagnostics"></div>
+          <button type="button" class="lp-clear-logs" data-lp="clearDiagnostics">清空本次运行日志</button>
+        </section>
       </section>
       <button type="button" class="lp-launcher" data-lp="launcher" aria-label="打开咕叽咕机" title="咕叽咕机">☏</button>`;
     return container;
@@ -594,17 +672,30 @@ function mount() {
     lifecycleToken += 1;
     root = makeUI();
     document.body.append(root);
-    nodes = Object.fromEntries(['name', 'subtitle', 'close', 'time', 'friendLabel', 'friendActions',
-        'friendSetup', 'friendSave', 'status', 'activity', 'diagnosticToggle', 'diagnosticBox',
-        'diagnostics', 'copyDiagnostics', 'messages', 'input', 'retry', 'send', 'launcher']
+    nodes = Object.fromEntries(['title', 'name', 'subtitle', 'back', 'close', 'time',
+        'homeTime', 'homeCharacter', 'homeMessageCount', 'homeLogCount',
+        'friendLabel', 'friendActions',
+        'friendSetup', 'friendSave', 'status', 'settingsStatus', 'activity', 'diagnosticToggle',
+        'diagnostics', 'diagnosticState', 'copyDiagnostics', 'clearDiagnostics',
+        'messages', 'input', 'retry', 'send', 'launcher']
         .map(key => [key, root.querySelector(`[data-lp="${key}"]`)]));
 
     nodes.launcher.addEventListener('click', () => {
-        root.classList.toggle('lp-open');
+        const opening = !root.classList.contains('lp-open');
+        root.classList.toggle('lp-open', opening);
         nodes.launcher.setAttribute('aria-label', root.classList.contains('lp-open') ? '隐藏咕叽咕机' : '打开咕叽咕机');
+        if (opening) setScreen('home');
         render();
     });
-    nodes.close.addEventListener('click', () => root.classList.remove('lp-open'));
+    nodes.close.addEventListener('click', () => {
+        root.classList.remove('lp-open');
+        nodes.launcher.setAttribute('aria-label', '打开咕叽咕机');
+    });
+    nodes.back.addEventListener('click', () => setScreen('home'));
+    root.addEventListener('click', event => {
+        const button = event.target.closest('button[data-lp-open]');
+        if (button && root.contains(button)) setScreen(button.dataset.lpOpen);
+    });
     nodes.time.addEventListener('change', saveStoryTime);
     nodes.send.addEventListener('click', send);
     nodes.retry.addEventListener('click', retryLastReply);
@@ -613,17 +704,27 @@ function mount() {
         const button = event.target.closest('button[data-friend-action]');
         if (button) handleFriendAction(button.dataset.friendAction);
     });
-    nodes.diagnosticToggle.addEventListener('click', () => {
-        diagnosticOpen = !diagnosticOpen;
-        nodes.diagnosticBox.hidden = !diagnosticOpen;
-        nodes.diagnosticToggle.setAttribute('aria-expanded', String(diagnosticOpen));
-        renderDiagnostics();
-    });
+    nodes.diagnosticToggle.addEventListener('click', () => setScreen('diagnostics'));
     nodes.copyDiagnostics.addEventListener('click', copyDiagnostics);
+    nodes.clearDiagnostics.addEventListener('click', () => {
+        diagnostics.length = 0;
+        renderDiagnostics();
+        setStatus('已清空本次运行日志。');
+    });
     nodes.input.addEventListener('keydown', event => {
         if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
             event.preventDefault();
             send();
+        }
+    });
+    root.addEventListener('keydown', event => {
+        if (event.key === 'Escape') {
+            if (activeScreen !== 'home') setScreen('home');
+            else {
+                root.classList.remove('lp-open');
+                nodes.launcher.setAttribute('aria-label', '打开咕叽咕机');
+                nodes.launcher.focus();
+            }
         }
     });
 
@@ -666,7 +767,7 @@ function unmount() {
     nodes = null;
     statusText = '';
     statusKind = 'info';
-    diagnosticOpen = false;
+    activeScreen = 'home';
 }
 
 function bindReady() {
