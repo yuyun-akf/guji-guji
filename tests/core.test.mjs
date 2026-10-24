@@ -195,7 +195,17 @@ test('wand entry registers exactly once and opens the shared phone UI', () => {
     let opens = 0;
     class NodeStub {
         constructor(tag) { this.tag = tag; this.children = []; this.listeners = {}; }
-        append(...children) { this.children.push(...children); }
+        append(...children) {
+            for (const child of children) {
+                child.parentElement = this;
+                child.isConnected = true;
+                this.children.push(child);
+            }
+        }
+        remove() {
+            if (this.parentElement) this.parentElement.children = this.parentElement.children.filter(child => child !== this);
+            this.isConnected = false;
+        }
         setAttribute(key, value) { this[key] = value; }
         addEventListener(name, fn) { this.listeners[name] = fn; }
     }
@@ -255,10 +265,91 @@ test('floating launcher is off by default and its switch preserves other host se
     assert.equal(ctx.extensionSettings.someOtherPlugin.intact, true);
 });
 
+test('wand opening restores a detached phone panel and confirms it is visible', () => {
+    const timers = [];
+    const alerts = [];
+    let legacyHidden = 0;
+    const panel = {
+        isConnected: true,
+        style: { setProperty(key, value) { this[key] = value; } },
+        getBoundingClientRect: () => ({ left: 10, top: 10, width: 320, height: 520 }),
+        contains: node => node === panel,
+    };
+    const classes = new Set();
+    const mockRoot = {
+        isConnected: false,
+        parentElement: null,
+        classList: { add: name => classes.add(name), contains: name => classes.has(name) },
+        querySelector: selector => selector === '.lp-panel' ? panel : null,
+    };
+    const documentElement = { append(node) { node.parentElement = this; node.isConnected = true; } };
+    const runtime = {
+        console, Date, structuredClone,
+        document: { documentElement, elementFromPoint: () => panel },
+        window: { alert: message => alerts.push(message) },
+        setTimeout: fn => { timers.push(fn); },
+        mockRoot,
+        hideLegacy: () => { legacyHidden += 1; },
+    };
+    vm.createContext(runtime);
+    vm.runInContext(`${source}
+      mounted = true;
+      root = globalThis.mockRoot;
+      nodes = { launcher: { setAttribute() {} } };
+      setScreen = () => {};
+      render = () => {};
+      hideLegacyPhoneEntry = () => globalThis.hideLegacy();
+      globalThis.openActualPhone = openPhone;
+    `, runtime);
+    runtime.openActualPhone();
+    assert.equal(mockRoot.parentElement, documentElement);
+    assert.equal(classes.has('lp-open'), true);
+    assert.equal(panel.style.display, 'flex');
+    assert.equal(timers.length, 1);
+    timers.shift()();
+    assert.equal(legacyHidden, 1);
+    assert.deepEqual(alerts, []);
+});
+
+test('failed phone visibility check produces a visible error instead of silence', () => {
+    const alerts = [];
+    const timers = [];
+    const panel = {
+        isConnected: true,
+        style: { setProperty() {} },
+        getBoundingClientRect: () => ({ left: 0, top: 0, width: 320, height: 500 }),
+        contains: () => false,
+    };
+    const runtime = {
+        console, Date, structuredClone,
+        document: { documentElement: {}, elementFromPoint: () => ({ tagName: 'DIV' }) },
+        window: { alert: message => alerts.push(message) },
+        setTimeout: fn => { timers.push(fn); },
+        panelForTest: panel,
+    };
+    vm.createContext(runtime);
+    vm.runInContext(`${source}
+      mounted = true;
+      root = {
+        parentElement: document.documentElement,
+        classList: { add() {}, contains: () => true },
+        querySelector: () => globalThis.testPanel,
+      };
+      globalThis.testPanel = globalThis.panelForTest;
+      nodes = { launcher: { setAttribute() {} } };
+      setScreen = () => {};
+      render = () => {};
+      globalThis.tryOpen = openPhone;
+    `, runtime);
+    runtime.tryOpen();
+    timers.shift()();
+    assert.match(alerts[0], /手机界面不可见或被遮挡/);
+});
+
 test('diagnostic bootstrap is the manifest entry and exposes lifecycle hooks', () => {
     const manifest = JSON.parse(readFileSync(resolve(testRoot, '../manifest.json'), 'utf8'));
     const bootstrap = readFileSync(resolve(testRoot, '../bootstrap.js'), 'utf8');
-    assert.equal(manifest.version, '0.3.3');
+    assert.equal(manifest.version, '0.3.4');
     assert.equal(manifest.js, 'bootstrap.js');
     assert.match(bootstrap, /import\('\.\/index\.js'\)/);
     assert.match(bootstrap, /export function onActivate\(/);
