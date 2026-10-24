@@ -11,8 +11,8 @@ const raw = readFileSync(resolve(testRoot, '../index.js'), 'utf8');
 const source = raw.replaceAll('export function ', 'function ').replace(/\bbindReady\(\);\s*$/, '');
 const sandbox = { console, Date, structuredClone, window: {} };
 vm.createContext(sandbox);
-vm.runInContext(`${source}\nglobalThis.helpers = {newData, readData, friendshipState, rememberFriendship, buildPrompt, createSystemPrompt, redactDiagnostic};`, sandbox);
-const { newData, readData, friendshipState, rememberFriendship, buildPrompt, createSystemPrompt, redactDiagnostic } = sandbox.helpers;
+vm.runInContext(`${source}\nglobalThis.helpers = {newData, readData, friendshipState, rememberFriendship, buildPrompt, createSystemPrompt, redactDiagnostic, makeUI};`, sandbox);
+const { newData, readData, friendshipState, rememberFriendship, buildPrompt, createSystemPrompt, redactDiagnostic, makeUI } = sandbox.helpers;
 
 test('new storage defaults to a friend without breaking v0.1 format', () => {
     const data = newData();
@@ -72,4 +72,62 @@ test('diagnostic text hides obvious credentials', () => {
     assert.equal(cleaned.includes('secret123'), false);
     assert.equal(cleaned.includes('abcdefghijklmnop'), false);
     assert.equal(cleaned.includes('已隐藏'), true);
+});
+
+test('phone opens into a launcher with one send-and-generate action', () => {
+    sandbox.document = { createElement: () => ({ innerHTML: '', id: '' }) };
+    const html = makeUI().innerHTML;
+    assert.match(html, /data-lp-screen="home"/);
+    assert.match(html, /data-lp-screen="chat"/);
+    assert.match(html, /data-lp-screen="diagnostics"/);
+    assert.match(html, /data-lp="homeLogCount"/);
+    assert.match(html, /data-lp="diagnosticState"/);
+    assert.match(html, /data-lp="send">发送并生成/);
+    assert.equal((html.match(/data-lp="send"/g) || []).length, 1);
+    assert.equal((html.match(/data-lp="generate"/g) || []).length, 0);
+    assert.match(html, /相册/);
+    assert.match(html, /待开发/);
+});
+
+test('pressing send saves one player message and automatically generates one reply', async () => {
+    let generationCount = 0;
+    let saveCount = 0;
+    const chatMetadata = {};
+    const ctx = {
+        groupId: null,
+        characterId: 0,
+        characters: [{ name: '宁肆锦', data: { description: '测试角色' } }],
+        chatMetadata,
+        async saveMetadata() { saveCount += 1; },
+        async generateRaw() { generationCount += 1; return '收到了。'; },
+    };
+    const runtime = {
+        console, Date, structuredClone,
+        setInterval: () => 1,
+        clearInterval: () => {},
+        setTimeout,
+        clearTimeout,
+        window: { SillyTavern: { getContext: () => ctx } },
+    };
+    vm.createContext(runtime);
+    vm.runInContext(`${source}
+      render = () => {};
+      renderMessages = () => {};
+      updateBusy = () => {};
+      mounted = true;
+      nodes = { input: {value: '你好呀'}, status: {dataset: {}}, diagnosticState: {textContent: ''} };
+      globalThis.sendOnce = send;
+      globalThis.readText = () => nodes.input.value;
+      globalThis.logs = diagnostics;
+    `, runtime);
+    // A rapid second click must not duplicate the player message or the API call.
+    await Promise.all([runtime.sendOnce(), runtime.sendOnce()]);
+    const data = ctx.chatMetadata.st_little_phone_v1;
+    assert.equal(generationCount, 1);
+    assert.equal(saveCount, 2);
+    assert.deepEqual(data.messages.map(message => message.from), ['user', 'character']);
+    assert.equal(data.messages[0].text, '你好呀');
+    assert.equal(data.messages[1].text, '收到了。');
+    assert.equal(runtime.readText(), '');
+    assert.equal(runtime.logs.some(entry => entry.stage === '生成成功'), true);
 });
