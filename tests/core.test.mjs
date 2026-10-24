@@ -11,8 +11,8 @@ const raw = readFileSync(resolve(testRoot, '../index.js'), 'utf8');
 const source = raw.replaceAll('export function ', 'function ').replace(/\bbindReady\(\);\s*$/, '');
 const sandbox = { console, Date, structuredClone, window: {} };
 vm.createContext(sandbox);
-vm.runInContext(`${source}\nglobalThis.helpers = {newData, readData, friendshipState, rememberFriendship, buildPrompt, createSystemPrompt, redactDiagnostic, makeUI};`, sandbox);
-const { newData, readData, friendshipState, rememberFriendship, buildPrompt, createSystemPrompt, redactDiagnostic, makeUI } = sandbox.helpers;
+vm.runInContext(`${source}\nglobalThis.helpers = {newData, readData, writeData, friendshipState, rememberFriendship, buildPrompt, createSystemPrompt, redactDiagnostic, makeUI};`, sandbox);
+const { newData, readData, writeData, friendshipState, rememberFriendship, buildPrompt, createSystemPrompt, redactDiagnostic, makeUI } = sandbox.helpers;
 
 test('new storage defaults to a friend without breaking v0.1 format', () => {
     const data = newData();
@@ -130,4 +130,17 @@ test('pressing send saves one player message and automatically generates one rep
     assert.equal(data.messages[1].text, '收到了。');
     assert.equal(runtime.readText(), '');
     assert.equal(runtime.logs.some(entry => entry.stage === '生成成功'), true);
+});
+
+test('failed persistence rolls back the in-memory phone value for safe retry', async () => {
+    const oldData = { version: 1, storyTime: '2021-09-01T20:00', messages: [] };
+    const chatMetadata = { st_little_phone_v1: oldData };
+    const ctx = {
+        chatMetadata,
+        async saveMetadata() { throw new Error('保存失败'); },
+    };
+    const changed = structuredClone(oldData);
+    changed.messages.push({ from: 'user', text: '测试' });
+    await assert.rejects(writeData(ctx, changed), /保存失败/);
+    assert.equal(ctx.chatMetadata.st_little_phone_v1, oldData);
 });
