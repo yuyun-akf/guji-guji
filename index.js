@@ -1,5 +1,5 @@
 /**
- * GujiGuji v0.3.5: a modular phone shell with an isolated chat app.
+ * GujiGuji v0.3.6: a modular phone shell with an isolated chat app.
  * No direct host-module imports; uses only the documented context surface.
  */
 
@@ -633,23 +633,29 @@ function openPhone() {
     try {
         if (!mounted || !root) mount();
         if (!mounted || !root || !nodes) throw new Error('手机界面尚未初始化');
-        // A themed or re-rendered body may contain/clip fixed-position children.
-        // Keep the overlay at the document root so its fixed layer uses the viewport.
-        if (root.parentElement !== document.documentElement) document.documentElement.append(root);
+        // A native modal occupies the browser's top layer, outside the host's
+        // stacking contexts. The previous html-root fixed overlay could end up
+        // outside Android WebView's hit-testing viewport.
+        if (root.parentElement !== document.body) document.body.append(root);
         const panel = root.querySelector('.lp-panel');
         if (!panel) throw new Error('找不到手机主屏容器');
         root.classList.add('lp-open');
-        panel.style.setProperty('display', 'flex', 'important');
+        if (typeof panel.showModal === 'function' && !panel.open) panel.showModal();
         nodes.launcher.setAttribute('aria-label', '隐藏咕叽咕机');
         setScreen('home');
         render();
         setTimeout(() => {
             if (!root?.classList.contains('lp-open')) return;
             const bounds = panel.getBoundingClientRect();
-            const topElement = document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2);
-            const exposed = Boolean(topElement && panel.contains(topElement));
-            if (!panel.isConnected || bounds.width < 100 || bounds.height < 100 || !exposed) {
-                const detail = `手机界面不可见或被遮挡（${Math.round(bounds.width)}×${Math.round(bounds.height)}，顶部命中：${topElement?.tagName || '无'}）`;
+            const viewportWidth = window.visualViewport?.width || window.innerWidth || document.documentElement.clientWidth;
+            const viewportHeight = window.visualViewport?.height || window.innerHeight || document.documentElement.clientHeight;
+            const intersectsViewport = bounds.right > 0 && bounds.bottom > 0
+                && bounds.left < viewportWidth && bounds.top < viewportHeight;
+            // Android WebView can return null from elementFromPoint on a modal
+            // layer; showModal + visible bounds are the reliable checks here.
+            const modalMissing = typeof panel.showModal === 'function' && !panel.open;
+            if (!panel.isConnected || bounds.width < 100 || bounds.height < 100 || !intersectsViewport || modalMissing) {
+                const detail = `手机主屏未进入可见区域（面板 ${Math.round(bounds.left)},${Math.round(bounds.top)}，${Math.round(bounds.width)}×${Math.round(bounds.height)}；视口 ${Math.round(viewportWidth)}×${Math.round(viewportHeight)}；弹窗 ${panel.open ? '已打开' : '未打开'}）`;
                 recordError('打开手机', new Error(detail));
                 window.alert(`咕叽咕机启动错误：${detail}`);
             }
@@ -663,7 +669,8 @@ function openPhone() {
 function closePhone() {
     if (!mounted || !root) return;
     root.classList.remove('lp-open');
-    root.querySelector('.lp-panel')?.style.removeProperty('display');
+    const panel = root.querySelector('.lp-panel');
+    if (panel?.open && typeof panel.close === 'function') panel.close();
     nodes.launcher.setAttribute('aria-label', '打开咕叽咕机');
 }
 
@@ -700,7 +707,7 @@ function makeUI() {
     const container = document.createElement('div');
     container.id = ROOT_ID;
     container.innerHTML = `
-      <section class="lp-panel" role="dialog" aria-label="咕叽咕机" aria-modal="false">
+      <dialog class="lp-panel" aria-label="咕叽咕机" aria-modal="true">
         <header class="lp-header">
           <button type="button" class="lp-back" data-lp="back" aria-label="返回手机桌面" hidden>‹</button>
           <div class="lp-heading"><div class="lp-title" data-lp="title">咕叽咕机</div>
@@ -709,7 +716,7 @@ function makeUI() {
         </header>
         <section class="lp-screen lp-home" data-lp-screen="home" aria-label="手机桌面">
           <div class="lp-home-hero">
-            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.3.5</div>
+            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.3.6</div>
             <div class="lp-home-time" data-lp="homeTime">故事时间</div>
             <div class="lp-home-character" data-lp="homeCharacter">等待进入角色存档</div>
           </div>
@@ -779,7 +786,7 @@ function makeUI() {
           <div class="lp-diagnostic-list" data-lp="diagnostics"></div>
           <button type="button" class="lp-clear-logs" data-lp="clearDiagnostics">清空本次运行日志</button>
         </section>
-      </section>
+      </dialog>
       <button type="button" class="lp-launcher" data-lp="launcher" aria-label="打开咕叽咕机" title="咕叽咕机">☏</button>`;
     return container;
 }
@@ -803,6 +810,10 @@ function mount() {
         else closePhone();
     });
     nodes.close.addEventListener('click', closePhone);
+    root.querySelector('.lp-panel')?.addEventListener('cancel', event => {
+        event.preventDefault();
+        closePhone();
+    });
     nodes.back.addEventListener('click', () => setScreen('home'));
     root.addEventListener('click', event => {
         const button = event.target.closest('button[data-lp-open]');
@@ -857,6 +868,7 @@ function mount() {
 }
 
 function unmount() {
+    closePhone();
     mounted = false;
     lifecycleToken += 1;
     busyJobId += 1;
