@@ -167,15 +167,13 @@ test('activation mounts even if APP_READY fired before the extension was loaded'
     assert.equal(mounts, 1);
 });
 
-test('late context availability retries without relying on an APP_READY event', () => {
+test('phone shell mounts immediately even when the host context is not ready', () => {
     let mounts = 0;
-    let available = false;
     const scheduled = [];
-    const readyContext = { eventSource: { on() {} }, event_types: { APP_READY: 'app_ready' } };
     const runtime = {
         console, Date, structuredClone,
         document: { body: {} },
-        window: { SillyTavern: { getContext: () => available ? readyContext : null } },
+        window: { SillyTavern: { getContext: () => null } },
         setTimeout: fn => { scheduled.push(fn); return scheduled.length; },
         clearTimeout() {},
         mountCount: () => { mounts += 1; },
@@ -186,9 +184,18 @@ test('late context availability retries without relying on an APP_READY event', 
       globalThis.activate = onActivate;
     `, runtime);
     runtime.activate();
-    assert.equal(mounts, 0);
-    assert.equal(scheduled.length, 1);
-    available = true;
-    scheduled.shift()();
     assert.equal(mounts, 1);
+    assert.equal(scheduled.length, 0);
+});
+
+test('diagnostic bootstrap is the manifest entry and exposes lifecycle hooks', () => {
+    const manifest = JSON.parse(readFileSync(resolve(testRoot, '../manifest.json'), 'utf8'));
+    const bootstrap = readFileSync(resolve(testRoot, '../bootstrap.js'), 'utf8');
+    assert.equal(manifest.version, '0.3.2');
+    assert.equal(manifest.js, 'bootstrap.js');
+    assert.match(bootstrap, /import\('\.\/index\.js'\)/);
+    assert.match(bootstrap, /export function onActivate\(/);
+    assert.match(bootstrap, /export function onEnable\(/);
+    assert.match(bootstrap, /export function onDisable\(/);
+    assert.match(bootstrap, /B-ERR/);
 });
