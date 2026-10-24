@@ -1,0 +1,254 @@
+#st-little-phone-root {
+  --lp-ink: #363042;
+  --lp-soft-ink: #777082;
+  --lp-border: #e8dfea;
+  --lp-lilac: #a48cc8;
+  --lp-paper: #fffbff;
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  pointer-events: none;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--lp-ink);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+#st-little-phone-root *,
+#st-little-phone-root *::before,
+#st-little-phone-root *::after {
+  box-sizing: border-box;
+}
+
+#st-little-phone-root .lp-launcher {
+  position: absolute;
+  right: max(14px, env(safe-area-inset-right));
+  bottom: max(20px, calc(env(safe-area-inset-bottom) + 15px));
+  width: 50px;
+  height: 50px;
+  border: 1px solid #dfd1ec;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #bdabdc, #8674b7);
+  color: #fff;
+  box-shadow: 0 5px 20px #35234d4d;
+  pointer-events: auto;
+  cursor: pointer;
+  font-size: 27px;
+  display: grid;
+  place-items: center;
+}
+
+#st-little-phone-root .lp-launcher:focus-visible,
+#st-little-phone-root button:focus-visible,
+#st-little-phone-root input:focus-visible,
+#st-little-phone-root textarea:focus-visible {
+  outline: 2px solid #6e4da4;
+  outline-offset: 2px;
+}
+
+#st-little-phone-root .lp-panel {
+  display: none;
+  position: absolute;
+  right: max(14px, env(safe-area-inset-right));
+  bottom: max(82px, calc(env(safe-area-inset-bottom) + 80px));
+  width: min(380px, calc(100vw - 20px));
+  height: min(670px, calc(100dvh - 110px));
+  min-height: 300px;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--lp-paper);
+  border: 1px solid var(--lp-border);
+  border-radius: 22px;
+  box-shadow: 0 14px 42px #24172e66;
+  pointer-events: auto;
+}
+
+#st-little-phone-root.lp-open .lp-panel {
+  display: flex;
+}
+
+#st-little-phone-root .lp-header {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 16px 12px;
+  background: linear-gradient(145deg, #f9f4ff, #eee8fb);
+  border-bottom: 1px solid var(--lp-border);
+}
+
+#st-little-phone-root .lp-title {
+  font-weight: 700;
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+
+#st-little-phone-root .lp-subtitle {
+  font-size: 11px;
+  color: var(--lp-soft-ink);
+  margin-top: 3px;
+}
+
+#st-little-phone-root .lp-close {
+  border: none;
+  border-radius: 50%;
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  background: #ffffffa8;
+  color: var(--lp-ink);
+  font-size: 22px;
+  cursor: pointer;
+}
+
+#st-little-phone-root .lp-timebar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px 5px;
+  font-size: 12px;
+  color: var(--lp-soft-ink);
+}
+
+#st-little-phone-root .lp-timebar input {
+  width: 188px;
+  max-width: 74%;
+  min-height: 32px;
+  padding: 5px 8px;
+  background: #fff;
+  color: var(--lp-ink);
+  border: 1px solid var(--lp-border);
+  border-radius: 9px;
+  font-family: inherit;
+  font-size: 12px;
+  color-scheme: light;
+}
+
+#st-little-phone-root .lp-status {
+  flex: 0 0 auto;
+  min-height: 20px;
+  padding: 0 14px 5px;
+  font-size: 11px;
+  color: #79639a;
+  overflow-wrap: anywhere;
+}
+
+#st-little-phone-root .lp-messages {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 12px 13px 18px;
+  background: linear-gradient(#fffaff, #f8f6fb);
+}
+
+#st-little-phone-root .lp-empty {
+  margin: auto;
+  padding: 22px;
+  text-align: center;
+  color: #8e8495;
+  font-size: 13px;
+  white-space: pre-line;
+}
+
+#st-little-phone-root .lp-message {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  max-width: 86%;
+  gap: 3px;
+}
+
+#st-little-phone-root .lp-message.lp-mine {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+
+#st-little-phone-root .lp-message.lp-theirs {
+  align-self: flex-start;
+}
+
+#st-little-phone-root .lp-bubble {
+  padding: 10px 13px;
+  max-width: 100%;
+  color: var(--lp-ink);
+  border: 1px solid #e9e1ed;
+  border-radius: 16px 16px 16px 4px;
+  background: #fff;
+  font-size: 14px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+#st-little-phone-root .lp-mine .lp-bubble {
+  background: #e7def5;
+  border-color: #d9cbef;
+  border-radius: 16px 16px 4px 16px;
+}
+
+#st-little-phone-root .lp-message-time {
+  color: #988da1;
+  font-size: 10px;
+  padding: 0 4px;
+}
+
+#st-little-phone-root .lp-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  flex: 0 0 auto;
+  padding: 11px;
+  background: var(--lp-paper);
+  border-top: 1px solid var(--lp-border);
+}
+
+#st-little-phone-root .lp-composer textarea {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 39px;
+  max-height: 120px;
+  resize: vertical;
+  padding: 9px 11px;
+  background: #fff;
+  color: var(--lp-ink);
+  border: 1px solid #e0d6e5;
+  border-radius: 12px;
+  font: inherit;
+}
+
+#st-little-phone-root .lp-composer button {
+  flex: 0 0 auto;
+  height: 39px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 12px;
+  background: #927bbe;
+  color: white;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+#st-little-phone-root button:disabled,
+#st-little-phone-root textarea:disabled,
+#st-little-phone-root input:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+@media (max-width: 480px) {
+  #st-little-phone-root .lp-panel {
+    right: 8px;
+    width: calc(100vw - 16px);
+    bottom: max(76px, calc(env(safe-area-inset-bottom) + 75px));
+    height: min(680px, calc(100dvh - 90px));
+    border-radius: 19px;
+  }
+}
