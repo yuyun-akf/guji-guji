@@ -49,6 +49,7 @@ let viewportListener = null;
 let autonomousTicker = null;
 let autonomousWorking = false;
 let relationSyncWorking = false;
+let autoRequestWorking = false;
 let momentImageDraft = '';
 let pickerState = null;
 let pickerReturnTimer = null;
@@ -379,14 +380,15 @@ function readRootData(ctx) {
     };
 }
 
-const SOCIAL_DEFAULTS = {messages:{mode:'off',days:3},moments:{mode:'off',days:3},relationSync:true,phoneInPast:false};
+const SOCIAL_DEFAULTS = {messages:{mode:'off',days:3},moments:{mode:'off',days:3},relationSync:true,phoneInPast:false,characterRequests:false};
 function socialConfig(root) {
     const saved=root.socialConfig||{};
     return {
         messages:{mode:['off','fixed','random'].includes(saved.messages?.mode)?saved.messages.mode:'off',days:Math.max(0.04,Math.min(30,Number(saved.messages?.days)||3))},
         moments:{mode:['off','fixed','random'].includes(saved.moments?.mode)?saved.moments.mode:'off',days:Math.max(0.04,Math.min(30,Number(saved.moments?.days)||3))},
         relationSync:saved.relationSync!==false,
-        phoneInPast:saved.phoneInPast===true
+        phoneInPast:saved.phoneInPast===true,
+        characterRequests:saved.characterRequests===true
     };
 }
 function nextActivityTime(config,now=Date.now(),random=Math.random) {
@@ -914,7 +916,7 @@ function storyExchangeEvidence(ctx,id=activeContactId) {
     const messages=Array.isArray(ctx?.chat)?ctx.chat:[];
     const positive=/(?:交换(?:了|过)?(?:微信|联系(?:方式|号码)?|手机号|电话号|号码)|互加(?:了|过)?(?:微信|好友|联系方式)|加(?:了|上|过)?(?:微信|好友)|扫码(?:加|通过)|通过了好友申请|添加了.*?好友|把(?:微信|联系方式|号码)给(?:了)?(?:我|你|他|她)|留下了(?:微信|联系方式|电话))/;
     const negation=/(?:没有|没|未|不曾|尚未|还没|不能|不会|拒绝|想要|打算|准备|如果|假如|能否|要不要|可以|希望|问(?:他|她)?(?:要|拿)).{0,16}(?:加微信|交换|联系方式|号码|加好友)/;
-    const identity=id===PRIMARY_CONTACT_ID ? '' : String(person.name||'');
+    const identity=String(person.name||'');
     for (const msg of messages.slice(-500)) {
         const body=messageText(msg);
         if(!body||body.length>12000)continue;
@@ -927,6 +929,47 @@ function storyExchangeEvidence(ctx,id=activeContactId) {
     }
     return '';
 }
+
+async function maybeAutoFriendRequest(ctx=context()) {
+    if(autoRequestWorking||relationSyncWorking||autonomousWorking||busy||document.visibilityState==='hidden'||!selectedCharacter(ctx))return;
+    const saved=readRootData(ctx),cfg=socialConfig(saved);
+    if(!cfg.relationSync||cfg.phoneInPast||!cfg.characterRequests)return;
+    const eligible=[PRIMARY_CONTACT_ID,...saved.contacts.map(c=>c.id)].find(id=>{
+        if(friendshipState(readData(ctx,id))!=='stranger')return false;
+        const evidence=storyExchangeEvidence(ctx,id);
+        if(!evidence)return false;
+        return saved.storyRequestDecisions?.[id]!==evidence;
+    });
+    if(!eligible)return;
+    const evidence=storyExchangeEvidence(ctx,eligible);
+    const metadata=ctx.chatMetadata,cid=ctx.characterId,chatid=ctx.chatId;
+    const same=()=>ctx.chatMetadata===metadata&&ctx.characterId===cid&&ctx.chatId===chatid;
+    autoRequestWorking=true;
+    const job=startBusy('friend');
+    try{
+        // Persist a decision marker before generation so a refresh never duplicates a request.
+        const root=structuredClone(readRootData(ctx));
+        root.storyRequestDecisions={...root.storyRequestDecisions,[eligible]:evidence};
+        await writeData(ctx,{...root,__contactId:PRIMARY_CONTACT_ID});
+        if(!same())return;
+        const data=structuredClone(readData(ctx,eligible));
+        const person=contactCharacter(ctx,eligible);
+        const system=await composePhonePrompt(ctx,person,data);
+        const answer=await generateWithTimeout(ctx,{
+            systemPrompt:system+'\n\n【是否主动申请好友】主线里这两个人已经交换联系方式，但尚未互加好友。请按当前角色的自主意愿决定是否向 user 发起好友申请。可以不申请。只输出 APPLY 或 SKIP。',
+            prompt:[...buildPrompt(data).slice(-8),{role:'user',content:'【主线已发生】'+evidence+'\n是否由你主动发起好友申请？'}]
+        },data);
+        if(!same()||!/^APPLY$/i.test(String(answer||'').trim()))return;
+        const latest=structuredClone(readData(ctx,eligible));
+        if(friendshipState(latest)!=='stranger')return;
+        rememberFriendship(latest,'incoming','对方根据已发生的联系方式交换事件，主动请求添加 user 为好友。');
+        await writeData(ctx,{...latest,__contactId:eligible});
+        recordActivity('收到好友申请',getContactInfo(ctx,eligible).name+' 已申请添加 user','success');
+        if(mounted)render();
+    }catch(e){recordError('角色主动好友申请',e);}
+    finally{autoRequestWorking=false;finishBusy(job);}
+}
+
 function contactAccess(ctx,id=activeContactId) {
     const info=getContactInfo(ctx,id);
     const data=readData(ctx,id);
@@ -1116,6 +1159,7 @@ function loadAutonomyUI(ctx=context()) {
     nodes.autoMomentsDays.value=String(cfg.moments.days);
     nodes.relationAutoSync.checked=cfg.relationSync;
     nodes.phoneInPast.checked=cfg.phoneInPast;
+    nodes.characterRequests.checked=cfg.characterRequests;
     const next=readRootData(ctx).socialSchedule||{};
     const due=key=>Number(next[key]?.nextDue)>0?new Date(next[key].nextDue).toLocaleString():'未启用';
     nodes.autonomyStatus.textContent='下次私聊：'+due('messages')+'；下次朋友圈：'+due('moments');
@@ -1128,7 +1172,7 @@ async function saveAutonomySettings() {
     const cfg={
         messages:{mode:nodes.autoMessagesMode.value,days:Number(nodes.autoMessagesDays.value)},
         moments:{mode:nodes.autoMomentsMode.value,days:Number(nodes.autoMomentsDays.value)},
-        relationSync:nodes.relationAutoSync.checked,phoneInPast:nodes.phoneInPast.checked
+        relationSync:nodes.relationAutoSync.checked,phoneInPast:nodes.phoneInPast.checked,characterRequests:nodes.characterRequests.checked
     };
     const verified=socialConfig({socialConfig:cfg});
     const next=structuredClone(old);
@@ -2239,6 +2283,7 @@ function openPhone() {
         render();
         void syncStoryRelationships(context());
         void tickAutonomousActivity();
+        void maybeAutoFriendRequest(context());
         setTimeout(() => {
             if (!root?.classList.contains('lp-open')) return;
             const bounds = panel.getBoundingClientRect();
@@ -2411,6 +2456,7 @@ function makeUI() {
       <div class="lp-autonomy-divider"></div>
       <label class="lp-checkline"><input data-lp="relationAutoSync" type="checkbox" checked /> 根据正文同步好友关系和申请</label>
       <label class="lp-checkline"><input data-lp="phoneInPast" type="checkbox" /> 小手机时间早于主线：暂停关系同步</label>
+      <label class="lp-checkline"><input data-lp="characterRequests" type="checkbox" /> 交换联系方式后，允许角色自主决定是否申请好友（额外消耗一次模型请求）</label>
       <div class="lp-autonomy-status" data-lp="autonomyStatus"></div>
       <div class="lp-autonomy-buttons">
         <button data-lp="saveAutonomy" type="button">保存活动设置</button>
@@ -2634,7 +2680,7 @@ function mount() {
     document.body.append(floating);
     nodes = Object.fromEntries(['title', 'subtitle', 'back', 'close', 'time',
         'homeTime', 'homeCharacter', 'homeMessageCount', 'homeLogCount',
-        'momentsPost', 'momentsText', 'momentsFeed', 'momentsPreview','momentImageUpload','momentRemovePhoto','myAvatarUpload','myIdentity', 'myAvatar', 'myPersona', 'autoMessagesMode','autoMessagesDays','autoMomentsMode','autoMomentsDays','relationAutoSync','phoneInPast','autonomyStatus','saveAutonomy','rescanRelations', 'stickerUpload', 'stickerStatus', 'stickerLibrary',
+        'momentsPost', 'momentsText', 'momentsFeed', 'momentsPreview','momentImageUpload','momentRemovePhoto','myAvatarUpload','myIdentity', 'myAvatar', 'myPersona', 'autoMessagesMode','autoMessagesDays','autoMomentsMode','autoMomentsDays','relationAutoSync','phoneInPast','characterRequests','autonomyStatus','saveAutonomy','rescanRelations', 'stickerUpload', 'stickerStatus', 'stickerLibrary',
         'friendLabel', 'friendActions','profileAvatar','profileName','profileDescription','contactEvidence','contactExchange','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcScanState','npcCandidates','npcSaveCandidates','storyPeopleList','viewPrimaryContact','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','avatarUserFile','resetCharAvatar','resetUserAvatar',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
@@ -2769,7 +2815,7 @@ function mount() {
 
     mounted = true;
     if (autonomousTicker)clearInterval(autonomousTicker);
-    autonomousTicker=setInterval(()=>{void syncStoryRelationships(context());void tickAutonomousActivity();},60000);
+    autonomousTicker=setInterval(()=>{void syncStoryRelationships(context());void tickAutonomousActivity();void maybeAutoFriendRequest(context());},60000);
     renderDiagnostics();
     const ctx = context();
     if (ctx?.eventSource && ctx?.event_types?.CHAT_CHANGED) {
