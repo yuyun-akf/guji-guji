@@ -572,22 +572,6 @@ function renderDiagnostics() {
     }
 }
 
-async function testPhoneApi() {
-    const ctx = context();
-    if (busy) return;
-    if (!await savePhoneApi()) return;
-    if (typeof ctx?.generateRaw !== 'function' && !ctx?.ChatCompletionService?.sendRequest) return setStatus('生成接口不可用','error');
-    const job = startBusy('reply');
-    recordActivity('连接测试', '测试原始生成请求，不写入聊天记录');
-    try {
-        const answer = await generateWithTimeout(ctx, {systemPrompt:'仅回复 OK',prompt:'请回复 OK'}, readData(ctx));
-        if (typeof answer !== 'string' || !answer.trim()) throw new Error('API 返回空内容');
-        recordActivity('连接测试成功', '收到模型响应','success');
-        setStatus('连接测试成功');
-    } catch (error) { setStatus(recordError('连接测试',error),'error'); }
-    finally { finishBusy(job); }
-}
-
 function setScreen(screen) {
     if (!SCREENS.has(screen) || !nodes) return;
     const previous = activeScreen;
@@ -1071,7 +1055,7 @@ function makeUI() {
         </header>
         <section class="lp-screen lp-home" data-lp-screen="home" aria-label="手机桌面">
           <div class="lp-home-hero">
-            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.4.1</div>
+            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.4.2</div>
             <div class="lp-home-time" data-lp="homeTime">故事时间</div>
             <div class="lp-home-character" data-lp="homeCharacter">等待进入角色存档</div>
           </div>
@@ -1134,7 +1118,6 @@ function makeUI() {
             <div class="lp-api-key-state" data-lp="apiKeyState"></div>
           </div>
           <button type="button" class="lp-settings-link" data-lp="saveApi">保存 API 配置</button>
-          <button type="button" class="lp-settings-link" data-lp="testApi">测试生成连接</button>
           <h2>聊天方式</h2>
           <select data-lp="messageStyle" aria-label="消息显示方式"><option value="natural">自然即时聊天 · 可连续分条</option><option value="unrestricted">自由文本 · 不自动拆分</option></select>
           <button type="button" class="lp-settings-link" data-lp="saveMessageStyle">保存聊天方式</button>
@@ -1215,7 +1198,7 @@ function mount() {
         'homeTime', 'homeCharacter', 'homeMessageCount', 'homeLogCount',
         'friendLabel', 'friendActions',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus', 'activity', 'diagnosticToggle',
-        'presetSource','presetEntries','worldSource','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','apiInfo','testApi','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themeIcons',
+        'presetSource','presetEntries','worldSource','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themeIcons',
         'diagnostics', 'diagnosticState', 'copyDiagnostics', 'clearDiagnostics',
         'messages', 'input', 'retry', 'send', 'launcher']
         .map(key => [key, key === 'launcher' ? floating : root.querySelector(`[data-lp="${key}"]`)]));
@@ -1238,7 +1221,6 @@ function mount() {
     nodes.time.addEventListener('change', saveStoryTime);
     nodes.presetSource.addEventListener('change', showPresetEntries);
     nodes.worldSource.addEventListener('change', () => void showWorldEntries());
-    nodes.testApi.addEventListener('click', () => void testPhoneApi());
     nodes.presetSearch.addEventListener('input',()=>filterPicker('preset'));
     nodes.worldSearch.addEventListener('input',()=>filterPicker('world'));
     nodes.openPresetPicker.addEventListener('click',()=>setScreen('presetPicker'));
