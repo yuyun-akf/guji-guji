@@ -1093,7 +1093,8 @@ function renderPersona(ctx) {
     const persona = currentPersona(ctx);
     nodes.myIdentity.textContent = persona.name;
     nodes.myPersona.textContent = persona.description || '尚未填写人设';
-    nodes.myAvatar.src = persona.avatar;
+    nodes.myAvatar.onerror=()=>{nodes.myAvatar.onerror=null;nodes.myAvatar.src='/img/user-default.png';};
+    nodes.myAvatar.src=readRootData(ctx).avatars?.user||persona.avatar;
 }
 function renderMoments(ctx) {
     if (!nodes?.momentsFeed) return;
@@ -1104,8 +1105,10 @@ function renderMoments(ctx) {
         const item=document.createElement('div');item.className='lp-moment';
         const author=document.createElement('strong');author.textContent=post.author||ctx?.name1||'user';
         const body=document.createElement('p');body.textContent=post.text;
+        const img=typeof post.image==='string'&&/^data:image\/(png|jpeg|webp);base64,/.test(post.image)?document.createElement('img'):null;
+        if(img){img.className='lp-moment-photo';img.src=post.image;img.alt='朋友圈照片';}
         const date=document.createElement('small');date.textContent=String(post.createdAt||'').replace('T',' ').slice(0,16);
-        item.append(author,body,date);nodes.momentsFeed.append(item);
+        item.append(author,body);if(img)item.append(img);item.append(date);nodes.momentsFeed.append(item);
     }
     if(!posts.length) nodes.momentsFeed.textContent='还没有动态';
 }
@@ -1115,17 +1118,51 @@ async function postMoment() {
     if(!selectedCharacter(ctx))return setStatus('请先打开剧情存档','error');
     const session=captureSession(ctx);
     const value=nodes.momentsText.value.trim();
-    if(!value)return;
+    if(!value&&!momentImageDraft)return;
     const data=structuredClone(readRootData(ctx));
     data.moments=Array.isArray(data.moments)?data.moments:[];
-    data.moments.push({id:'moment-'+Date.now(),author:ctx?.name1||'user',text:value.slice(0,1000),createdAt:new Date().toISOString()});
+    data.moments.push({id:'moment-'+Date.now(),author:ctx?.name1||'user',text:value.slice(0,1000),image:momentImageDraft||'',createdAt:new Date().toISOString()});
     data.moments=data.moments.slice(-100);
     try {
         await writeData(ctx,{...data,__contactId:PRIMARY_CONTACT_ID});
         if(!sameSession(session))return;
-        nodes.momentsText.value='';
+        nodes.momentsText.value='';momentImageDraft='';nodes.momentsPreview.replaceChildren();
         renderMoments(ctx);
     }catch(e){setStatus(recordError('发布动态',e),'error');}
+}
+
+
+async function importMomentPhoto(file) {
+    if(!file)return;
+    if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>650*1024)
+        return setStatus('朋友圈图片目前支持不超过 650KB 的 JPG / PNG / WebP','error');
+    const reader=new FileReader();
+    const session=captureSession(context());
+    reader.onload=()=>{
+        if(!sameSession(session)||typeof reader.result!=='string')return;
+        momentImageDraft=reader.result;
+        nodes.momentsPreview.replaceChildren();
+        const img=document.createElement('img');img.src=reader.result;img.alt='待发布的图片';img.className='lp-moment-photo';
+        nodes.momentsPreview.append(img);
+    };
+    reader.onerror=()=>setStatus('朋友圈图片读取失败','error');
+    reader.readAsDataURL(file);
+}
+async function uploadMyAvatar(file) {
+    if(!file||busy)return;
+    if(!['image/jpeg','image/png','image/webp','image/gif'].includes(file.type)||file.size>350*1024)
+       return setStatus('头像需是 350KB 内的图片','error');
+    const ctx=context(),meta=ctx.chatMetadata;
+    const reader=new FileReader();
+    reader.onload=async()=>{
+        if(ctx.chatMetadata!==meta||typeof reader.result!=='string')return;
+        const data=structuredClone(readRootData(ctx));
+        data.avatars={...data.avatars,user:reader.result};
+        try {await writeData(ctx,{...data,__contactId:PRIMARY_CONTACT_ID});render();}
+        catch(e){setStatus(recordError('上传我的头像',e),'error');}
+    };
+    reader.onerror=()=>setStatus('头像读取失败','error');
+    reader.readAsDataURL(file);
 }
 
 function renderChatLists(ctx,char,data) {
