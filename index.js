@@ -739,9 +739,11 @@ async function updateAvatar(side, file) {
     }
     const ctx=context();
     if (!selectedCharacter(ctx)||busy) return;
+    const session=captureSession(ctx);
     const reader=new FileReader();
     reader.onerror=()=>setStatus('头像读取失败','error');
     reader.onload=async()=>{
+        if (!sameSession(session)) return;
         if (typeof reader.result!=='string'||!allowedAvatarSrc(reader.result)) return setStatus('头像格式不支持','error');
         const data=structuredClone(readData(ctx));
         data.avatars ||= {};
