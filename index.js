@@ -155,15 +155,15 @@ async function phoneGenerate(ctx, options, data) {
 }
 async function savePhoneApi() {
     const ctx = context();
-    if (!selectedCharacter(ctx) || !nodes) return;
+    if (!selectedCharacter(ctx) || !nodes) return false;
     const mode = nodes.apiMode.value;
     const url = nodes.apiUrl.value.trim();
     const model = nodes.apiModel.value.trim();
     const key = nodes.apiKey.value.trim();
     if (mode === 'custom') {
-        try { normalizeApiUrl(url); } catch(e) { return setStatus(e.message,'error'); }
-        if (!model) return setStatus('请填写模型名称','error');
-        if (!key && !transientApiKeys.has(apiSessionId(ctx))) return setStatus('请填写 API 密钥','error');
+        try { normalizeApiUrl(url); } catch(e) { setStatus(e.message,'error'); return false; }
+        if (!model) { setStatus('请填写模型名称','error'); return false; }
+        if (!key && !transientApiKeys.has(apiSessionId(ctx))) { setStatus('请填写 API 密钥','error'); return false; }
     }
     const data = structuredClone(readData(ctx));
     data.config ||= {};
@@ -174,7 +174,8 @@ async function savePhoneApi() {
         nodes.apiKey.value = '';
         setStatus('连接配置已保存');
         loadPhoneApiUI();
-    } catch(e) { setStatus(recordError('保存 API 配置',e),'error'); }
+        return true;
+    } catch(e) { setStatus(recordError('保存 API 配置',e),'error'); return false; }
 }
 function loadPhoneApiUI() {
     if (!nodes?.apiMode) return;
@@ -574,6 +575,7 @@ function renderDiagnostics() {
 async function testPhoneApi() {
     const ctx = context();
     if (busy) return;
+    if (!await savePhoneApi()) return;
     if (typeof ctx?.generateRaw !== 'function' && !ctx?.ChatCompletionService?.sendRequest) return setStatus('生成接口不可用','error');
     const job = startBusy('reply');
     recordActivity('连接测试', '测试原始生成请求，不写入聊天记录');
