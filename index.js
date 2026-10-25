@@ -593,6 +593,7 @@ function setScreen(screen) {
     if (screen === 'presetPicker') {nodes.presetSearch.value=''; showPresetEntries();}
     if (screen === 'worldPicker') {nodes.worldSearch.value=''; void showWorldEntries();}
     if (screen === 'chat') nodes.messages.scrollTop = nodes.messages.scrollHeight;
+    if (nodes?.status) nodes.status.textContent = statusKind==='error' ? statusText : '';
 }
 
 function updateBusy() {
@@ -843,36 +844,52 @@ async function deleteIndividualMessage(id) {
 function renderMessages(data) {
     nodes.messages.replaceChildren();
     if (!data.messages.length) {
-        const empty = document.createElement('div');
-        empty.className = 'lp-empty';
-        empty.textContent = '这里还没有消息。\n试着发一句话，开启属于你们的手机聊天吧。';
+        const empty = document.createElement('p');
+        empty.className='lp-empty';
+        empty.textContent='暂无消息';
         nodes.messages.append(empty);
-        return;
     }
-
-    const fragment = document.createDocumentFragment();
+    const fragment=document.createDocumentFragment();
     const avatars=avatarSources(context(),data);
     for (const message of data.messages) {
-        if (typeof message?.text !== 'string') continue;
-        const item = document.createElement('div');
-        item.className = `lp-message ${message.from === 'system' ? 'lp-system' : message.from === 'character' ? 'lp-theirs' : 'lp-mine'}`;
-        const bubble = document.createElement('div');
-        bubble.className = 'lp-bubble';
-        bubble.textContent = message.text;
-        const stamp = document.createElement('div');
-        stamp.className = 'lp-message-time';
-        stamp.textContent = String(message.storyTime || '').replace('T', ' ');
-        item.append(bubble, stamp);
-        fragment.append(item);
+        if (typeof message?.text!=='string') continue;
+        const row=document.createElement('div');
+        row.className='lp-message '+(message.from==='system'?'lp-system':message.from==='character'?'lp-theirs':'lp-mine');
+        const body=document.createElement('div');
+        body.className='lp-message-body';
+        const bubble=document.createElement('div');
+        bubble.className='lp-bubble';
+        bubble.textContent=message.text;
+        const stamp=document.createElement('small');
+        stamp.className='lp-message-time';
+        stamp.textContent=String(message.storyTime || '').replace('T',' ');
+        body.append(bubble,stamp);
+        if (message.from!=='system') {
+            row.append(makeAvatarElement(message.from==='character'?avatars.character:avatars.user,message.from==='character'?'角色头像':'我的头像'),body);
+        } else row.append(body);
+        const remove=document.createElement('button');
+        remove.type='button';
+        remove.className='lp-message-remove';
+        remove.textContent='⋯';
+        remove.setAttribute('aria-label','删除这条消息');
+        remove.addEventListener('click',()=>void deleteIndividualMessage(message.id));
+        row.append(remove);
+        bubble.addEventListener('contextmenu',event=>{event.preventDefault();void deleteIndividualMessage(message.id);});
+        fragment.append(row);
     }
-    if (busy && busyKind === 'reply') {
-        const typing = document.createElement('div');
-        typing.className = 'lp-message lp-theirs lp-typing';
-        typing.textContent = '●  ●  ●  对方正在输入…';
+    if (busy && busyKind==='reply') {
+        const typing=document.createElement('div');
+        typing.className='lp-message lp-theirs lp-typing-row';
+        typing.append(makeAvatarElement(avatars.character,'角色头像'));
+        const bubble=document.createElement('div');
+        bubble.className='lp-typing';
+        bubble.textContent='● ● ●';
+        bubble.setAttribute('aria-label','对方正在输入');
+        typing.append(bubble);
         fragment.append(typing);
     }
     nodes.messages.append(fragment);
-    nodes.messages.scrollTop = nodes.messages.scrollHeight;
+    nodes.messages.scrollTop=nodes.messages.scrollHeight;
 }
 
 function renderFriendship(data) {
@@ -908,6 +925,8 @@ function render() {
     const data = char ? readData(ctx) : null;
 
     nodes.profileName.textContent = char ? getCharacterName(char) : '请先选择角色';
+    nodes.profileAvatar.src = avatarSources(ctx,data).character;
+    renderChatLists(ctx,char,data);
     nodes.subtitle.textContent = char ? '故事中的小手机 · 独立聊天' : '请先选择单人角色存档';
     nodes.homeCharacter.textContent = char ? `与 ${getCharacterName(char)} 的故事` : '等待进入角色存档';
     nodes.homeTime.textContent = (data?.storyTime || localDateTime()).replace('T', ' ');
@@ -1020,6 +1039,7 @@ async function send() {
     const session = captureSession(ctx);
     const data = structuredClone(readData(ctx));
     data.messages.push(makeMessage('user', content, data.storyTime));
+    data.chatDeleted = false;
 
     const job = startBusy('reply');
     recordActivity('发送消息', '正在将玩家消息保存到当前手机存档。');
@@ -1450,6 +1470,7 @@ function mount() {
         event.preventDefault();
         closePhone();
     });
+    nodes.chatMenu.addEventListener('click',()=>setScreen('chatOptions'));
     nodes.back.addEventListener('click', () => setScreen({
         chat: 'chatList', contacts: 'chatList', profile: 'contacts', requests:'contacts', chatOptions:'chat', presetPicker:'settings', worldPicker:'settings'
     }[activeScreen] || 'home'));
@@ -1488,6 +1509,16 @@ function mount() {
         if (button) handleFriendAction(button.dataset.friendAction);
     });
     nodes.copyDiagnostics.addEventListener('click', copyDiagnostics);
+    nodes.goProfile.addEventListener('click',()=>setScreen('profile'));
+    nodes.exportChat.addEventListener('click',downloadChatExport);
+    nodes.copyChat.addEventListener('click',()=>void copyChatExport());
+    nodes.importChat.addEventListener('change',event=>{void importChatFile(event.target.files?.[0]);event.target.value='';});
+    nodes.clearChat.addEventListener('click',()=>void clearOrDeleteChat(false));
+    nodes.deleteChat.addEventListener('click',()=>void clearOrDeleteChat(true));
+    nodes.avatarCharFile.addEventListener('change',event=>{void updateAvatar('character',event.target.files?.[0]);event.target.value='';});
+    nodes.avatarUserFile.addEventListener('change',event=>{void updateAvatar('user',event.target.files?.[0]);event.target.value='';});
+    nodes.resetCharAvatar.addEventListener('click',()=>void resetAvatar('character'));
+    nodes.resetUserAvatar.addEventListener('click',()=>void resetAvatar('user'));
     nodes.clearDiagnostics.addEventListener('click', () => {
         diagnostics.length = 0;
         renderDiagnostics();
