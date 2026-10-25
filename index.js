@@ -381,7 +381,7 @@ function readData(ctx,contactId=activeContactId) {
     };
 }
 function getContactInfo(ctx,id=activeContactId) {
-    if (id===PRIMARY_CONTACT_ID) return {id,name:getCharacterName(selectedCharacter(ctx)),remark:'',kind:'character'};
+    if (id===PRIMARY_CONTACT_ID) return {id,name:getCharacterName(selectedCharacter(ctx)),remark:readRootData(ctx).primaryRemark||'',kind:'character'};
     const contact=readRootData(ctx).contacts.find(c=>c.id===id);
     return contact || {id:PRIMARY_CONTACT_ID,name:getCharacterName(selectedCharacter(ctx)),remark:'',kind:'character'};
 }
@@ -746,7 +746,7 @@ function makeAvatarElement(src, label) {
     });
     return img;
 }
-function makeListContact(char, data, label, action) {
+function makeListContact(char, data, label, action, displayName) {
     const row = document.createElement('button');
     row.type = 'button';
     row.className = 'lp-conversation-row';
@@ -755,7 +755,7 @@ function makeListContact(char, data, label, action) {
     const text = document.createElement('div');
     text.className = 'lp-conversation-text';
     const name = document.createElement('strong');
-    name.textContent = getCharacterName(char);
+    name.textContent = displayName || getCharacterName(char);
     const small = document.createElement('small');
     small.textContent = label;
     text.append(name,small);
@@ -766,30 +766,114 @@ function makeListContact(char, data, label, action) {
     row.addEventListener('click',action);
     return row;
 }
+function switchContact(id,screen='profile') {
+    if (busy) return setStatus('请等待当前消息处理完成','error');
+    const ctx=context();
+    const root=readRootData(ctx);
+    if (!validContactId(root,id)) return setStatus('联系人不存在','error');
+    activeContactId=id;
+    statusText='';
+    statusKind='info';
+    if (nodes?.input) nodes.input.value='';
+    render();
+    setScreen(screen);
+}
+function contactSummary(ctx,id) {
+    const data=readData(ctx,id);
+    const last=[...data.messages].reverse().find(m=>m.from!=='system');
+    return {data,last,state:friendshipState(data)};
+}
 function renderChatLists(ctx,char,data) {
     for (const key of ['recentChats','contactsList','requestsList']) nodes[key]?.replaceChildren();
-    if (!char || !data) return;
-    const last = [...data.messages].reverse().find(x=>x.from !== 'system');
-    if (!data.chatDeleted) {
-        nodes.recentChats.append(makeListContact(char,data,last?.text?.slice(0,64) || '点击开始聊天',()=>setScreen('chat')));
-    } else {
-        const hint = document.createElement('p');
-        hint.className = 'lp-list-empty';
-        hint.textContent = '暂无会话，可从通讯录重新开始聊天';
-        nodes.recentChats.append(hint);
+    if (!char||!data) return;
+    const root=readRootData(ctx);
+    const ids=[PRIMARY_CONTACT_ID,...root.contacts.map(c=>c.id)];
+    let requests=0, conversations=0;
+    for (const id of ids) {
+        const person=contactCharacter(ctx,id);
+        const view=readData(ctx,id);
+        const info=getContactInfo(ctx,id);
+        const label=info.remark || info.name;
+        const {last,state}=contactSummary(ctx,id);
+        const summary=last?.text?.slice(0,64) || (state==='friends'?'点击开始聊天':FRIEND_LABELS[state]);
+        if (!view.chatDeleted && (id===PRIMARY_CONTACT_ID || view.messages.length>0 || state==='friends')) {
+            nodes.recentChats.append(makeListContact(person,view,summary,()=>switchContact(id,'chat'),label));
+            conversations++;
+        }
+        nodes.contactsList.append(makeListContact(person,view,FRIEND_LABELS[state],()=>switchContact(id,'profile'),label));
+        if (state==='incoming' || state==='outgoing') {
+            nodes.requestsList.append(makeListContact(person,view,state==='incoming'?'请求添加你为好友':'好友申请处理中',()=>switchContact(id,'profile'),label));
+            requests++;
+        }
     }
-    nodes.contactsList.append(makeListContact(char,data,FRIEND_LABELS[friendshipState(data)],()=>setScreen('profile')));
-    const state=friendshipState(data);
-    nodes.requestBadge.textContent = state==='incoming' ? '1 条待处理' : state==='outgoing' ? '申请处理中' : '';
-    if (state==='incoming' || state==='outgoing') {
-        nodes.requestsList.append(makeListContact(char,data,state==='incoming'?'请求添加你为好友':'已发送好友申请',()=>setScreen('profile')));
-    } else {
+    nodes.requestBadge.textContent=requests ? requests+' 条' : '';
+    if (!requests) {
         const empty=document.createElement('p');
         empty.className='lp-list-empty';
         empty.textContent='暂无好友申请';
         nodes.requestsList.append(empty);
     }
+    if (!conversations) {
+        const empty=document.createElement('p');
+        empty.className='lp-list-empty';
+        empty.textContent='还没有聊天，去通讯录找朋友吧';
+        nodes.recentChats.append(empty);
+    }
 }
+async function addNpcContact() {
+    if (busy) return;
+    const ctx=context();
+    if (!selectedCharacter(ctx)) return setStatus('请先打开单人角色聊天存档','error');
+    const name=nodes.npcName.value.trim().slice(0,60);
+    const relationship=nodes.npcRelation.value.trim().slice(0,180);
+    const description=nodes.npcDescription.value.trim().slice(0,3500);
+    if (!name) return setStatus('请填写 NPC 名称','error');
+    if (!description) return setStatus('请填写 NPC 设定，避免模型凭空编造人物','error');
+    const root=structuredClone(readRootData(ctx));
+    if (root.contacts.length>=60) return setStatus('当前存档最多添加 60 位 NPC','error');
+    const id='npc:'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+    root.contacts.push({id,kind:'npc',name,remark:'',relationship,description,source:'manual',createdAt:new Date().toISOString()});
+    root.conversations[id]={messages:[],friendship:{state:'stranger'},friendEvents:[],chatDeleted:false};
+    try {
+        await writeData(ctx,{...root,__contactId:PRIMARY_CONTACT_ID});
+        nodes.npcName.value='';nodes.npcRelation.value='';nodes.npcDescription.value='';
+        switchContact(id,'profile');
+    } catch(e) {setStatus(recordError('保存 NPC 联系人',e),'error');}
+}
+async function saveContactRemark() {
+    if (busy) return;
+    const ctx=context();
+    const remark=nodes.contactRemark.value.trim().slice(0,60);
+    if (activeContactId===PRIMARY_CONTACT_ID) {
+        const data=structuredClone(readRootData(ctx));
+        data.primaryRemark=remark;
+        try {await writeData(ctx,{...data,__contactId:PRIMARY_CONTACT_ID});render();}
+        catch(e){setStatus(recordError('保存备注',e),'error');}
+        return;
+    }
+    const data=structuredClone(readRootData(ctx));
+    const target=data.contacts.find(c=>c.id===activeContactId);
+    if (!target) return;
+    target.remark=remark;
+    try {await writeData(ctx,{...data,__contactId:PRIMARY_CONTACT_ID});render();}
+    catch(e){setStatus(recordError('保存备注',e),'error');}
+}
+async function removeNpcContact() {
+    if(busy||activeContactId===PRIMARY_CONTACT_ID) return;
+    if(!window.confirm('删除此 NPC 联系人及其私聊记录？此操作无法撤销，建议先导出聊天记录。')) return;
+    const ctx=context();
+    const data=structuredClone(readRootData(ctx));
+    const id=activeContactId;
+    data.contacts=data.contacts.filter(c=>c.id!==id);
+    delete data.conversations[id];
+    try {
+        await writeData(ctx,{...data,__contactId:PRIMARY_CONTACT_ID});
+        activeContactId=PRIMARY_CONTACT_ID;
+        render();
+        setScreen('contacts');
+    } catch(e){setStatus(recordError('删除 NPC 联系人',e),'error');}
+}
+
 async function updateAvatar(side, file) {
     if (!file) return;
     if (!['image/jpeg','image/png','image/webp','image/gif'].includes(file.type) || file.size>350*1024) {
