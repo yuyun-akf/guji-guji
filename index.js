@@ -188,6 +188,19 @@ function loadPhoneApiUI() {
     nodes.apiKeyState.textContent = transientApiKeys.has(apiSessionId(ctx)) ? '密钥已在本次页面中设置' : '未设置密钥';
     updateApiInfo();
 }
+function loadPhoneMessageStyle() {
+    if (!nodes?.messageStyle) return;
+    nodes.messageStyle.value = readData(context())?.config?.messageStyle === 'unrestricted' ? 'unrestricted' : 'natural';
+}
+async function savePhoneMessageStyle() {
+    const ctx = context();
+    if (!selectedCharacter(ctx)) return;
+    const data = structuredClone(readData(ctx));
+    data.config ||= {};
+    data.config.messageStyle = nodes.messageStyle.value === 'unrestricted' ? 'unrestricted' : 'natural';
+    try { await writeData(ctx,data); setStatus('聊天风格已保存'); }
+    catch (e) { setStatus(recordError('保存聊天风格',e),'error'); }
+}
 function updateApiInfo() {
     if (!nodes?.apiInfo) return;
     const ctx = context();
@@ -444,6 +457,41 @@ function createSystemPrompt(char, data) {
     ].filter(Boolean).join('\n\n');
 }
 
+function messageStylePrompt(data) {
+    const option = data?.config?.messageStyle;
+    if (option === 'unrestricted') return '';
+    return [
+        '【手机消息呈现】请当作真实即时通讯而不是小说章节：直接发角色会在手机上打出的消息。',
+        '优先自然、口语化、具体的表达；通常一次回复是一到几条相对短的聊天消息，除非角色有充分理由详细解释。',
+        '口癖、语气、标点、颜文字、空格及发消息的频率由角色性格和眼下的情境决定；不要统一省略标点，也不要统一每句加句号。',
+        '可以只发一个词、表情或问号，也可以在需要时发较长的消息，不要为了凑消息数无意义分条。',
+        '如果一次想连续发送多条不同的消息，请在消息之间单独放置 [PHONE_NEXT]，不加编号，不解释这个标记。最多连续发五条。',
+        '避免演讲体、长篇旁白、舞台指示、心理描写、替对方发言及机械总结。'
+    ].join('\n');
+}
+function splitPhoneReply(text, data) {
+    const source = String(text || '').trim();
+    if (!source) return [];
+    if (data?.config?.messageStyle === 'unrestricted') return [source];
+    const direct = source.split(/\s*\[PHONE_NEXT\]\s*|\n\s*\n+/).map(x=>x.trim()).filter(Boolean);
+    if (direct.length > 1) return direct.slice(0,5);
+    const lines = source.split(/\n+/).map(x=>x.trim()).filter(Boolean);
+    if (lines.length > 1 && lines.every(x=>x.length < 130)) return lines.slice(0,5);
+    // Fallback splitting only for unusually long monologues, at sentence boundaries.
+    if (source.length < 165) return [source];
+    const pieces = source.match(/[^。！？!?；;]+[。！？!?；;]?/g)?.map(x=>x.trim()).filter(Boolean) || [source];
+    if (pieces.length < 2) return [source];
+    const result = [];
+    let buffer = '';
+    for (const piece of pieces) {
+        if (buffer.length >= 65 && buffer.length + piece.length > 112 && result.length < 4) {
+            result.push(buffer.trim());
+            buffer = piece;
+        } else buffer += piece;
+    }
+    if (buffer) result.push(buffer.trim());
+    return result.filter(Boolean).slice(0,5);
+}
 function buildPrompt(data) {
     // Official generateRaw accepts Chat Completion messages and converts them
     // for the selected generation mode. Preserve user/assistant roles.
@@ -548,7 +596,7 @@ function setScreen(screen) {
     const titles = { home: '咕叽咕机', chat: '咕叽聊', settings: '设置', diagnostics: '运行日志', calendar: '日历', theme: '主题', presetPicker:'选择预设条目', worldPicker:'选择世界书条目' };
     nodes.title.textContent = titles[screen];
     if (screen === 'diagnostics') renderDiagnostics();
-    if (screen === 'settings' && screen !== previous) { loadPhoneApiUI(); void populateConfigLists(); }
+    if (screen === 'settings' && screen !== previous) { loadPhoneApiUI(); loadPhoneMessageStyle(); void populateConfigLists(); }
     if (screen === 'theme') applyTheme();
     if (screen === 'presetPicker') {nodes.presetSearch.value=''; showPresetEntries();}
     if (screen === 'worldPicker') {nodes.worldSearch.value=''; void showWorldEntries();}
@@ -738,7 +786,7 @@ async function runReply(ctx, char, data, session, existingJob = null) {
     setStatus('正在生成角色回复，请稍候…');
     recordActivity('开始生成', '已将当前手机对话交给酒馆生成接口，正在等待模型返回。');
     try {
-        const systemPrompt = await composePhonePrompt(ctx, char, data);
+        const systemPrompt = [await composePhonePrompt(ctx, char, data), messageStylePrompt(data)].filter(Boolean).join('\n\n');
         recordActivity('生成配置', '使用当前酒馆连接' + (ctx?.mainApi ? ' · ' + ctx.mainApi : '') + '；手机历史 ' + buildPrompt(data).length + ' 条；单独预设条目 ' + (data?.config?.presetEntries?.length || 0) + ' 条；世界书条目 ' + (data?.config?.worldEntries?.length || 0) + ' 条。');
         const result = await generateWithTimeout(ctx, {
             systemPrompt,
@@ -747,9 +795,11 @@ async function runReply(ctx, char, data, session, existingJob = null) {
         if (!sameSession(session)) return;
         const reply = typeof result === 'string' ? result.trim() : '';
         if (!reply) throw new Error('模型返回了空消息或不支持的回复类型。');
-        data.messages.push(makeMessage('character', reply, data.storyTime));
+        const phoneMessages = splitPhoneReply(reply,data);
+        if (!phoneMessages.length) throw new Error('角色消息为空');
+        for (const message of phoneMessages) data.messages.push(makeMessage('character',message,data.storyTime));
         await writeData(ctx, data);
-        recordActivity('生成成功', '已收到角色回复并保存到当前手机聊天存档。', 'success');
+        recordActivity('生成成功', '已保存 ' + phoneMessages.length + ' 条角色消息', 'success');
         if (sameSession(session)) setStatus('已收到回复。');
     } catch (error) {
         const message = recordError('生成角色回复', error);
@@ -1082,6 +1132,9 @@ function makeUI() {
           </div>
           <button type="button" class="lp-settings-link" data-lp="saveApi">保存 API 配置</button>
           <button type="button" class="lp-settings-link" data-lp="testApi">测试生成连接</button>
+          <h2>聊天方式</h2>
+          <select data-lp="messageStyle" aria-label="消息显示方式"><option value="natural">自然即时聊天 · 可连续分条</option><option value="unrestricted">自由文本 · 不自动拆分</option></select>
+          <button type="button" class="lp-settings-link" data-lp="saveMessageStyle">保存聊天方式</button>
           <h2>预设条目</h2>
           <select data-lp="presetSource" aria-label="选择预设"></select>
           <button type="button" class="lp-settings-link" data-lp="openPresetPicker">打开条目列表 · 搜索与勾选</button>
@@ -1159,7 +1212,7 @@ function mount() {
         'homeTime', 'homeCharacter', 'homeMessageCount', 'homeLogCount',
         'friendLabel', 'friendActions',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus', 'activity', 'diagnosticToggle',
-        'presetSource','presetEntries','worldSource','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','apiInfo','testApi','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','themeFont','themeWallpaper','themeResetWallpaper','themeIcons',
+        'presetSource','presetEntries','worldSource','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','apiInfo','testApi','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themeIcons',
         'diagnostics', 'diagnosticState', 'copyDiagnostics', 'clearDiagnostics',
         'messages', 'input', 'retry', 'send', 'launcher']
         .map(key => [key, key === 'launcher' ? floating : root.querySelector(`[data-lp="${key}"]`)]));
@@ -1190,6 +1243,7 @@ function mount() {
 
     nodes.apiMode.addEventListener('change', () => { nodes.customApiFields.hidden = nodes.apiMode.value !== 'custom'; });
     nodes.saveApi.addEventListener('click', () => void savePhoneApi());
+    nodes.saveMessageStyle.addEventListener('click', () => void savePhoneMessageStyle());
     nodes.presetEntries.addEventListener('change', event => { if (event.target?.dataset?.configKind) onConfigChange(event.target); });
     nodes.worldEntries.addEventListener('change', event => { if (event.target?.dataset?.configKind) onConfigChange(event.target); });
     nodes.themeFont.addEventListener('change', () => changeTheme({font:nodes.themeFont.value}));
