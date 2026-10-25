@@ -435,7 +435,7 @@ test('split phone messages preserve content even above five bubbles', () => {
     const actual = runtime.split(original, {});
     assert.equal(actual.length,5);
     assert.equal(actual.join('\\n').replace(/\\n/g,''),original.replaceAll('[PHONE_NEXT]',''));
-    assert.deepEqual(runtime.split(original,{config:{messageStyle:'unrestricted'}}),[original]);
+    assert.equal(JSON.stringify(runtime.split(original,{config:{messageStyle:'unrestricted'}})),JSON.stringify([original]));
 });
 test('independent API uses a separate model and ephemeral key without changing host settings', async () => {
     const runtime = {console,Date,structuredClone,URL,window:{}};
