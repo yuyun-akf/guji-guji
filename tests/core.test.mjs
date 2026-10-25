@@ -672,3 +672,10 @@ test('chat backup round trip retains multimedia image payload', () => {
     assert.equal(runtime.chatFns.buildPrompt(data)[0].content[1].type,'image_url');
 });
 
+
+test('published NPC form uses generic user/char placeholders without private character defaults', () => {
+    const html = makeUI().innerHTML;
+    assert.ok(html.includes('placeholder="如：{{char}}的母亲、{{user}}的同学"'));
+    assert.ok(html.includes('placeholder="NPC 姓名"'));
+    assert.ok(!html.includes('角色甲的母亲'), 'test fixture names must not leak into the public UI');
+});
