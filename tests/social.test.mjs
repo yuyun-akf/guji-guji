@@ -206,33 +206,98 @@ test('user likes, unlikes, comments, replies and reposts without affecting old p
     assert.equal(ctx.chatMetadata.st_little_phone_v1.unreadMoments,0);
 });
 
-test('character moment parser allows only declared reply IDs and never invents interactions',()=>{
-    const api=vm.runInContext('({parseMomentDecision})',runtime());
-    assert.equal(api.parseMomentDecision('LIKE').kind,'like');
-    assert.equal(api.parseMomentDecision('COMMENT:太好了').text,'太好了');
-    assert.equal(api.parseMomentDecision('REPLY:x2:真的',['x2']).replyTo,'x2');
-    assert.equal(api.parseMomentDecision('REPLY:x1:不认识',['x2']).kind,'skip');
-    assert.equal(api.parseMomentDecision('替别人点了赞').kind,'skip');
+test('batch parser accepts controlled JSON and rejects unstructured responses',()=>{
+    const parse=vm.runInContext('parseMomentBatch',runtime());
+    const result=parse('```json\n{"actions":[{"actorId":"primary","kind":"like"},{"actorId":"npc:c","kind":"comment","text":"你好"}]}\n```');
+    assert.equal(result.actions.length,2);
+    assert.equal(result.actions[1].text,'你好');
+    assert.equal(parse('替别人点了个赞'),null);
+    assert.equal(parse('{"actions":"not an array"}'),null);
 });
 
-test('character AI interaction is blocked across unlinked contacts and saved with notifications once linked',async()=>{
+test('a single request batches eligible character reactions and blocks actors without a relationship',async()=>{
     const {ctx,data}=socialStory();let calls=0;
-    ctx.generateRaw=async()=>{calls++;return 'COMMENT:这是什么好东西？';};
+    ctx.generateRaw=async()=>{calls++;return JSON.stringify({actions:[
+        {actorId:'primary',kind:'comment',text:'这是什么好东西？'},
+        {actorId:'npc:b',kind:'comment',text:'打个招呼'},
+        {actorId:'npc:c',kind:'like'}]});};
     const box=runtime(ctx);
     vm.runInContext(`mounted=true;root={classList:{contains:()=>false}};nodes={momentFeedback:{textContent:''}};
         render=()=>{};startBusy=()=>{busy=true;return 1};finishBusy=()=>{busy=false};`,box);
-    const run=vm.runInContext('runMomentInteraction',box);
-    await run('m-c','primary',false);
+    const run=vm.runInContext('runMomentBatch',box);
+    await run('m-c',false);
     assert.equal(calls,0,'two characters lacking contact cannot receive a model call about the other');
     data.contactLinks={'npc:c|primary':true};
-    await run('m-c','primary',false);
+    await run('m-c',false);
     assert.equal(calls,1);
     const saved=ctx.chatMetadata.st_little_phone_v1;
     assert.ok(saved.moments[1].comments,vm.runInContext('nodes.momentFeedback.textContent',box)||'no response comment');
     assert.equal(saved.moments[1].comments[0].actorId,'primary');
+    assert.equal(saved.moments[1].comments.some(c=>c.actorId==='npc:b'),false,'unlinked B cannot interact on C post');
     assert.equal(saved.unreadMoments,1);
     assert.equal(saved.momentInteractionSeen.includes('m-c'),true);
     assert.equal(saved.messages[0].text,'主角旧消息');
+    await run('m-user',false);
+    assert.equal(calls,2,'all reactions on one additional post share one request');
+    const own=ctx.chatMetadata.st_little_phone_v1.moments[0];
+    assert.equal(own.comments.length,2);
+    assert.equal(own.likes[0].actorId,'npc:c');
+});
+
+test('characters may reply to each other only with explicit mutual contact',()=>{
+    const {ctx,data}=socialStory(),box=runtime(ctx);
+    const apply=vm.runInContext('applyMomentBatch',box);
+    const post=data.moments[0];
+    const actions=[{actorId:'npc:c',kind:'comment',text:'你好'},
+        {actorId:'npc:b',kind:'reply',replyToActor:'npc:c',text:'你好呀'}];
+    assert.equal(apply(ctx,data,post,['npc:c','npc:b'],actions),1);
+    assert.equal(post.comments.length,1,'B cannot reply to C just because both know the user');
+    post.comments=[];data.contactLinks={'npc:b|npc:c':true};
+    assert.equal(apply(ctx,data,post,['npc:c','npc:b'],actions),2);
+    assert.equal(post.comments[1].replyTo,post.comments[0].id);
+});
+
+test('one user comment queues one optional grouped reply request, likes remain free',async()=>{
+    const {ctx,data}=socialStory();let calls=0;
+    data.socialConfig={momentInteractions:true};data.momentInteractionSeen=['m-user','m-c'];
+    ctx.generateRaw=async()=>{calls++;return JSON.stringify({actions:[{actorId:'primary',kind:'reply',replyTo:ctx.chatMetadata.st_little_phone_v1.moments[1].comments[0].id,text:'看到了'}]});};
+    data.contactLinks={'npc:c|primary':true};
+    const box=runtime(ctx);
+    vm.runInContext(`mounted=true;root={classList:{contains:()=>false}};nodes={momentFeedback:{textContent:''}};
+        render=()=>{};renderMoments=()=>{};renderChatLists=()=>{};
+        scheduleMomentReply=()=>{};startBusy=()=>{busy=true;return 1};finishBusy=()=>{busy=false};`,box);
+    const add=vm.runInContext('addMomentComment',box),like=vm.runInContext('toggleMomentLike',box),tick=vm.runInContext('tickMomentInteractions',box);
+    await like('m-c');assert.equal(calls,0);
+    await add('m-c','我也想知道');assert.equal(calls,0,'writing a comment does not call an API before the grouped reply job');
+    await add('m-c','补充一句');
+    assert.equal(ctx.chatMetadata.st_little_phone_v1.pendingMomentReplies?.length,2);
+    await tick();assert.equal(calls,1);
+    const saved=ctx.chatMetadata.st_little_phone_v1;
+    assert.equal(saved.pendingMomentReplies.length,0);
+    assert.equal(saved.moments[1].comments[2].actorId,'primary');
+    assert.equal(saved.moments[1].comments[2].replyTo,saved.moments[1].comments[0].id);
+    await tick();assert.equal(calls,1,'processed comments must not be charged twice');
+});
+
+test('autonomous post and reactions share one generation request',async()=>{
+    const {ctx,data}=socialStory();let calls=0;
+    data.socialConfig={moments:{mode:'fixed',days:7},momentInteractions:true};
+    data.contactLinks={'npc:b|primary':true,'npc:c|primary':true};
+    ctx.generateRaw=async()=>{calls++;return JSON.stringify({post:'角色甲分享一张落日照',actions:[
+        {actorId:'npc:b',kind:'comment',text:'这个角度真不错'},
+        {actorId:'npc:c',kind:'like'}]});};
+    const box=runtime(ctx);
+    vm.runInContext(`mounted=true;root={classList:{contains:()=>false}};
+        render=()=>{};loadAutonomyUI=()=>{};showMomentAlert=()=>{};
+        startBusy=()=>{busy=true;return 1};finishBusy=()=>{busy=false};`,box);
+    await vm.runInContext('tickAutonomousActivity',box)('moments');
+    const saved=ctx.chatMetadata.st_little_phone_v1;
+    assert.equal(calls,1,'post generation and all eligible reactions must use the same API call');
+    const created=saved.moments.at(-1);
+    assert.equal(created.text,'角色甲分享一张落日照');
+    assert.equal(created.comments.length,1);
+    assert.equal(created.likes.length,1);
+    assert.ok(saved.momentInteractionSeen.includes(created.id),'the scheduled interaction ticker must not charge again');
 });
 
 test('new moment notifications and mutual-link settings appear in the rendered template',()=>{
