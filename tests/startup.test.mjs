@@ -6,7 +6,7 @@ import vm from 'node:vm';
 const main = readFileSync(new URL('../index.js', import.meta.url), 'utf8').replaceAll('export function ', 'function ');
 const boot = readFileSync(new URL('../bootstrap.js', import.meta.url), 'utf8')
     .replaceAll('export function ', 'function ')
-    .replace("import('./index.js?v=0.7.0')", 'mockImport()');
+    .replace("import('./index.js?v=0.7.1')", 'mockImport()');
 
 function dom() {
     const observers = new Set();
@@ -22,6 +22,7 @@ function dom() {
                 const node = new Node(match[1]);
                 const key = match[0].match(/data-lp="([^"]+)"/);
                 if (key) node.dataset.lp = key[1];
+                node.type = match[0].match(/type="([^"]+)"/)?.[1];
                 const cls = match[0].match(/class="([^"]+)"/);
                 if (cls) node.className = cls[1];
                 this.append(node);
@@ -35,7 +36,7 @@ function dom() {
         querySelector(selector) { return this.querySelectorAll(selector)[0] ?? null; }
         querySelectorAll(selector) {
             const key = selector.match(/^\[data-lp="([^"]+)"\]$/)?.[1];
-            const match = node => key ? node.dataset.lp === key : selector.startsWith('.') && node.className?.split(' ').includes(selector.slice(1));
+            const match = node => key ? node.dataset.lp === key : selector === 'input[type="file"]' ? node.tagName==='input' && node.type==='file' : selector.startsWith('.') && node.className?.split(' ').includes(selector.slice(1));
             return this.children.flatMap(node => [...(match(node) ? [node] : []), ...node.querySelectorAll(selector)]);
         }
     }
@@ -66,6 +67,17 @@ test('full mount binds actual template controls including moments; disable prese
     }
     const root = host.document.getElementById('st-little-phone-root');
     assert.equal(typeof root.querySelector('[data-lp="momentsPost"]').listeners.click, 'function');
+    // Exercise the actual mounted handlers, not just picker state helpers.
+    const input = root.querySelector('[data-lp="chatImageInput"]');
+    let prevented = 0;
+    vm.runInContext("globalThis.closed=0;closePhone=()=>{closed++;};activeScreen='chat';nodes.input.value='草稿';nodes.messages.scrollTop=42;",runtime);
+    input.listeners.click();
+    root.querySelector('.lp-panel').listeners.cancel({preventDefault(){prevented++;}});
+    root.listeners.keydown({key:'Escape',preventDefault(){prevented++;},stopPropagation(){}});
+    assert.equal(runtime.closed,0);
+    assert.equal(prevented,2);
+    assert.equal(runtime.api.controls().input.value,'草稿');
+    assert.equal(runtime.api.controls().messages.scrollTop,42);
     assert.equal(host.document.getElementById('gujiguji-floating-launcher').hidden, true);
     assert.equal(host.observers.size, 1);
     const menu = host.document.createElement('div'); menu.id = 'extensionsMenu'; host.document.body.append(menu);

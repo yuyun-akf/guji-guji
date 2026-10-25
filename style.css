@@ -1435,3 +1435,25 @@
 #st-little-phone-root .lp-chat .lp-composer textarea{flex:1 1 auto;min-width:0;font-size:14px;}
 #st-little-phone-root .lp-chat .lp-composer button[data-lp="send"]{padding:0 9px;font-size:12px;}
 #st-little-phone-root .lp-chat .lp-composer .lp-retry{display:none!important;}
+
+/* User-owned image stickers: empty on install, shared across conversations. */
+#st-little-phone-root .lp-sticker-library,
+#st-little-phone-root .lp-emoji-panel:not([hidden]) {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    max-height: 280px;
+    overflow-y: auto;
+}
+#st-little-phone-root .lp-sticker-card { min-width: 0; }
+#st-little-phone-root .lp-sticker-card button { width: 100%; font-size: 12px; }
+#st-little-phone-root .lp-sticker-card img { display: block; width: 100%; height: 72px; object-fit: contain; }
+#st-little-phone-root .lp-sticker-card span { display: block; overflow-wrap: anywhere; }
+#st-little-phone-root .lp-sticker-library > p,
+#st-little-phone-root .lp-emoji-panel > p { grid-column: 1 / -1; font-size: 13px; }
+#st-little-phone-root .lp-persona-description { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow-y: auto; }
+#st-little-phone-root [data-lp="stickerStatus"] { font-size: 12px; overflow-wrap: anywhere; }
+#st-little-phone-root .lp-me-page h2 { font-size: 15px; margin: 18px 0 10px; }
+#st-little-phone-root .lp-me-page textarea { width: 100%; min-height: 85px; padding: 10px; border: 1px solid var(--lp-border); border-radius: 10px; font: inherit; resize: vertical; }
+#st-little-phone-root .lp-me-page [data-lp="momentsPost"] { padding: 10px 16px; border: 0; border-radius: 9px; background: var(--lp-lilac); color: white; font: inherit; }
+#st-little-phone-root .lp-me-page input[type="file"] { max-width: 100%; margin: 8px 0; font-size: 12px; }

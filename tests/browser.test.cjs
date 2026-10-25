@@ -26,7 +26,10 @@ test('browser startup, delayed menu, lifecycle, old data and v0.7 UI', async () 
             window.ctx = { characterId: 0, chatId: 'old-story', name1: '测试玩家', name2: '角色',
                 characters: [{ name: '角色', avatar: 'test.png', data: {} }], chat: [],
                 chatMetadata: { st_little_phone_v1: { version: 1, messages: [{ id: 'old', from: 'user', text: '保留旧聊天' }], customField: 123 } },
-                extensionSettings: {}, event_types: { CHAT_CHANGED: 'chat_changed' },
+                extensionSettings: {}, powerUserSettings: {persona_description:'当前玩家的人设'},
+                saveSettingsDebounced() {},
+                generateRaw: async () => '收到[[sticker:'+window.ctx.extensionSettings.gujiguji.stickers[0].id+']]',
+                event_types: { CHAT_CHANGED: 'chat_changed' },
                 eventSource: { on() {}, removeListener() {} },
                 saveMetadata: async () => { window.saves++; } };
             window.SillyTavern = { getContext: () => window.ctx };
@@ -48,11 +51,33 @@ test('browser startup, delayed menu, lifecycle, old data and v0.7 UI', async () 
         for (const screen of ['chatList','contacts','discover','me']) {
             assert.ok(await page.locator(`[data-lp-open="${screen}"]`).count());
         }
-        await page.locator('[data-lp-open="discover"]').first().click();
+        await page.locator('[data-lp-screen="chatList"] [data-lp-open="me"]').click();
+        assert.equal(await page.locator('[data-lp="myIdentity"]').innerText(),'测试玩家');
+        assert.equal(await page.locator('[data-lp="stickerLibrary"] img').count(),0);
         await page.locator('[data-lp="momentsText"]').fill('朋友圈回归检查');
         await page.locator('[data-lp="momentsPost"]').click();
         await page.waitForFunction(() => ctx.chatMetadata.st_little_phone_v1.moments?.length === 1);
+        await page.locator('[data-lp-screen="me"] [data-lp-open="discover"]').click();
         assert.equal(await page.locator('[data-lp="momentsFeed"]').innerText().then(t => t.includes('朋友圈回归检查')), true);
+        await page.locator('[data-lp-screen="discover"] nav [data-lp-open="me"]').click();
+        await page.locator('[data-lp="stickerUpload"]').setInputFiles({name:'开心.gif',mimeType:'image/gif',buffer:Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7','base64')});
+        await page.waitForFunction(()=>ctx.extensionSettings.gujiguji?.stickers?.length===1);
+        await page.locator('[data-lp-screen="me"] [data-lp-open="chatList"]').click();
+        await page.locator('[data-lp="recentChats"] .lp-conversation-row').first().click();
+        await page.locator('[data-lp="input"]').fill('未发送草稿');
+        await page.evaluate(()=>{
+            const input=document.querySelector('[data-lp="chatImageInput"]');
+            // Synthetic click exercises picker tracking without opening OS UI.
+            input.addEventListener('click',e=>e.preventDefault(),{once:true});
+            input.click();input.dispatchEvent(new Event('cancel',{bubbles:true}));
+            document.querySelector('.lp-panel').dispatchEvent(new Event('cancel',{cancelable:true}));
+        });
+        assert.equal(await page.locator('dialog').evaluate(node=>node.open),true);
+        assert.equal(await page.locator('[data-lp="input"]').inputValue(),'未发送草稿');
+        assert.equal(await page.locator('#st-little-phone-root').getAttribute('data-screen'),'chat');
+        await page.locator('[data-chat-tool="emoji"]').click();
+        await page.locator('[data-lp="emojiPanel"] [data-sticker-action="send"]').click();
+        await page.waitForFunction(()=>ctx.chatMetadata.st_little_phone_v1.messages.filter(m=>m.sticker).length===2);
         assert.equal(await page.evaluate(() => ctx.chatMetadata.st_little_phone_v1.messages[0].text), '保留旧聊天');
         await page.evaluate(() => boot.onDisable());
         assert.equal(await page.locator('#st-little-phone-root, #gujiguji-wand-entry, #gujiguji-floating-launcher').count(), 0);
