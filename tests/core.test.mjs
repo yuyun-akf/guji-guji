@@ -11,8 +11,8 @@ const raw = readFileSync(resolve(testRoot, '../index.js'), 'utf8');
 const source = raw.replaceAll('export function ', 'function ').replace(/\bbindReady\(\);\s*$/, '');
 const sandbox = { console, Date, structuredClone, window: {} };
 vm.createContext(sandbox);
-vm.runInContext(`${source}\nglobalThis.helpers = {newData, readData, writeData, friendshipState, rememberFriendship, buildPrompt, createSystemPrompt, redactDiagnostic, makeUI, composePhonePrompt, availablePresetEntries};`, sandbox);
-const { newData, readData, writeData, friendshipState, rememberFriendship, buildPrompt, createSystemPrompt, redactDiagnostic, makeUI, composePhonePrompt, availablePresetEntries } = sandbox.helpers;
+vm.runInContext(`${source}\nglobalThis.helpers = {newData, readData, writeData, friendshipState, rememberFriendship, buildPrompt, createSystemPrompt, redactDiagnostic, makeUI, composePhonePrompt, availablePresetEntries, worldEntryTriggered, readExternalMemory, mainlineHistory, syncMainlinePrompt};`, sandbox);
+const { newData, readData, writeData, friendshipState, rememberFriendship, buildPrompt, createSystemPrompt, redactDiagnostic, makeUI, composePhonePrompt, availablePresetEntries, worldEntryTriggered, readExternalMemory, mainlineHistory, syncMainlinePrompt } = sandbox.helpers;
 
 test('new story starts without contact details or a friendship', () => {
     const data = newData();
@@ -371,10 +371,10 @@ test('modal entirely outside the viewport produces a visible diagnostic error', 
 test('diagnostic bootstrap is the manifest entry and exposes lifecycle hooks', () => {
     const manifest = JSON.parse(readFileSync(resolve(testRoot, '../manifest.json'), 'utf8'));
     const bootstrap = readFileSync(resolve(testRoot, '../bootstrap.js'), 'utf8');
-    assert.equal(manifest.version, '0.8.2');
+    assert.equal(manifest.version, '0.8.3');
     assert.equal(manifest.minimum_client_version, '1.18.0');
     assert.equal(manifest.js, 'bootstrap.js');
-    assert.match(bootstrap, /import\('\.\/index\.js\?v=0\.7\.1'\)/);
+    assert.match(bootstrap, /import\('\.\/index\.js\?v=0\.8\.3'\)/);
     assert.match(bootstrap, /export function onActivate\(/);
     assert.match(bootstrap, /export function onEnable\(/);
     assert.match(bootstrap, /export function onDisable\(/);
@@ -404,7 +404,7 @@ test('phone preset entry selection only reads requested prompt content', async (
     assert.equal(prompt.includes('NOT_THIS'),false);
 });
 test('phone worldbook selection reads individual entries without changing source data', async () => {
-    const book = {entries:{1:{uid:1,content:'ONE'},2:{uid:2,content:'TWO'}}};
+    const book = {entries:{1:{uid:1,content:'ONE',constant:true},2:{uid:2,content:'TWO',constant:true}}};
     const data = newData();
     data.config = {worldEntries:[{book:'Book',id:'2'}]};
     const ctx = {loadWorldInfo:async()=>book};
@@ -412,6 +412,83 @@ test('phone worldbook selection reads individual entries without changing source
     assert.ok(text.includes('TWO'));
     assert.equal(text.includes('ONE'),false);
     assert.equal(book.entries[1].content,'ONE');
+});
+test('multi-worldbook selection injects only triggered entries and respects constant/disabled/secondary keys', async () => {
+    const bookA={entries:{
+        1:{uid:1,key:['雨'],content:'雨天设定'},
+        2:{uid:2,key:['海盗'],content:'海盗设定'},
+        3:{uid:3,constant:true,content:'常驻设定'}
+    }};
+    const bookB={entries:{
+        4:{uid:4,key:['雨'],keysecondary:['清晨'],selective:true,selectiveLogic:0,content:'清晨下雨'},
+        5:{uid:5,constant:true,disable:true,content:'禁止插入'}
+    }};
+    const data=newData();data.messages=[{from:'user',text:'雨天好冷'}];
+    data.config={worldEntries:[{book:'A',id:'1'},{book:'A',id:'2'},{book:'A',id:'3'},
+        {book:'B',id:'4'},{book:'B',id:'5'}]};
+    const ctx={loadWorldInfo:async name=>name==='A'?bookA:bookB};
+    const result=await composePhonePrompt(ctx,{name:'C'},data);
+    assert.ok(result.includes('雨天设定') && result.includes('常驻设定'));
+    for(const ignored of ['海盗设定','清晨下雨','禁止插入'])assert.ok(!result.includes(ignored));
+    assert.equal(bookA.entries[1].content,'雨天设定');
+    assert.ok(worldEntryTriggered({key:['/(?:雨|雪)/i'],content:'x'},'下雪啦'));
+});
+test('current persona joins the phone character prompt and does not become an NPC action', async () => {
+    const ctx={name1:'阿梨',powerUserSettings:{persona_description:'喜欢紫色的成年人'}};
+    const prompt=await composePhonePrompt(ctx,{name:'角色甲',data:{personality:'嘴硬但关心人',mes_example:'别傻了。'}},newData());
+    assert.ok(prompt.includes('阿梨') && prompt.includes('喜欢紫色的成年人'));
+    assert.ok(prompt.includes('嘴硬但关心人') && prompt.includes('别傻了。'));
+    assert.ok(prompt.includes('不能凭人设臆断 user'));
+});
+test('Gaga memory is read-only; in-past timeline blocks all external memory', () => {
+    const ctx={chatMetadata:{st_little_phone_v1:newData()},
+        extensionPrompts:{'gaga-dog-summary:000100:memory':{value:'已经发生的正文记忆'},
+            'gaga-dog-summary:000200:director':{value:'禁止混入的导演规则'}}};
+    const data=newData();
+    const found=readExternalMemory(ctx,data);
+    assert.equal(found.source,'嘎嘎小狗 · 当前正文记忆');
+    assert.ok(found.text.includes('已经发生的正文记忆'));
+    assert.ok(!found.text.includes('导演规则'));
+    ctx.chatMetadata.st_little_phone_v1.socialConfig={phoneInPast:true};
+    assert.equal(readExternalMemory(ctx,data).text,'');
+    assert.equal(ctx.extensionPrompts['gaga-dog-summary:000100:memory'].value,'已经发生的正文记忆');
+});
+test('BaiBai public API reads only ordinary history and public details, without internal affinity estimates', () => {
+    sandbox.window.STBaiBaiBook={apiVersion:1,
+        getSnapshot:()=>({chat:{characterName:'角色甲'},coverage:{complete:true},
+            state:{location:'屋顶'},npcs:[{name:'乙',affinityInner:2}],
+            lifeDetails:[{subject:'user',text:'喜欢热牛奶'}]}),
+        getInjectedHistory:()=>({text:'角色甲昨天捡到一枚钥匙'})};
+    const ctx={characters:[{name:'角色甲'}],characterId:0,chatMetadata:{st_little_phone_v1:newData()}};
+    const data=newData();data.config={memorySource:'baibai'};
+    try {
+        const found=readExternalMemory(ctx,data);
+        assert.ok(found.text.includes('昨天捡到一枚钥匙'));
+        assert.ok(found.text.includes('喜欢热牛奶'));
+        assert.ok(!found.text.includes('affinityInner'));
+        assert.equal(found.source,'柏宝书 · 只读公开接口');
+    } finally {delete sandbox.window.STBaiBaiBook;}
+});
+test('phone history enters mainline only when opted in and can be cleared without editing original chat', () => {
+    const saved={...newData(),messages:[{from:'user',text:'晚上好',storyTime:'2026-01-01T20:00'}]};
+    const prompts=[];
+    const ctx={chatMetadata:{st_little_phone_v1:saved},characterId:0,characters:[{name:'C'}],
+        setExtensionPrompt:(...args)=>prompts.push(args),extension_prompt_types:{IN_CHAT:1}};
+    assert.equal(syncMainlinePrompt(ctx),true);
+    assert.equal(prompts.at(-1)[1],'');
+    saved.config={phoneToMainline:true};
+    syncMainlinePrompt(ctx);
+    assert.match(prompts.at(-1)[1],/晚上好/);
+    assert.equal(ctx.chatMetadata.st_little_phone_v1.messages[0].text,'晚上好');
+    saved.config.phoneToMainline=false;
+    syncMainlinePrompt(ctx);
+    assert.equal(prompts.at(-1)[1],'');
+    assert.ok(mainlineHistory(saved).includes('晚上好'));
+    const other={...newData(),config:{phoneToMainline:true},messages:[{from:'user',text:'另一份独立聊天'}]};
+    ctx.chatMetadata={st_little_phone_v1:other};
+    syncMainlinePrompt(ctx);
+    assert.ok(prompts.at(-1)[1].includes('另一份独立聊天'));
+    assert.ok(!prompts.at(-1)[1].includes('晚上好'));
 });
 test('unavailable selected entry is a visible failure not silently ignored', async () => {
     const data = newData();

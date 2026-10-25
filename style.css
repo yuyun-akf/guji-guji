@@ -666,6 +666,13 @@
   height: 17px;
   accent-color: #927bbe;
 }
+#st-little-phone-root .lp-settings-hint {
+  margin: 2px 0 10px;
+  padding: 0 4px;
+  color: var(--lp-muted, #766d7e);
+  font-size: 11px;
+  line-height: 1.6;
+}
 
 #gujiguji-wand-entry .gujiguji-wand-button {
   width: 100%;
