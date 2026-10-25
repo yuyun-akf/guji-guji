@@ -1232,3 +1232,79 @@
   font-size:12px;
 }
 #st-little-phone-root .lp-options-body button.lp-danger-action {color:#b24e59;}
+
+/* v0.6.0: story-local NPC contact creation and editable remarks */
+#st-little-phone-root .lp-npc-editor {
+  display:flex;
+  flex-direction:column;
+  align-items:stretch;
+  gap:14px;
+  padding:18px 14px;
+  background:#f7f5f9;
+}
+#st-little-phone-root .lp-npc-editor h2 {
+  font-size:17px;
+  font-weight:650;
+  margin:0 0 4px;
+}
+#st-little-phone-root .lp-npc-editor label,
+#st-little-phone-root .lp-profile-remark label {
+  display:flex;
+  flex-direction:column;
+  font-size:13px;
+  line-height:1.5;
+  gap:6px;
+  min-width:0;
+}
+#st-little-phone-root .lp-npc-editor input,
+#st-little-phone-root .lp-npc-editor textarea,
+#st-little-phone-root .lp-profile-remark input {
+  width:100%;
+  min-height:44px;
+  border:1px solid #e3dce9;
+  border-radius:11px;
+  background:white;
+  padding:10px 12px;
+  color:#363042;
+  font:inherit;
+  font-size:14px;
+}
+#st-little-phone-root .lp-npc-editor textarea {
+  min-height:128px;
+  resize:vertical;
+  white-space:pre-wrap;
+}
+#st-little-phone-root .lp-npc-editor button,
+#st-little-phone-root .lp-profile-remark button {
+  min-height:43px;
+  border:0;
+  border-radius:10px;
+  padding:10px 14px;
+  background:#977fbd;
+  color:white;
+  font:inherit;
+  cursor:pointer;
+}
+#st-little-phone-root .lp-npc-note {
+  font-size:12px;
+  color:#82798c;
+  line-height:1.5;
+  margin:0;
+}
+#st-little-phone-root .lp-profile-remark {
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  background:white;
+  border-radius:13px;
+  padding:13px;
+}
+#st-little-phone-root .lp-delete-npc {
+  flex:0 0 auto;
+  border:1px solid #f1cdd0;
+  background:white;
+  color:#b54b57;
+  min-height:42px;
+  border-radius:10px;
+  font:inherit;
+}
