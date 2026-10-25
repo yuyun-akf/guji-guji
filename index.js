@@ -1258,7 +1258,7 @@ function renderMoments(ctx) {
         const body=document.createElement('p');body.textContent=post.text;
         const img=typeof post.image==='string'&&/^data:image\/(png|jpeg|webp);base64,/.test(post.image)?document.createElement('img'):null;
         if(img){img.className='lp-moment-photo';img.src=post.image;img.alt='朋友圈照片';}
-        const date=document.createElement('small');date.textContent=String(post.createdAt||'').replace('T',' ').slice(0,16);
+        const date=document.createElement('small');date.textContent=String(post.storyTime||post.createdAt||'').replace('T',' ').slice(0,16);
         item.append(author,body);if(img)item.append(img);item.append(date);nodes.momentsFeed.append(item);
     }
     if(!posts.length) nodes.momentsFeed.textContent='还没有动态';
@@ -1272,7 +1272,7 @@ async function postMoment() {
     if(!value&&!momentImageDraft)return;
     const data=structuredClone(readRootData(ctx));
     data.moments=Array.isArray(data.moments)?data.moments:[];
-    data.moments.push({id:'moment-'+Date.now(),author:ctx?.name1||'user',text:value.slice(0,1000),image:momentImageDraft||'',createdAt:new Date().toISOString()});
+    data.moments.push({id:'moment-'+Date.now(),author:ctx?.name1||'user',text:value.slice(0,1000),image:momentImageDraft||'',storyTime:data.storyTime,createdAt:new Date().toISOString()});
     data.moments=data.moments.slice(-100);
     try {
         await writeData(ctx,{...data,__contactId:PRIMARY_CONTACT_ID});
