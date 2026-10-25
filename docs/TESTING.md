@@ -1,5 +1,17 @@
 # 回归记录
 
+## v0.8.5 — 2026-10-25
+
+执行 `node --test tests/core.test.mjs tests/startup.test.mjs tests/social.test.mjs`：**82/82 通过**；`node --check index.js`、`node --check bootstrap.js`、`git diff --check` 通过。
+
+- 旧联系人及私聊在点赞/取消、评论/回复、转发、增删角色联系方式连线后保持原样；旧朋友圈可照常读取。
+- 角色之间联系方式默认不存在，两个角色同时认识 user 不是互相认识的凭据。只有手工确认的联系人对可以在对方动态互动；任一角色失去 user 好友状态会即时阻止互动。
+- 角色只能读到自己有资格看到的动态评论；非共同好友评论不送给模型。未建立直接连线时，不为尝试互动的角色调用模型。
+- 角色自主发布朋友圈可在主页和发现产生未读计数与弹窗入口；阅读后清除。模型互动默认关闭，手动触发有调用确认。
+- UI 模板包含移除联系人数量后的主页、新的朋友圈入口、角色间联系方式及自动互动设置。
+
+以上主要为 Node VM / 受控 DOM 回归。**尚需真实酒馆 1.18/1.19、Android/Termux/WebView 测试**：浏览器原生弹窗可点击性、评论输入滚动、媒体图像保留、前后台提醒层级、实际模型是否遵守互动权限与回复格式。浏览器测试此前缺少 Playwright Chromium 程序，不能声明通过。
+
 ## v0.8.4 — 2026-10-25
 
 执行 `node --test tests/core.test.mjs tests/startup.test.mjs tests/social.test.mjs`：**75/75 通过**。`node --check index.js`、`node --check bootstrap.js` 与 `git diff --check` 通过（代码静态测试）。
