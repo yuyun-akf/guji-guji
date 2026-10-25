@@ -20,8 +20,8 @@
   box-sizing: border-box;
 }
 
-#st-little-phone-root .lp-launcher {
-  position: absolute;
+#gujiguji-floating-launcher.lp-launcher {
+  position: fixed;
   right: max(14px, env(safe-area-inset-right));
   bottom: max(20px, calc(env(safe-area-inset-bottom) + 15px));
   width: 50px;
@@ -36,9 +36,12 @@
   font-size: 27px;
   display: grid;
   place-items: center;
+  z-index: 2147483200;
 }
 
-#st-little-phone-root .lp-launcher:focus-visible,
+#gujiguji-floating-launcher.lp-launcher[hidden] { display: none !important; }
+
+#gujiguji-floating-launcher.lp-launcher:focus-visible,
 #st-little-phone-root button:focus-visible,
 #st-little-phone-root input:focus-visible,
 #st-little-phone-root textarea:focus-visible {
@@ -740,6 +743,13 @@
   pointer-events: auto;
 }
 #gujiguji-floating-launcher[hidden] { display: none !important; }
+#gujiguji-extension-settings { margin: 7px 0; padding: 8px 11px; border: 1px solid var(--SmartThemeBorderColor, #bcb0cb); border-radius: 9px; }
+#gujiguji-extension-settings > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+#gujiguji-extension-settings .gujiguji-host-controls { display: grid; gap: 11px; padding: 12px 2px 3px; }
+#gujiguji-extension-settings .gujiguji-host-controls button { min-height: 36px; border-radius: 8px; padding: 7px 12px; border: 1px solid #9a7eae; background: #eee3f6; color: #604878; cursor: pointer; }
+#gujiguji-extension-settings .gujiguji-host-controls label { display: flex; align-items: center; gap: 8px; }
+#gujiguji-extension-settings .gujiguji-host-controls small { opacity: .76; line-height: 1.5; }
+#st-little-phone-root .lp-sticker-more { grid-column: 1 / -1; width: 100%; padding: 9px; border: 1px solid #ded0ea; border-radius: 9px; background: #f7f1fb; color: #6b5384; cursor: pointer; }
 #st-little-phone-root .lp-home {
   background-image: var(--lp-wallpaper), linear-gradient(160deg,#faf2ff,#f5f2fc 50%,#fffafd);
   background-position: center;

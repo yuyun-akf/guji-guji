@@ -1,5 +1,12 @@
 # 回归记录
 
+## v0.8.8 — 2026-10-26
+
+- `node --test tests/core.test.mjs tests/startup.test.mjs tests/social.test.mjs`：**92/92 通过**；`node --check index.js`、`node --check bootstrap.js`、`git diff --check` 通过。
+- 自动化：玩家选图写入 user 消息，角色后续回复独立；双方表情包气泡仅显示图片，不泄露内部说明；100张一次保存，超过上限安全跳过；带 deflate 压缩的 ZIP + 中文 CSV 用途目录可正确导入原图、内容名称、使用场景。
+- 扩展设置列表只添加一个折叠入口，按钮打开手机、勾选悬浮状态会更新保存数据和真实按钮 CSS 显隐；禁用后清理入口。历史回归与旧聊天不变。
+- **待真机测试**：Android 长时间批量导入内存、ZIP 原生 `DecompressionStream('deflate-raw')` 支持、扩展设置宿主 DOM 在不同版本中的位置及移动端悬浮按钮是否受第三方主题覆盖；不要将 Node 虚拟 DOM 测试等同真实浏览器通过。
+
 ## v0.8.7 — 2026-10-25
 
 - `node --test tests/core.test.mjs tests/startup.test.mjs tests/social.test.mjs`：**87/87 通过**；`node --check index.js`、`node --check bootstrap.js`、`git diff --check` 通过。
