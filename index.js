@@ -397,7 +397,7 @@ function nextActivityTime(config,now=Date.now(),random=Math.random) {
 }
 function knownOldFriend(text) {
     const t=String(text||'').slice(0,12000);
-    return /(从大[一二三四]|多年|好几年的|认识多年|认识很久|从小|青梅竹马|十几年|两年多|三年多|已婚|结婚多年|夫妻|闺蜜|发小|老朋友|多年好友|室友多年|大学以来|小学起|高中起)/.test(t)&&/(室友|朋友|闺蜜|好友|发小|青梅竹马|夫妻|伴侣|微信|联系|认识|结婚)/.test(t) ||
+    return (/大[二三四]/.test(t)&&/室友|闺蜜|多年好友/.test(t)&&!/刚认识|新室友|刚成为室友/.test(t)) || /(从大[一二三四]|多年|好几年的|认识多年|认识很久|从小|青梅竹马|十几年|两年多|三年多|已婚|结婚多年|夫妻|闺蜜|发小|老朋友|多年好友|室友多年|大学以来|小学起|高中起)/.test(t)&&/(室友|朋友|闺蜜|好友|发小|青梅竹马|夫妻|伴侣|微信|联系|认识|结婚)/.test(t) ||
         /(?:已是好友|互加(?:了)?微信|双方微信好友|微信好友多年|早已交换联系方式)/.test(t);
 }
 function initialFriendState(ctx,id=PRIMARY_CONTACT_ID) {
@@ -2778,6 +2778,7 @@ function mount() {
         chatChangedHandler = () => {
             activeContactId=PRIMARY_CONTACT_ID;
             npcCandidates=[];npcScanSession=null;
+            momentImageDraft='';nodes?.momentsPreview?.replaceChildren();
             statusText = '';
             statusKind = 'info';
             render();
