@@ -1277,7 +1277,7 @@ async function postMoment() {
     try {
         await writeData(ctx,{...data,__contactId:PRIMARY_CONTACT_ID});
         if(!sameSession(session))return;
-        nodes.momentsText.value='';momentImageDraft='';nodes.momentsPreview.replaceChildren();
+        nodes.momentsText.value='';momentImageDraft='';nodes?.momentsPreview?.replaceChildren();
         renderMoments(ctx);
     }catch(e){setStatus(recordError('发布动态',e),'error');}
 }
