@@ -577,6 +577,8 @@ function setStatus(message, kind = 'info') {
         nodes.chatError.hidden = kind !== 'error' || !statusText;
         nodes.chatError.textContent = kind === 'error' ? statusText : '';
     }
+    if (nodes?.npcStatus) { nodes.npcStatus.textContent=statusText; nodes.npcStatus.dataset.kind=kind; }
+    if (nodes?.profileStatus) { nodes.profileStatus.textContent=statusText; nodes.profileStatus.dataset.kind=kind; }
     if (nodes?.settingsStatus) {
         nodes.settingsStatus.textContent = statusText;
         nodes.settingsStatus.dataset.kind = kind;
@@ -1495,6 +1497,7 @@ function makeUI() {
             <label>与 user 的关系<input data-lp="npcRelation" type="text" maxlength="180" placeholder="同学、家人、朋友等（可选）" /></label>
             <label>人物设定<textarea data-lp="npcDescription" maxlength="3500" rows="6" placeholder="填写或粘贴角色卡、世界书里的 NPC 设定"></textarea></label>
             <button type="button" data-lp="addNpcSave">创建联系人</button>
+            <div class="lp-inline-status" data-lp="npcStatus" role="status" aria-live="polite"></div>
             <p class="lp-npc-note">当前为手动创建；不会跨角色卡读取人物。自动识别世界书 NPC 将在后续版本单独开发。</p>
           </div>
         </section>
@@ -1521,6 +1524,7 @@ function makeUI() {
             <button type="button" data-lp="friendSave">保存关系设定</button>
           </details>
           <button type="button" class="lp-delete-npc" data-lp="deleteNpc" hidden>删除此 NPC 联系人</button>
+          <div class="lp-inline-status" data-lp="profileStatus" role="status" aria-live="polite"></div>
           <div class="lp-profile-upload">
             <label>角色头像（默认读取酒馆角色）<input type="file" accept="image/*" data-lp="avatarCharFile" /></label>
             <button type="button" data-lp="resetCharAvatar">恢复角色原头像</button>
@@ -1641,7 +1645,7 @@ function mount() {
     document.body.append(floating);
     nodes = Object.fromEntries(['title', 'subtitle', 'back', 'close', 'time',
         'homeTime', 'homeCharacter', 'homeMessageCount', 'homeLogCount',
-        'friendLabel', 'friendActions','profileAvatar','profileName','profileDescription','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
+        'friendLabel', 'friendActions','profileAvatar','profileName','profileDescription','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','avatarUserFile','resetCharAvatar','resetUserAvatar',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
         'presetSource','presetEntries','worldSource','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themeIcons',
