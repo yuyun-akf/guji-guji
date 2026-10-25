@@ -364,7 +364,7 @@ function readRootData(ctx) {
     const base=(!value||value.version!==1||!Array.isArray(value.messages))?newData():value;
     return {
         ...base,
-        friendship:FRIEND_STATES.has(base.friendship?.state)?base.friendship:{state:'stranger'},
+        friendship:FRIEND_STATES.has(base.friendship?.state)?base.friendship:(value?{state:'friends'}:{state:'stranger'}),
         contacts:Array.isArray(base.contacts)?base.contacts.filter(c=>c&&typeof c.id==='string'&&c.id.startsWith('npc:')):[],
         conversations:base.conversations&&typeof base.conversations==='object'&&!Array.isArray(base.conversations)?base.conversations:{}
     };
