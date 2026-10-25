@@ -93,23 +93,23 @@ test('player and character exchange stickers through normal host generation',asy
 
 test('scan reads only current char/persona and explicitly selected book; excludes self and writing rules',async()=>{
     const requested=[];
-    const ctx={name1:'林小雨',characterId:0,characters:[{name:'宁肆锦',data:{extensions:{world:'角色书'}}}],
-        powerUserSettings:{persona_description:'姓名：林小雨\n别名：小雨\n宝儿是user的朋友，认识很多年。',persona_description_lorebook:'人设书'},
+    const ctx={name1:'玩家甲',characterId:0,characters:[{name:'角色甲',data:{extensions:{world:'角色书'}}}],
+        powerUserSettings:{persona_description:'姓名：玩家甲\n别名：小雨\n朋友丁是user的朋友，认识很多年。',persona_description_lorebook:'人设书'},
         chatMetadata:{st_little_phone_v1:{version:1,messages:[],config:{worldEntries:[{book:'文风书'}]}}},
         getWorldInfoNames(){throw new Error('must not enumerate');},
         loadWorldInfo:async name=>{requested.push(name);return {entries:{
-            a:{comment:'林小雨',content:'姓名：林小雨\n性格：活泼'},
+            a:{comment:'玩家甲',content:'姓名：玩家甲\n性格：活泼'},
             b:{comment:'小雨',content:'姓名：小雨\n职业：学生'},
             c:{comment:'清新文风',content:'姓名：清新文风\n性格：自然'},
             d:{comment:'清新自然',content:'写作风格：清新自然，重视外貌与性格描写。'},
             e:{comment:'陈老师',content:'姓名：陈老师\n职业：老师',disable:true},
             f:{comment:'王同学',content:'姓名：王同学\n职业：学生',enabled:false},
-            g:{comment:'宝儿',content:'宝儿是user的朋友，认识很多年。'}
+            g:{comment:'朋友丁',content:'朋友丁是user的朋友，认识很多年。'}
         }};}};
     const api=runtime(ctx).api,before=JSON.stringify(ctx.chatMetadata);
     const result=await api.scanNpcSources(ctx);
     assert.deepEqual(requested,['角色书','人设书']);
-    assert.deepEqual(Array.from(result.candidates,c=>c.name),['宝儿']);
+    assert.deepEqual(Array.from(result.candidates,c=>c.name),['朋友丁']);
     assert.equal(JSON.stringify(ctx.chatMetadata),before);
     requested.length=0;
     await api.scanNpcSources(ctx,'额外人物书');
@@ -117,7 +117,7 @@ test('scan reads only current char/persona and explicitly selected book; exclude
 });
 
 test('current persona changes follow host settings, without using another mask',()=>{
-    const ctx={name1:'林小雨',powerUserSettings:{persona_description:'现在的人设',personas:{a:'林小雨',b:'别人'},persona_descriptions:{a:{description:'现在的人设'},b:{description:'别人的设定'}}}};
+    const ctx={name1:'玩家甲',powerUserSettings:{persona_description:'现在的人设',personas:{a:'玩家甲',b:'别人'},persona_descriptions:{a:{description:'现在的人设'},b:{description:'别人的设定'}}}};
     const api=runtime(ctx).api;
     assert.equal(api.currentPersona(ctx).avatar,'/User Avatars/a');
     assert.equal(api.currentPersona(ctx).description,'现在的人设');
@@ -127,13 +127,13 @@ test('current persona changes follow host settings, without using another mask',
 });
 
 test('posting from Me uses shared per-story moments and keeps old primary/NPC messages',async()=>{
-    const ctx={name1:'林小雨',characterId:0,chatId:'A',characters:[{name:'朋友'}],chatMetadata:{},saveMetadata:async()=>{}};
+    const ctx={name1:'玩家甲',characterId:0,chatId:'A',characters:[{name:'朋友'}],chatMetadata:{},saveMetadata:async()=>{}};
     const box=runtime(ctx);
-    ctx.chatMetadata.st_little_phone_v1={...box.api.newData(),messages:[{text:'旧主聊天'}],contacts:[{id:'npc:a',name:'宝儿'}],conversations:{'npc:a':{messages:[{text:'旧NPC聊天'}],friendship:{state:'friends'}}}};
+    ctx.chatMetadata.st_little_phone_v1={...box.api.newData(),messages:[{text:'旧主聊天'}],contacts:[{id:'npc:a',name:'朋友丁'}],conversations:{'npc:a':{messages:[{text:'旧NPC聊天'}],friendship:{state:'friends'}}}};
     vm.runInContext(`mounted=true;activeContactId='npc:a';nodes={momentsText:{value:'今天真开心'}};globalThis.rendered=[];renderMoments=ctx=>rendered.push(ctx.chatMetadata.st_little_phone_v1.moments.at(-1).text);`,box);
     await box.api.postMoment();
     const data=ctx.chatMetadata.st_little_phone_v1;
-    assert.equal(data.moments[0].author,'林小雨');assert.equal(box.rendered[0],'今天真开心');
+    assert.equal(data.moments[0].author,'玩家甲');assert.equal(box.rendered[0],'今天真开心');
     assert.equal(data.messages[0].text,'旧主聊天');assert.equal(data.conversations['npc:a'].messages[0].text,'旧NPC聊天');
     assert.equal(data.conversations['npc:a'].moments,undefined);
 });
@@ -175,27 +175,27 @@ test('social activity intervals default off, fixed exactly, random within reques
     const maximum=api.nextActivityTime({mode:'random',days:3},1000,()=>0.999999);
     assert.ok(minimum>=1000+15*60000);
     assert.ok(maximum<=1000+3*86400000);
-    assert.ok(api.knownOldFriend('许明遥与user从大一至大三一直是室友'));
+    assert.ok(api.knownOldFriend('室友戊与user从大一至大三一直是室友'));
     assert.ok(!api.knownOldFriend('今天刚认识的同学'));
 });
 test('mainline friend applications match their named sender, not unrelated NPCs',()=>{
     const box=runtime();
     const classify=vm.runInContext('classifyStoryFriendEvent',box);
-    const content='许明遥向你发送了好友申请。';
-    assert.equal(classify(content,'宁肆锦',true),null);
-    assert.equal(classify(content,'许明遥',false)?.state,'incoming');
-    assert.equal(classify('宁肆锦向你发送了好友申请。','宁肆锦',true)?.state,'incoming');
-    assert.equal(classify('宁肆锦和你互相加了微信。','宁肆锦',true)?.state,'friends');
-    assert.equal(classify('宁肆锦还没申请添加你为好友。','宁肆锦',true),null);
+    const content='室友戊向你发送了好友申请。';
+    assert.equal(classify(content,'角色甲',true),null);
+    assert.equal(classify(content,'室友戊',false)?.state,'incoming');
+    assert.equal(classify('角色甲向你发送了好友申请。','角色甲',true)?.state,'incoming');
+    assert.equal(classify('角色甲和你互相加了微信。','角色甲',true)?.state,'friends');
+    assert.equal(classify('角色甲还没申请添加你为好友。','角色甲',true),null);
 });
 test('existing story chats and NPC messages remain intact after story relation sync',async()=>{
     const ctx={
         characterId:0,chatId:'saveA',
-        characters:[{name:'宁肆锦',data:{description:'现在是大三'}}],
-        chat:[{mes:'许明遥向你发送了好友申请。'}],
+        characters:[{name:'角色甲',data:{description:'现在是大三'}}],
+        chat:[{mes:'室友戊向你发送了好友申请。'}],
         chatMetadata:{st_little_phone_v1:{version:1,messages:[{id:'main',from:'user',text:'旧私聊'}],
            friendship:{state:'stranger'},storyTime:'2026-01-18T17:41',
-           contacts:[{id:'npc:room',name:'许明遥',relationship:'从大一到大三都是室友',description:'user的室友多年'}],
+           contacts:[{id:'npc:room',name:'室友戊',relationship:'从大一到大三都是室友',description:'user的室友多年'}],
            conversations:{'npc:room':{messages:[{id:'npcold',from:'user',text:'NPC旧私聊'}],friendship:{state:'stranger'}}}}},
         async saveMetadata(){}
     };
@@ -220,8 +220,8 @@ test('moment composer and autonomous UI are present without external background 
 test('model-driven incoming friend request is opt-in and never approves itself',async()=>{
   let calls=0;
   const ctx={
-    characterId:0,chatId:'current',characters:[{name:'宁肆锦',data:{description:'性格傲娇'}}],
-    chat:[{mes:'宁肆锦和user交换了微信。'}],
+    characterId:0,chatId:'current',characters:[{name:'角色甲',data:{description:'性格傲娇'}}],
+    chat:[{mes:'角色甲和user交换了微信。'}],
     chatMetadata:{st_little_phone_v1:{version:1,storyTime:'2026-10-25T18:00',
       messages:[],friendship:{state:'stranger'},contacts:[],conversations:{},
       socialConfig:{relationSync:true,phoneInPast:false,characterRequests:true,
