@@ -40,7 +40,7 @@ const diagnostics = [];
 let configWriteQueue = Promise.resolve();
 const transientApiKeys = new Map();
 const APP_ICONS = {chat:'💬',diagnostics:'🛠️',settings:'⚙️',calendar:'📅',theme:'🎨',album:'🖼️',shopping:'🛍️',takeout:'🥡'};
-const SCREENS = new Set(['home', 'chat', 'settings', 'diagnostics', 'calendar', 'theme', 'presetPicker', 'worldPicker']);
+const SCREENS = new Set(['home', 'chat', 'chatList', 'contacts', 'requests', 'profile', 'chatOptions', 'settings', 'diagnostics', 'calendar', 'theme', 'presetPicker', 'worldPicker']);
 
 function context() {
     try {
@@ -512,11 +512,15 @@ function setStatus(message, kind = 'info') {
         nodes.status.textContent = statusText;
         nodes.status.dataset.kind = kind;
     }
+    if (nodes?.chatError) {
+        nodes.chatError.hidden = kind !== 'error' || !statusText;
+        nodes.chatError.textContent = kind === 'error' ? statusText : '';
+    }
     if (nodes?.settingsStatus) {
         nodes.settingsStatus.textContent = statusText;
         nodes.settingsStatus.dataset.kind = kind;
     }
-    if (nodes && !busy) nodes.diagnosticState.textContent = statusText || '空闲：当前没有正在运行的请求。';
+    if (nodes && !busy) nodes.diagnosticState.textContent = statusText || '空闲';
 }
 
 function redactDiagnostic(text) {
@@ -580,8 +584,9 @@ function setScreen(screen) {
         section.hidden = section.dataset.lpScreen !== screen;
     }
     nodes.back.hidden = screen === 'home';
-    const titles = { home: '咕叽咕机', chat: '咕叽聊', settings: '设置', diagnostics: '运行日志', calendar: '日历', theme: '主题', presetPicker:'选择预设条目', worldPicker:'选择世界书条目' };
-    nodes.title.textContent = titles[screen];
+    const titles = { home:'咕叽咕机',chat:'',chatList:'咕叽聊',contacts:'通讯录',requests:'新的朋友',profile:'联系人资料',chatOptions:'聊天设置',settings:'设置',diagnostics:'运行日志',calendar:'日历',theme:'主题',presetPicker:'选择预设条目',worldPicker:'选择世界书条目' };
+    nodes.title.textContent = screen === 'chat' ? getCharacterName(selectedCharacter(context())) : titles[screen];
+    nodes.chatMenu.hidden = screen !== 'chat';
     if (screen === 'diagnostics') renderDiagnostics();
     if (screen === 'settings' && screen !== previous) { loadPhoneApiUI(); loadPhoneMessageStyle(); void populateConfigLists(); }
     if (screen === 'theme') applyTheme();
@@ -599,10 +604,7 @@ function updateBusy() {
     nodes.send.disabled = busy || !isFriend;
     nodes.input.disabled = busy || !isFriend;
     nodes.time.disabled = busy || !ready;
-    nodes.send.textContent = busy ? '等待回复…' : '发送并生成';
-    nodes.activity.hidden = !busy;
-    const elapsed = busy ? `（已等待 ${Math.floor((Date.now() - busyStartedAt) / 1000)} 秒）` : '';
-    nodes.activity.textContent = `${busyKind === 'friend' ? '正在等待角色处理好友申请…' : '对方正在输入…'}${elapsed}`;
+    nodes.send.textContent = '发送';
     nodes.diagnosticState.textContent = busy
         ? `${busyKind === 'friend' ? '好友申请处理中' : '正在请求模型回复'} · ${Math.floor((Date.now() - busyStartedAt) / 1000)} 秒`
         : statusText || '空闲：当前没有正在运行的请求。';
@@ -712,7 +714,7 @@ function render() {
     const char = selectedCharacter(ctx);
     const data = char ? readData(ctx) : null;
 
-    nodes.name.textContent = char ? getCharacterName(char) : '请先选择角色';
+    nodes.profileName.textContent = char ? getCharacterName(char) : '请先选择角色';
     nodes.subtitle.textContent = char ? '故事中的小手机 · 独立聊天' : '请先选择单人角色存档';
     nodes.homeCharacter.textContent = char ? `与 ${getCharacterName(char)} 的故事` : '等待进入角色存档';
     nodes.homeTime.textContent = (data?.storyTime || localDateTime()).replace('T', ' ');
@@ -1051,6 +1053,7 @@ function makeUI() {
           <button type="button" class="lp-back" data-lp="back" aria-label="返回手机桌面" hidden>‹</button>
           <div class="lp-heading"><div class="lp-title" data-lp="title">咕叽咕机</div>
                <div class="lp-subtitle" data-lp="subtitle">故事中的小手机</div></div>
+          <button type="button" class="lp-header-menu" data-lp="chatMenu" aria-label="聊天设置" hidden>···</button>
           <button type="button" class="lp-close" data-lp="close" aria-label="关闭咕叽咕机">×</button>
         </header>
         <section class="lp-screen lp-home" data-lp-screen="home" aria-label="手机桌面">
@@ -1061,7 +1064,7 @@ function makeUI() {
           </div>
           <div class="lp-home-summary" data-lp="homeMessageCount">0 条聊天记录</div>
           <div class="lp-app-grid" aria-label="小手机应用">
-            <button type="button" class="lp-app-tile" data-lp-open="chat"><span class="lp-app-icon lp-app-chat" data-lp-icon="chat">💬</span><span>咕叽聊</span><small>可使用</small></button>
+            <button type="button" class="lp-app-tile" data-lp-open="chatList"><span class="lp-app-icon lp-app-chat" data-lp-icon="chat">💬</span><span>咕叽聊</span><small>可使用</small></button>
             <button type="button" class="lp-app-tile" data-lp-open="diagnostics"><span class="lp-app-icon lp-app-log" data-lp-icon="diagnostics">🛠️</span><span>运行日志</span><small data-lp="homeLogCount">0 条记录</small></button>
             <button type="button" class="lp-app-tile" data-lp-open="settings"><span class="lp-app-icon lp-app-settings" data-lp-icon="settings">⚙️</span><span>设置</span></button>
             <button type="button" class="lp-app-tile" data-lp-open="calendar"><span class="lp-app-icon" data-lp-icon="calendar">📅</span><span>日历</span></button>
@@ -1071,37 +1074,77 @@ function makeUI() {
             <div class="lp-app-tile lp-app-soon" aria-label="外卖，待开发"><span class="lp-app-icon" data-lp-icon="takeout">🥡</span><span>外卖</span><small>待开发</small></div>
           </div>
         </section>
-        <section class="lp-screen lp-chat" data-lp-screen="chat" aria-label="咕叽聊" hidden>
-          <div class="lp-chat-contact">联系人：<strong data-lp="name">角色</strong></div>
-          <div class="lp-friendship">
-            <div class="lp-friend-main">
-              <span class="lp-friend-label" data-lp="friendLabel">已是好友</span>
-              <div class="lp-friend-actions" data-lp="friendActions"></div>
-            </div>
-            <details class="lp-friend-setup">
-              <summary>按已有剧情设定好友状态</summary>
-              <div class="lp-friend-editor">
-                <select data-lp="friendSetup" aria-label="设定当前存档的好友状态">
-                  <option value="friends">已是好友</option>
-                  <option value="stranger">未加好友</option>
-                  <option value="outgoing">我已发送申请</option>
-                  <option value="incoming">对方向我申请</option>
-                  <option value="blocked">已拉黑</option>
-                </select>
-                <button type="button" data-lp="friendSave">应用设定</button>
-              </div>
-            </details>
+        <section class="lp-screen lp-chatlist" data-lp-screen="chatList" aria-label="消息列表" hidden>
+          <div class="lp-list-body">
+            <div class="lp-list-heading">消息</div>
+            <div data-lp="recentChats"></div>
           </div>
-          <div class="lp-statusrow">
-            <div class="lp-status" data-lp="status" role="status" aria-live="polite"></div>
-            <button type="button" class="lp-diagnostic-toggle" data-lp="diagnosticToggle">查看运行日志</button>
+          <nav class="lp-tabbar" aria-label="咕叽聊导航">
+            <button data-lp-open="chatList" class="lp-tab-active" type="button">消息</button>
+            <button data-lp-open="contacts" type="button">通讯录</button>
+          </nav>
+        </section>
+        <section class="lp-screen lp-chatlist" data-lp-screen="contacts" aria-label="通讯录" hidden>
+          <div class="lp-list-body">
+            <button type="button" class="lp-list-action" data-lp-open="requests"><span>✉</span><span>新的朋友</span><span data-lp="requestBadge"></span></button>
+            <div class="lp-list-heading">联系人</div>
+            <div data-lp="contactsList"></div>
           </div>
-          <div class="lp-activity" data-lp="activity" role="status" aria-live="polite" hidden></div>
+          <nav class="lp-tabbar" aria-label="咕叽聊导航">
+            <button data-lp-open="chatList" type="button">消息</button>
+            <button data-lp-open="contacts" class="lp-tab-active" type="button">通讯录</button>
+          </nav>
+        </section>
+        <section class="lp-screen lp-chatlist" data-lp-screen="requests" aria-label="新的朋友" hidden>
+          <div class="lp-list-body">
+            <div class="lp-list-heading">好友申请</div>
+            <div data-lp="requestsList"></div>
+          </div>
+        </section>
+        <section class="lp-screen lp-profile" data-lp-screen="profile" aria-label="联系人资料" hidden>
+          <div class="lp-profile-hero">
+            <img data-lp="profileAvatar" alt="角色头像" class="lp-profile-avatar" />
+            <div><strong data-lp="profileName"></strong><div data-lp="friendLabel" class="lp-profile-state"></div></div>
+          </div>
+          <div class="lp-profile-actions" data-lp="friendActions"></div>
+          <button type="button" class="lp-profile-chat" data-lp-open="chat">进入聊天</button>
+          <details class="lp-profile-setup">
+            <summary>按照已有剧情设定关系</summary>
+            <select data-lp="friendSetup" aria-label="设定当前好友状态">
+              <option value="friends">已是好友</option>
+              <option value="stranger">未加好友</option>
+              <option value="outgoing">我已发送申请</option>
+              <option value="incoming">对方向我申请</option>
+              <option value="blocked">已拉黑</option>
+            </select>
+            <button type="button" data-lp="friendSave">保存关系设定</button>
+          </details>
+          <div class="lp-profile-upload">
+            <label>角色头像（默认读取酒馆角色）<input type="file" accept="image/*" data-lp="avatarCharFile" /></label>
+            <button type="button" data-lp="resetCharAvatar">恢复角色原头像</button>
+            <label>我的头像（默认读取酒馆人设）<input type="file" accept="image/*" data-lp="avatarUserFile" /></label>
+            <button type="button" data-lp="resetUserAvatar">恢复我的原头像</button>
+          </div>
+        </section>
+        <section class="lp-screen lp-chat" data-lp-screen="chat" aria-label="聊天" hidden>
+          <div class="lp-chat-error" data-lp="chatError" hidden></div>
           <div class="lp-messages" data-lp="messages" role="log" aria-label="手机聊天记录"></div>
           <div class="lp-composer">
-            <textarea data-lp="input" rows="1" placeholder="输入消息…" aria-label="手机消息内容"></textarea>
-            <button type="button" class="lp-retry" data-lp="retry" hidden>重新生成上一条回复</button>
-            <button type="button" data-lp="send">发送并生成</button>
+            <textarea data-lp="input" rows="1" placeholder="发送消息" aria-label="手机消息内容"></textarea>
+            <button type="button" data-lp="send" aria-label="发送并生成">发送</button>
+            <button type="button" class="lp-retry" data-lp="retry" hidden>重试回复</button>
+          </div>
+        </section>
+        <section class="lp-screen lp-chatlist" data-lp-screen="chatOptions" aria-label="聊天记录管理" hidden>
+          <div class="lp-list-body lp-options-body">
+            <button type="button" data-lp="goProfile">查看联系人资料</button>
+            <button type="button" data-lp="exportChat">导出聊天记录 JSON</button>
+            <button type="button" data-lp="copyChat">复制聊天记录 JSON</button>
+            <label class="lp-option-file">导入聊天记录 JSON<input type="file" accept="application/json,.json" data-lp="importChat" /></label>
+            <button type="button" data-lp="clearChat">清空聊天记录</button>
+            <button type="button" data-lp="deleteChat" class="lp-danger-action">删除会话</button>
+            <button type="button" data-lp-open="diagnostics">运行日志</button>
+            <div class="lp-settings-status" data-lp="status" role="status" aria-live="polite"></div>
           </div>
         </section>
         <section class="lp-screen lp-settings" data-lp-screen="settings" aria-label="设置" hidden>
@@ -1196,8 +1239,9 @@ function mount() {
     document.body.append(floating);
     nodes = Object.fromEntries(['title', 'name', 'subtitle', 'back', 'close', 'time',
         'homeTime', 'homeCharacter', 'homeMessageCount', 'homeLogCount',
-        'friendLabel', 'friendActions',
-        'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus', 'activity', 'diagnosticToggle',
+        'friendLabel', 'friendActions','profileAvatar','profileName','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
+        'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','avatarUserFile','resetCharAvatar','resetUserAvatar',
+        'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
         'presetSource','presetEntries','worldSource','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themeIcons',
         'diagnostics', 'diagnosticState', 'copyDiagnostics', 'clearDiagnostics',
         'messages', 'input', 'retry', 'send', 'launcher']
@@ -1213,7 +1257,9 @@ function mount() {
         event.preventDefault();
         closePhone();
     });
-    nodes.back.addEventListener('click', () => setScreen(['presetPicker','worldPicker'].includes(activeScreen) ? 'settings' : 'home'));
+    nodes.back.addEventListener('click', () => setScreen({
+        chat: 'chatList', contacts: 'chatList', profile: 'contacts', requests:'contacts', chatOptions:'chat', presetPicker:'settings', worldPicker:'settings'
+    }[activeScreen] || 'home'));
     root.addEventListener('click', event => {
         const button = event.target.closest('button[data-lp-open]');
         if (button && root.contains(button)) setScreen(button.dataset.lpOpen);
@@ -1248,7 +1294,6 @@ function mount() {
         const button = event.target.closest('button[data-friend-action]');
         if (button) handleFriendAction(button.dataset.friendAction);
     });
-    nodes.diagnosticToggle.addEventListener('click', () => setScreen('diagnostics'));
     nodes.copyDiagnostics.addEventListener('click', copyDiagnostics);
     nodes.clearDiagnostics.addEventListener('click', () => {
         diagnostics.length = 0;
