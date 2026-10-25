@@ -1075,7 +1075,12 @@ function currentPersona(ctx) {
     let avatar = '';
     try { avatar = allowedAvatarSrc(document.querySelector('#user_avatar_block .avatar-container.selected img, #user_avatar_block .selected img')?.getAttribute('src')); } catch { /* host not mounted */ }
     if(!avatar) {
-        const matches=Object.entries(settings.personas||{}).filter(([id,name])=>name===ctx?.name1 && String(settings.persona_descriptions?.[id]?.description||'')===String(settings.persona_description||''));
+        const chat=Array.isArray(ctx?.chat)?ctx.chat:[];
+        const userMessage=[...chat].reverse().find(m=>m?.is_user&&m?.force_avatar);
+        avatar=allowedAvatarSrc(userMessage?.force_avatar);
+    }
+    if(!avatar) {
+        const matches=Object.entries(settings.personas||{}).filter(([id,name])=>name===ctx?.name1);
         if(matches.length===1)avatar='/User Avatars/'+encodeURIComponent(matches[0][0]);
     }
     return { name: String(ctx?.name1 || 'user'), description: String(settings.persona_description || ''),
@@ -1149,6 +1154,7 @@ async function tickAutonomousActivity() {
     const friends=autonomyContacts(ctx);
     if(!friends.length)return;
     autonomousWorking=true;
+    const job=startBusy('autonomy');
     const origMetadata=ctx.chatMetadata,origChar=ctx.characterId,origChat=ctx.chatId;
     const schedule={...(base.socialSchedule||{})},current=schedule[channel]||{};
     const id=friends[(current.cursor||0)%friends.length];
@@ -1189,7 +1195,7 @@ async function tickAutonomousActivity() {
         if(mounted&&same()){render();loadAutonomyUI(ctx);}
         recordActivity('自主活动',contactDisplayName(ctx,id)+' '+(channel==='messages'?'发来私聊':'发布了朋友圈'),'success');
     }catch(e){recordError('角色自主活动',e);}
-    finally{autonomousWorking=false;}
+    finally{autonomousWorking=false;finishBusy(job);}
 }
 
 function renderMoments(ctx) {
