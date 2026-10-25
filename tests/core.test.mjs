@@ -14,10 +14,10 @@ vm.createContext(sandbox);
 vm.runInContext(`${source}\nglobalThis.helpers = {newData, readData, writeData, friendshipState, rememberFriendship, buildPrompt, createSystemPrompt, redactDiagnostic, makeUI, composePhonePrompt, availablePresetEntries};`, sandbox);
 const { newData, readData, writeData, friendshipState, rememberFriendship, buildPrompt, createSystemPrompt, redactDiagnostic, makeUI, composePhonePrompt, availablePresetEntries } = sandbox.helpers;
 
-test('new storage defaults to a friend without breaking v0.1 format', () => {
+test('new story starts without contact details or a friendship', () => {
     const data = newData();
     assert.equal(data.version, 1);
-    assert.equal(friendshipState(data), 'friends');
+    assert.equal(friendshipState(data), 'stranger');
     assert.equal(data.messages.length, 0);
 });
 
@@ -371,7 +371,7 @@ test('modal entirely outside the viewport produces a visible diagnostic error', 
 test('diagnostic bootstrap is the manifest entry and exposes lifecycle hooks', () => {
     const manifest = JSON.parse(readFileSync(resolve(testRoot, '../manifest.json'), 'utf8'));
     const bootstrap = readFileSync(resolve(testRoot, '../bootstrap.js'), 'utf8');
-    assert.equal(manifest.version, '0.6.1');
+    assert.equal(manifest.version, '0.7.0');
     assert.equal(manifest.minimum_client_version, '1.18.0');
     assert.equal(manifest.js, 'bootstrap.js');
     assert.match(bootstrap, /import\('\.\/index\.js'\)/);
@@ -619,4 +619,54 @@ test('NPC scanner excludes people already saved and has review-only UI', () => {
     assert.ok(html.includes('data-lp="npcScanButton"'));
     assert.ok(html.includes('data-lp="npcSaveCandidates"'));
     assert.ok(html.includes('data-lp="npcWorldSelect"'));
+});
+
+test('contact application is gated by exchange proof or manual creation', () => {
+    const runtime={console,Date,structuredClone,window:{}};
+    vm.createContext(runtime);
+    vm.runInContext(source+'\nglobalThis.gate={readData,contactAccess,storyExchangeEvidence};',runtime);
+    const ctx={characters:[{name:'宁肆锦'}],characterId:0,chat:[],chatMetadata:{}};
+    assert.equal(runtime.gate.contactAccess(ctx,'primary').allowed,false);
+    ctx.chat=[{mes:'我们交换了联系方式。'}];
+    assert.equal(runtime.gate.contactAccess(ctx,'primary').allowed,true);
+    ctx.chat=[{mes:'我们还没交换联系方式。'}];
+    assert.equal(runtime.gate.contactAccess(ctx,'primary').allowed,false);
+});
+test('legacy chat without friendship object remains a friend', () => {
+    const ctx={chatMetadata:{st_little_phone_v1:{version:1,messages:[{from:'user',text:'hi'}]}}};
+    assert.equal(friendshipState(readData(ctx)),'friends');
+});
+test('user lorebook friends are discovered when extra worldbook scan is enabled', async () => {
+    const runtime={console,Date,structuredClone,window:{}};
+    vm.createContext(runtime);
+    vm.runInContext(source+'\nglobalThis.scan=scanNpcSources;',runtime);
+    const ctx={characters:[{name:'宁肆锦',data:{description:'宁肆锦在上课。'}}],characterId:0,chatMetadata:{},
+        getWorldInfoNames:()=>['user-设定'],loadWorldInfo:async()=>({entries:{1:{comment:'宝儿',content:'宝儿是user的朋友，认识很多年。'}}})};
+    const scan=await runtime.scan(ctx,'',true);
+    assert.ok(scan.candidates.some(x=>x.name==='宝儿'));
+    assert.equal(scan.worlds,1);
+});
+test('incomplete phrases do not become NPC names', () => {
+    const runtime={console,Date,structuredClone,window:{}};
+    vm.createContext(runtime);
+    vm.runInContext(source+'\nglobalThis.extract=extractNpcCandidatesFromText;',runtime);
+    assert.equal(runtime.extract('与同学在范畴内讨论问题。','世界书','宁肆锦').length,0);
+});
+test('new four tab layout and functional input tools exist', () => {
+    const html=makeUI().innerHTML;
+    for(const name of ['chatList','contacts','discover','me'])assert.ok(html.includes('data-lp-screen="'+name+'"'));
+    for(const name of ['messageActions','chatImageInput','momentsText','momentsPost','quotedPreview'])assert.ok(html.includes('data-lp="'+name+'"'));
+    assert.ok(html.includes('data-chat-tool="transfer"'));
+    assert.ok(html.includes('data-chat-tool="location"'));
+});
+test('chat backup round trip retains multimedia image payload', () => {
+    const runtime={console,Date,structuredClone,window:{}};
+    vm.createContext(runtime);
+    vm.runInContext(source+'\nglobalThis.chatFns={exportChatPayload,parseChatImport,buildPrompt};',runtime);
+    const ctx={characters:[{name:'C'}],characterId:0};
+    const image='data:image/jpeg;base64,QUJD';
+    const data={messages:[{id:'1',from:'user',text:'[图片]',image}]};
+    const payload=runtime.chatFns.exportChatPayload(ctx,data);
+    assert.equal(runtime.chatFns.parseChatImport(JSON.stringify(payload))[0].image,image);
+    assert.equal(runtime.chatFns.buildPrompt(data)[0].content[1].type,'image_url');
 });
