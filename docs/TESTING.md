@@ -1,5 +1,12 @@
 # 回归记录
 
+## v0.8.11 — 2026-10-26
+
+- 用户真机 v0.8.10 日志：悬浮开关开、DOM 存在、脚本引用一致、`display=grid`、`visibility=visible`，但实际矩形 `(292,-176) 54×54`，所以按钮在视口上方，遮挡层与瞬息插件不是当前证据指向的故障。
+- 修改本插件浮窗定位约束并优先启用浏览器原生 Popover 顶层；旧 WebView 回退普通 fixed。补充受控 DOM 的 Popover 开关测试，诊断记录是否成功进入顶层。
+- `node --test tests/core.test.mjs tests/startup.test.mjs tests/social.test.mjs`：**93/93 通过**；`node --check index.js`、`node --check bootstrap.js`、`git diff --check` 均通过。
+- `tests/browser.test.cjs` 已加入「带 transform 的宿主页面滚动后按钮仍在视口」测试，但执行环境没有安装 Chromium，无法完成真实浏览器测试；**Android 真机仍需查看按钮位置、点击行为及顶层诊断**。
+
 ## v0.8.10 — 2026-10-26
 
 - `node --test tests/core.test.mjs tests/startup.test.mjs tests/social.test.mjs`：**93/93 通过**；语法检查及改动空白检查通过。

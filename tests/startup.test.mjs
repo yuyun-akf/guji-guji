@@ -6,7 +6,7 @@ import vm from 'node:vm';
 const main = readFileSync(new URL('../index.js', import.meta.url), 'utf8').replaceAll('export function ', 'function ');
 const boot = readFileSync(new URL('../bootstrap.js', import.meta.url), 'utf8')
     .replaceAll('export function ', 'function ')
-    .replace("import('./index.js?v=0.8.10')", 'mockImport()');
+    .replace("import('./index.js?v=0.8.11')", 'mockImport()');
 
 function dom() {
     const observers = new Set();
@@ -139,6 +139,9 @@ test('extension settings drawer is unique, opens phone, and toggles the real flo
     assert.equal(checkbox.checked,false);
     const launcher=host.document.getElementById('gujiguji-floating-launcher');
     const importantWrites=[];
+    launcher.matches=selector=>selector===':popover-open'&&launcher.popoverOpen===true;
+    launcher.showPopover=()=>{launcher.popoverOpen=true;};
+    launcher.hidePopover=()=>{launcher.popoverOpen=false;};
     launcher.style.setProperty=(name,value,priority)=>{importantWrites.push([name,value,priority]);
         launcher.style[({ 'z-index':'zIndex', 'pointer-events':'pointerEvents' })[name]||name]=value;};
     checkbox.checked=true;checkbox.listeners.change();
@@ -148,6 +151,10 @@ test('extension settings drawer is unique, opens phone, and toggles the real flo
     assert.equal(launcher.style.display,'grid');
     assert.ok(importantWrites.some(([name,value,priority])=>name==='display'&&value==='grid'&&priority==='important'));
     assert.equal(launcher.style.position,'fixed');
+    assert.equal(launcher.style.top,'auto');
+    assert.equal(launcher.style.transform,'none');
+    assert.equal(launcher.popover,'manual');
+    assert.equal(launcher.popoverOpen,true,'put the control into the viewport top layer');
     assert.ok(launcher.querySelector('.fa-mobile-screen-button'),'launcher should have a smartphone icon');
     assert.match(host.document.getElementById('gujiguji-host-floating-status').textContent,/已开启/);
     launcher.remove();runtime.api.updateLauncherVisibility();
@@ -155,6 +162,7 @@ test('extension settings drawer is unique, opens phone, and toggles the real flo
     host.mutate();assert.equal(settings.children.length,1);
     checkbox.checked=false;checkbox.listeners.change();
     assert.equal(launcher.hidden,true);
+    assert.equal(launcher.popoverOpen,false,'closing the switch removes the top-layer control');
     assert.equal(launcher.style.display,'none');
     runtime.api.onDisable();assert.equal(settings.children.length,0);
     const css=readFileSync(new URL('../style.css',import.meta.url),'utf8');
