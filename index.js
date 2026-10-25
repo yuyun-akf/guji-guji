@@ -148,7 +148,7 @@ async function phoneGenerate(ctx, options, data) {
         ...prompts.map(m=>({role:m.role==='assistant'?'assistant':'user',content:String(m.content || '')}))];
     const result = await ctx.ChatCompletionService.sendRequest({
         chat_completion_source:'custom',custom_url:url,
-        custom_include_headers:{Authorization:'Bearer ' + key},
+        custom_include_headers:JSON.stringify({Authorization:'Bearer ' + key}),
         model:cfg.model.trim(),messages,stream:false,max_tokens:cfg.maxTokens,temperature:0.85
     });
     return typeof result === 'string' ? result : result?.content || '';
