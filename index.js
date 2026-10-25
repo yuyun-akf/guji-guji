@@ -38,6 +38,7 @@ let activeScreen = 'home';
 let lifecycleToken = 0;
 const diagnostics = [];
 let configWriteQueue = Promise.resolve();
+let viewportListener = null;
 const transientApiKeys = new Map();
 const APP_ICONS = {chat:'💬',diagnostics:'🛠️',settings:'⚙️',calendar:'📅',theme:'🎨',album:'🖼️',shopping:'🛍️',takeout:'🥡'};
 const SCREENS = new Set(['home', 'chat', 'chatList', 'contacts', 'requests', 'profile', 'chatOptions', 'settings', 'diagnostics', 'calendar', 'theme', 'presetPicker', 'worldPicker']);
@@ -579,6 +580,7 @@ function setScreen(screen) {
     if (!SCREENS.has(screen) || !nodes) return;
     const previous = activeScreen;
     activeScreen = screen;
+    root.dataset.screen = screen;
     for (const section of root.querySelectorAll('[data-lp-screen]')) {
         section.hidden = section.dataset.lpScreen !== screen;
     }
@@ -1182,6 +1184,25 @@ async function copyDiagnostics() {
     }
 }
 
+function syncPhoneViewport() {
+    if (!root?.classList.contains('lp-open')) return;
+    const panel = root.querySelector('.lp-panel');
+    if (!panel) return;
+    const viewport=window.visualViewport;
+    const height=viewport?.height || window.innerHeight || 700;
+    const offset=viewport?.offsetTop || 0;
+    const targetHeight=Math.max(230,Math.min(670,height-18));
+    panel.style.height=targetHeight+'px';
+    panel.style.maxHeight=targetHeight+'px';
+    panel.style.top=Math.max(4,offset+(height-targetHeight)/2)+'px';
+    panel.style.left='50%';
+    panel.style.transform='translateX(-50%)';
+    if (activeScreen==='chat') {
+        const messages=nodes?.messages;
+        if (messages) messages.scrollTop=messages.scrollHeight;
+    }
+}
+
 function openPhone() {
     try {
         if (!mounted || !root) mount();
@@ -1194,6 +1215,7 @@ function openPhone() {
         if (!panel) throw new Error('找不到手机主屏容器');
         root.classList.add('lp-open');
         if (typeof panel.showModal === 'function' && !panel.open) panel.showModal();
+        syncPhoneViewport();
         nodes.launcher.setAttribute('aria-label', '隐藏咕叽咕机');
         setScreen('home');
         render();
@@ -1523,6 +1545,12 @@ function mount() {
         renderDiagnostics();
         setStatus('已清空本次运行日志。');
     });
+    nodes.input.addEventListener('focus', () => setTimeout(syncPhoneViewport, 120));
+    nodes.input.addEventListener('blur', () => setTimeout(syncPhoneViewport, 120));
+    viewportListener = () => syncPhoneViewport();
+    window.visualViewport?.addEventListener('resize', viewportListener);
+    window.visualViewport?.addEventListener('scroll', viewportListener);
+    window.addEventListener('resize', viewportListener);
     nodes.input.addEventListener('keydown', event => {
         if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
             event.preventDefault();
@@ -1557,6 +1585,12 @@ function mount() {
 
 function unmount() {
     closePhone();
+    if (viewportListener) {
+        window.visualViewport?.removeEventListener('resize', viewportListener);
+        window.visualViewport?.removeEventListener('scroll', viewportListener);
+        window.removeEventListener('resize', viewportListener);
+        viewportListener = null;
+    }
     mounted = false;
     lifecycleToken += 1;
     busyJobId += 1;
