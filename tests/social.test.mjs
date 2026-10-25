@@ -238,3 +238,32 @@ test('model-driven incoming friend request is opt-in and never approves itself',
   await decision(ctx);
   assert.equal(calls,1,'no duplicate requests from same event');
 });
+
+
+test('manual autonomous message test is independent of the daily schedule', async()=>{
+  const ctx={characterId:0,chatId:'test-autonomy',characters:[{name:'角色甲',data:{description:'当前角色'}}],
+    chatMetadata:{st_little_phone_v1:{version:1,messages:[],storyTime:'2026-10-25T12:00',friendship:{state:'friends'},
+      socialConfig:{messages:{mode:'fixed',days:1},moments:{mode:'off',days:3}},
+      socialSchedule:{messages:{nextDue:Date.now()+86400000,cursor:0}}}},
+    async saveMetadata(){},async generateRaw(){return '主动打招呼。';}};
+  const box=runtime(ctx);
+  box.document.visibilityState='visible';
+  const tick=vm.runInContext('tickAutonomousActivity',box);
+  const before=ctx.chatMetadata.st_little_phone_v1.socialSchedule.messages.nextDue;
+  await tick('messages');
+  assert.equal(ctx.chatMetadata.st_little_phone_v1.messages.at(-1)?.text,'主动打招呼。');
+  assert.equal(ctx.chatMetadata.st_little_phone_v1.socialSchedule.messages.nextDue,before,
+    'test button must not change scheduled run');
+});
+test('friend request UI shows incoming accept/decline and a red-dot contact navigation',()=>{
+  const html=runtime().api.makeUI().innerHTML;
+  assert.ok(html.includes('data-lp="requestBadge"'));
+  assert.ok(html.includes('class="lp-friend-request-badge"'));
+  assert.ok(html.includes('data-lp="myAvatarFallback"'));
+  assert.ok(html.includes('data-lp="myAvatarStatus"'));
+  assert.ok(html.includes('data-lp="testAutonomy"'));
+  const full=source;
+  assert.ok(full.includes("['friends','同意']") || full.includes("['friends', '同意']"));
+  assert.ok(full.includes("'补录对方的好友申请'"));
+  assert.equal(full.includes("changeFriendship('outgoing', '你向对方发送了好友申请"),false);
+});
