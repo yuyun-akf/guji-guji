@@ -916,7 +916,7 @@ async function scanNpcSources(ctx,extraWorld='') {
     for(const entry of embeddedCharacterLore(char).slice(0,160)){
         const title=String(entry.name||entry.comment||'');
         const content=String(entry.content||'');
-        if(content)sources.push({name:'角色卡内嵌世界书 · '+title,text:title+'\n'+content});
+        if(content)sources.push({name:'角色卡内嵌世界书 · '+title,text:title+'\n'+content,title,profileEntry:true});
     }
     const names=new Set();
     if(typeof info.extensions?.world==='string'&&info.extensions.world.trim())names.add(info.extensions.world.trim());
@@ -934,13 +934,25 @@ async function scanNpcSources(ctx,extraWorld='') {
             for(const entry of entries.slice(0,280)){
                 const title=String(entry?.comment||entry?.name||'');
                 const content=String(entry?.content||'');
-                if(content)sources.push({name:'世界书「'+name+'」 · '+title,text:title+'\n'+content});
+                if(content)sources.push({name:'世界书「'+name+'」 · '+title,text:title+'\n'+content,title,profileEntry:true});
             }
         }catch(e){failures.push(name+'：'+String(e?.message||e).slice(0,90));}
     }
     const candidates=[];
     for(const source of sources){
         const parsed=extractNpcCandidatesFromText(source.text,source.name,getCharacterName(char));
+        const titleName=source.profileEntry ? cleanNpcName(source.title) : '';
+        const titleLooksLikeBio=titleName && titleName!==getCharacterName(char) &&
+            /(?:姓名|年龄|职业|身份|性格|外貌|长相|个人经历|人物背景|画家|导演|教授|助理|室友|同学|朋友|老师)/.test(source.text.slice(0,900));
+        if(titleLooksLikeBio){
+            if(!parsed.some(x=>x.name===titleName))parsed.unshift({
+                name:titleName,relation:'',description:source.text.slice(0,3500),
+                source:source.name,confidence:'人物档案标题'
+            });
+            else for(const candidate of parsed){
+                if(candidate.name===titleName)candidate.description=source.text.slice(0,3500);
+            }
+        }
         candidates.push(...parsed);
     }
     return {candidates:mergeNpcCandidates(candidates,readRootData(ctx),getCharacterName(char)),scanned:sources.length,worlds:loaded,failures};
