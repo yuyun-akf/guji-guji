@@ -371,10 +371,10 @@ test('modal entirely outside the viewport produces a visible diagnostic error', 
 test('diagnostic bootstrap is the manifest entry and exposes lifecycle hooks', () => {
     const manifest = JSON.parse(readFileSync(resolve(testRoot, '../manifest.json'), 'utf8'));
     const bootstrap = readFileSync(resolve(testRoot, '../bootstrap.js'), 'utf8');
-    assert.equal(manifest.version, '0.8.6');
+    assert.equal(manifest.version, '0.8.7');
     assert.equal(manifest.minimum_client_version, '1.18.0');
     assert.equal(manifest.js, 'bootstrap.js');
-    assert.match(bootstrap, /import\('\.\/index\.js\?v=0\.8\.6'\)/);
+    assert.match(bootstrap, /import\('\.\/index\.js\?v=0\.8\.7'\)/);
     assert.match(bootstrap, /export function onActivate\(/);
     assert.match(bootstrap, /export function onEnable\(/);
     assert.match(bootstrap, /export function onDisable\(/);
@@ -403,8 +403,9 @@ test('phone preset entry selection only reads requested prompt content', async (
     assert.ok(prompt.includes('ONLY_THIS'));
     assert.equal(prompt.includes('NOT_THIS'),false);
 });
-test('current host preset is displayed on opening settings, ignoring a stale old phone selection', async () => {
-    const ctx={getPresetManager:()=>({
+test('phone preset selection persists independently from the active host preset', async () => {
+    let saves=0;
+    const ctx={characterId:0,characters:[{name:'角色甲'}],chatMetadata:{st_little_phone_v1:{...newData(),config:{presetSource:'B'}}},saveMetadata:async()=>{saves++;},getPresetManager:()=>({
         getAllPresets:()=>['A','B'],
         getSelectedPresetName:()=> 'A',
         getCompletionPresetByName:name=>({prompts:[{identifier:'p',name:name,content:'text'}]}),
@@ -421,16 +422,24 @@ test('current host preset is displayed on opening settings, ignoring a stale old
         updateApiInfo=()=>{};
         renderWorldBookSelector=()=>{};
         showPresetEntries=()=>{};
+        setStatus=()=>{};
         nodes=fixture;
         globalThis.refresh=populateConfigLists;
+        globalThis.changePreset=onPresetSourceChange;
+        globalThis.waitForConfig=()=>configWriteQueue;
     `,runtime);
     await runtime.refresh();
-    assert.equal(presetSource.value,'A');
+    assert.equal(presetSource.value,'B','the saved phone setting beats the host active A');
     assert.deepEqual(presetSource.options.map(option=>option.value),['','A','B']);
-    assert.match(fixture.presetInfo.textContent,/当前预设：A/);
-    assert.match(fixture.presetInfo.textContent,/不会在当前生成中注入/);
+    assert.match(fixture.presetInfo.textContent,/独立选择并保存/);
+    presetSource.value='A';runtime.changePreset();
+    await runtime.waitForConfig();
+    assert.equal(ctx.chatMetadata.st_little_phone_v1.config.presetSource,'A');
+    assert.equal(saves,1);
+    presetSource.value='B';await runtime.refresh();
+    assert.equal(presetSource.value,'A','reopening must return the chosen phone preset, not an old DOM value');
 });
-test('saved entries of preset B never enter generation with host preset A',async()=>{
+test('selected phone preset entries from A and B enter generation without switching the host',async()=>{
     let hostSwitches=0;
     const ctx={getPresetManager:()=>({
         getSelectedPresetName:()=> 'A',
@@ -441,7 +450,7 @@ test('saved entries of preset B never enter generation with host preset A',async
     data.config={presetEntries:[{preset:'B',id:'intro'},{preset:'A',id:'intro'}],worldEntries:[]};
     const prompt=await composePhonePrompt(ctx,{name:'角色甲'},data);
     assert.ok(prompt.includes('A-CONTENT'));
-    assert.equal(prompt.includes('B-CONTENT'),false);
+    assert.ok(prompt.includes('B-CONTENT'),'explicitly checked B entries must not be filtered out by host A');
     assert.equal(hostSwitches,0);
     assert.equal(data.config.presetEntries.length,2,'do not erase saved selections from other presets');
 });

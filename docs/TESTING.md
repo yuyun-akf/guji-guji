@@ -1,5 +1,13 @@
 # 回归记录
 
+## v0.8.7 — 2026-10-25
+
+- `node --test tests/core.test.mjs tests/startup.test.mjs tests/social.test.mjs`：**87/87 通过**；`node --check index.js`、`node --check bootstrap.js`、`git diff --check` 通过。
+- 手机预设选项读取自身已保存的 `config.presetSource`，不再被酒馆当前激活预设覆盖；切换并重开设置后保留选择，选中的 A/B 预设条目都可注入手机但不会改变宿主设置。
+- 一条朋友圈的多角色点赞、评论、互相回复由一次 JSON 生成解析，并严格核对参与角色和直接联系方式；不连线的人物间回复会被拒绝。
+- 已有角色自主发帖及随附互动合并为一次生成；玩家点赞不调用 API；同条动态连续多条玩家评论合并成一个待回复批次，成功后移除队列，不重复调用。
+- 批量角色口吻、复杂人际可知边界和 JSON 输出可靠性仍需在真实模型、真实 SillyTavern 1.18/1.19 及 Android 运行时验收；受控 VM 测试不等同于实际安装通过。
+
 ## v0.8.6 — 2026-10-25
 
 - `node --test tests/core.test.mjs tests/startup.test.mjs tests/social.test.mjs`：**84/84 通过**；`node --check index.js`、`node --check bootstrap.js`、`git diff --check` 通过。
