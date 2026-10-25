@@ -208,7 +208,7 @@ function redactDiagnostic(text) {
 function recordActivity(stage, detail, kind = 'info', code = '') {
     const entry = {
         at: new Date().toLocaleTimeString(), stage,
-        code: redactDiagnostic(code), detail: redactDiagnostic(detail), kind,
+        code: code ? redactDiagnostic(code) : '', detail: redactDiagnostic(detail), kind,
     };
     diagnostics.unshift(entry);
     diagnostics.length = Math.min(diagnostics.length, DIAGNOSTIC_LIMIT);
