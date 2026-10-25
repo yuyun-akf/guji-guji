@@ -7,7 +7,7 @@ const source=readFileSync(new URL('../index.js',import.meta.url),'utf8').replace
 const image='data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 function runtime(ctx={}) {
     const box={console,Date,structuredClone,setTimeout,clearTimeout,setInterval:()=>1,clearInterval(){},
-        window:{SillyTavern:{getContext:()=>ctx}}, document:{querySelector:()=>null}};
+        window:{SillyTavern:{getContext:()=>ctx}}, document:{querySelector:()=>null,createElement:()=>({innerHTML:'',id:''}),visibilityState:'visible'}};
     vm.createContext(box);
     vm.runInContext(source+`\nglobalThis.api={currentPersona,personaNames,stickerLibrary,saveSticker,saveStickerLibrary,stickerPrompt,parseStickerReply,buildPrompt,parseChatImport,exportChatPayload,scanNpcSources,newData,postMoment,sendUserMessage,beginFilePicker,finishFilePicker,filePickerReturning,makeUI};`,box);
     return box;
