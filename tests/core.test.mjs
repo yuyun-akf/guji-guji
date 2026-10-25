@@ -98,7 +98,7 @@ test('pressing send saves one player message and automatically generates one rep
     const ctx = {
         groupId: null,
         characterId: 0,
-        characters: [{ name: '林知远', data: { description: '测试角色' } }],
+        characters: [{ name: '角色甲', data: { description: '测试角色' } }],
         chatMetadata,
         async saveMetadata() { saveCount += 1; },
         async generateRaw() { generationCount += 1; return '收到了。'; },
@@ -531,7 +531,7 @@ test('NPC generations use only the selected contact persona', () => {
     vm.runInContext(source + `
         globalThis.storage={contactCharacter,readData,createSystemPrompt,select:(id)=>{activeContactId=id;}};
     `,runtime);
-    const ctx={characterId:0,characters:[{name:'林知远',description:'演员'}],chatMetadata:{
+    const ctx={characterId:0,characters:[{name:'角色甲',description:'演员'}],chatMetadata:{
         st_little_phone_v1:{version:1,storyTime:'2026-01-01T12:00',messages:[],friendship:{state:'friends'},
         contacts:[{id:'npc:mom',name:'人物乙',description:'社区志愿者'}],
         conversations:{'npc:mom':{messages:[],friendship:{state:'friends'}}}}}};
@@ -539,7 +539,7 @@ test('NPC generations use only the selected contact persona', () => {
     const prompt=runtime.storage.createSystemPrompt(runtime.storage.contactCharacter(ctx),runtime.storage.readData(ctx));
     assert.ok(prompt.includes('角色「人物乙」'));
     assert.ok(prompt.includes('社区志愿者'));
-    assert.equal(prompt.includes('角色「林知远」'),false);
+    assert.equal(prompt.includes('角色「角色甲」'),false);
 });
 test('NPC data is scoped to current roleplay chat metadata, not an imported character directory', () => {
     const runtime={console,Date,structuredClone,window:{}};
@@ -562,19 +562,19 @@ test('NPC extraction finds explicit names and preserves who the relationship bel
     const runtime = {console,Date,structuredClone,window:{}};
     vm.createContext(runtime);
     vm.runInContext(source+'\nglobalThis.extract=extractNpcCandidatesFromText;',runtime);
-    const text = '林知远的母亲人物乙，社区志愿者。\n父亲：人物丙\nuser的老师李春华，是大学教授。';
-    const results=runtime.extract(text,'当前角色卡','林知远');
+    const text = '角色甲的母亲人物乙，社区志愿者。\n父亲：人物丙\nuser的老师李春华，是大学教授。';
+    const results=runtime.extract(text,'当前角色卡','角色甲');
     const get=name=>results.find(x=>x.name===name);
-    assert.equal(get('人物乙')?.relation,'林知远的母亲');
+    assert.equal(get('人物乙')?.relation,'角色甲的母亲');
     assert.ok(get('人物丙')?.relation.includes('父亲'));
     assert.equal(get('李春华')?.relation,'user 的老师');
-    assert.equal(results.some(x=>x.name==='林知远'),false);
+    assert.equal(results.some(x=>x.name==='角色甲'),false);
 });
 test('NPC scanner does not mistake an occupation phrase for a name', () => {
     const runtime={console,Date,structuredClone,window:{}};
     vm.createContext(runtime);
     vm.runInContext(source+'\nglobalThis.extract=extractNpcCandidatesFromText;',runtime);
-    const results=runtime.extract('人物丙：修理技师，林知远的父亲。','人物档案','林知远');
+    const results=runtime.extract('人物丙：修理技师，角色甲的父亲。','人物档案','角色甲');
     assert.ok(results.some(x=>x.name==='人物丙'));
     assert.equal(results.some(x=>x.name==='修理技师'),false);
 });
@@ -585,12 +585,12 @@ test('NPC scanner reads only the current character and its configured lorebooks,
     let worldCalls=0;
     const ctx={characterId:0,chatId:'story-A',
         characters:[
-            {name:'林知远',data:{description:'林知远的母亲人物乙，社区志愿者。',extensions:{world:'角色资料'}}},
+            {name:'角色甲',data:{description:'角色甲的母亲人物乙，社区志愿者。',extensions:{world:'角色资料'}}},
             {name:'其他角色',data:{description:'姓名：不相干的人物'}}
         ],
         chatMetadata:{st_little_phone_v1:{version:1,storyTime:'2026-10-25T09:00',messages:[],friendship:{state:'friends'}}},
         loadWorldInfo:async name=>{worldCalls++;assert.equal(name,'角色资料');return {entries:{
-            1:{comment:'人物丙',content:'人物丙\n身份：修理技师，林知远的父亲。'}
+            1:{comment:'人物丙',content:'人物丙\n身份：修理技师，角色甲的父亲。'}
         }};}
     };
     const results=await runtime.scan(ctx);
@@ -609,9 +609,9 @@ test('NPC scanner excludes people already saved and has review-only UI', () => {
     const found=runtime.filter([
         {name:'人物乙',description:'社区志愿者',source:'一'},
         {name:'人物乙',description:'社区志愿者',source:'二'},
-        {name:'林知远',description:'当前 char',source:'三'},
+        {name:'角色甲',description:'当前 char',source:'三'},
         {name:'人物丙',description:'父亲',source:'四'}
-    ],{contacts:[{id:'npc:s',name:'人物乙'}]},'林知远');
+    ],{contacts:[{id:'npc:s',name:'人物乙'}]},'角色甲');
     assert.equal(found.length,1);
     assert.equal(found[0].name,'人物丙');
     const html=makeUI().innerHTML;
@@ -625,7 +625,7 @@ test('contact application is gated by exchange proof or manual creation', () => 
     const runtime={console,Date,structuredClone,window:{}};
     vm.createContext(runtime);
     vm.runInContext(source+'\nglobalThis.gate={readData,contactAccess,storyExchangeEvidence};',runtime);
-    const ctx={characters:[{name:'林知远'}],characterId:0,chat:[],chatMetadata:{}};
+    const ctx={characters:[{name:'角色甲'}],characterId:0,chat:[],chatMetadata:{}};
     assert.equal(runtime.gate.contactAccess(ctx,'primary').allowed,false);
     ctx.chat=[{mes:'我们交换了联系方式。'}];
     assert.equal(runtime.gate.contactAccess(ctx,'primary').allowed,true);
@@ -640,18 +640,18 @@ test('user lorebook friends are discovered from the current persona binding', as
     const runtime={console,Date,structuredClone,window:{}};
     vm.createContext(runtime);
     vm.runInContext(source+'\nglobalThis.scan=scanNpcSources;',runtime);
-    const ctx={characters:[{name:'林知远',data:{description:'林知远在上课。'}}],characterId:0,chatMetadata:{},
+    const ctx={characters:[{name:'角色甲',data:{description:'角色甲在上课。'}}],characterId:0,chatMetadata:{},
         powerUserSettings:{persona_description_lorebook:'user-设定'},
-        getWorldInfoNames:()=>{throw new Error('must not enumerate all books');},loadWorldInfo:async()=>({entries:{1:{comment:'姜乐',content:'姜乐是user的朋友，认识很多年。'}}})};
+        getWorldInfoNames:()=>{throw new Error('must not enumerate all books');},loadWorldInfo:async()=>({entries:{1:{comment:'朋友丁',content:'朋友丁是user的朋友，认识很多年。'}}})};
     const scan=await runtime.scan(ctx);
-    assert.ok(scan.candidates.some(x=>x.name==='姜乐'));
+    assert.ok(scan.candidates.some(x=>x.name==='朋友丁'));
     assert.equal(scan.worlds,1);
 });
 test('incomplete phrases do not become NPC names', () => {
     const runtime={console,Date,structuredClone,window:{}};
     vm.createContext(runtime);
     vm.runInContext(source+'\nglobalThis.extract=extractNpcCandidatesFromText;',runtime);
-    assert.equal(runtime.extract('与同学在范畴内讨论问题。','世界书','林知远').length,0);
+    assert.equal(runtime.extract('与同学在范畴内讨论问题。','世界书','角色甲').length,0);
 });
 test('new four tab layout and functional input tools exist', () => {
     const html=makeUI().innerHTML;
