@@ -559,8 +559,7 @@ function renderDiagnostics() {
     if (!nodes?.diagnostics) return;
     nodes.diagnostics.replaceChildren();
     const failures = diagnostics.filter(entry => entry.kind === 'error').length;
-    nodes.diagnosticToggle.textContent = failures ? `⚠ 查看日志（${failures} 条错误）` : '查看运行日志';
-    nodes.diagnosticToggle.classList.toggle('lp-has-error', failures > 0);
+    // Log status is shown only in the separate diagnostics app.
     nodes.homeLogCount.textContent = failures ? `${failures} 条错误` : `${diagnostics.length} 条记录`;
     if (!diagnostics.length) {
         const empty = document.createElement('p');
