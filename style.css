@@ -1308,3 +1308,97 @@
   border-radius:10px;
   font:inherit;
 }
+
+/* v0.6.1 NPC discovery review */
+#st-little-phone-root .lp-npc-discovery {
+  display:flex;
+  flex-direction:column;
+  align-items:stretch;
+  padding:14px;
+  gap:11px;
+  background:#f7f5f9;
+  min-height:0;
+  overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
+}
+#st-little-phone-root .lp-npc-discovery > *{flex-shrink:0;}
+#st-little-phone-root .lp-npc-discovery h2 {font-size:17px;line-height:1.4;margin:0;color:#392c4b;}
+#st-little-phone-root .lp-npc-discovery p,
+#st-little-phone-root .lp-npc-scan-state {
+  font-size:12px;
+  line-height:1.6;
+  margin:0;
+  color:#776d80;
+  overflow-wrap:anywhere;
+}
+#st-little-phone-root .lp-npc-discovery label {
+  display:flex;
+  flex-direction:column;
+  gap:7px;
+  font-size:13px;
+  line-height:1.4;
+}
+#st-little-phone-root .lp-npc-discovery select,
+#st-little-phone-root .lp-npc-discovery input[type=text],
+#st-little-phone-root .lp-npc-discovery textarea {
+  box-sizing:border-box;
+  display:block;
+  min-height:42px;
+  width:100%;
+  border:1px solid #dcd4e6;
+  border-radius:10px;
+  padding:9px 11px;
+  font-size:13px;
+  color:#42394d;
+  background:#fff;
+  font-family:inherit;
+}
+#st-little-phone-root .lp-npc-discovery select {white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+#st-little-phone-root .lp-npc-discovery textarea {height:130px;resize:vertical;white-space:pre-wrap;}
+#st-little-phone-root .lp-npc-discovery button {
+  width:100%;
+  min-height:44px;
+  border:0;
+  border-radius:11px;
+  padding:11px;
+  background:#947bb9;
+  color:#fff;
+  font:inherit;
+}
+#st-little-phone-root .lp-npc-discovery button:disabled {opacity:.5;}
+#st-little-phone-root .lp-npc-candidates {
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  min-height:76px;
+  font-size:13px;
+  padding:0 0 8px;
+}
+#st-little-phone-root .lp-npc-candidate {
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  padding:12px;
+  border-radius:13px;
+  border:1px solid #e5ddeb;
+  background:#fff;
+  min-width:0;
+}
+#st-little-phone-root .lp-npc-candidate > label {
+  display:flex;
+  flex-direction:row;
+  align-items:center;
+  gap:10px;
+  cursor:pointer;
+}
+#st-little-phone-root .lp-npc-candidate > label input {
+  flex:0 0 19px;
+  width:19px;height:19px;
+  accent-color:#8a6cb4;
+}
+#st-little-phone-root .lp-npc-candidate > label strong {font-size:15px;overflow-wrap:anywhere;}
+#st-little-phone-root .lp-npc-candidate small {font-size:11px;color:#968b9d;white-space:normal;overflow-wrap:anywhere;}
+#st-little-phone-root .lp-npc-candidate details summary {
+  cursor:pointer;color:#816c9e;font-size:12px;padding:7px 0;
+}
+#st-little-phone-root .lp-npc-candidate textarea{margin-top:5px;}
