@@ -37,7 +37,7 @@ let busyKind = '';
 let activeScreen = 'home';
 let lifecycleToken = 0;
 const diagnostics = [];
-const SCREENS = new Set(['home', 'chat', 'settings', 'diagnostics']);
+const SCREENS = new Set(['home', 'chat', 'settings', 'diagnostics', 'calendar', 'theme']);
 
 function context() {
     try {
@@ -144,6 +144,32 @@ function shortText(value, maxLength = CHARACTER_TEXT_LIMIT) {
     return value.slice(0, maxLength).trim();
 }
 
+async function composePhonePrompt(ctx, char, data) {
+    const parts = [createSystemPrompt(char, data)];
+    const selectedPresets = Array.isArray(data?.config?.presetEntries) ? data.config.presetEntries : [];
+    if (selectedPresets.length) {
+        const manager = ctx?.getPresetManager?.('openai');
+        for (const item of selectedPresets) {
+            const preset = manager?.getCompletionPresetByName?.(item.preset);
+            const entry = preset?.prompts?.find(p => String(p.identifier || p.name) === item.id);
+            if (!entry || !entry.content) throw new Error('选中的预设条目不可用：' + item.preset + '/' + item.id);
+            parts.push('[手机预设 · ' + (entry.name || item.id) + ']\n' + entry.content);
+        }
+    }
+    const selectedBooks = Array.isArray(data?.config?.worldEntries) ? data.config.worldEntries : [];
+    for (const bookName of [...new Set(selectedBooks.map(x => x.book))]) {
+        if (typeof ctx?.loadWorldInfo !== 'function') throw new Error('酒馆世界书接口不可用');
+        const book = await ctx.loadWorldInfo(bookName);
+        const entries = book?.entries || {};
+        for (const selected of selectedBooks.filter(x => x.book === bookName)) {
+            const entry = entries[selected.id] ?? Object.values(entries).find(e => String(e.uid) === selected.id);
+            if (!entry || !entry.content) throw new Error('选中的世界书条目不可用：' + bookName + '/' + selected.id);
+            parts.push('[手机世界书 · ' + (entry.comment || selected.id) + ']\n' + entry.content);
+        }
+    }
+    return parts.join('\n\n');
+}
+
 function createSystemPrompt(char, data) {
     const info = char.data || char;
     const profile = [
@@ -217,9 +243,13 @@ function recordActivity(stage, detail, kind = 'info', code = '') {
 }
 
 function recordError(stage, error) {
-    const code = error?.status ?? error?.statusCode ?? error?.code ?? error?.cause?.status ?? '';
-    const detail = redactDiagnostic(error?.message || error);
-    const entry = recordActivity(stage, detail, 'error', code);
+    const message = String(error?.message || error);
+    const statusMatch = message.match(/(?:response\s+status|HTTP\s*|status[:\s]+)([45]\d\d)/i);
+    const code = error?.status ?? error?.statusCode ?? error?.code ?? error?.cause?.status ?? statusMatch?.[1] ?? '';
+    const detail = redactDiagnostic(message);
+    const category = error?.name && error.name !== 'Error' ? ' [' + redactDiagnostic(error.name) + ']' : '';
+    const stack = error?.stack ? '\n' + redactDiagnostic(String(error.stack).split('\n').slice(1, 3).join('\n')) : '';
+    const entry = recordActivity(stage, detail + category + stack, 'error', code);
     console.error('[GujiGuji]', stage, entry.detail);
     return `操作失败：${detail}${code ? `（${redactDiagnostic(code)}）` : ''}`;
 }
@@ -439,8 +469,10 @@ async function runReply(ctx, char, data, session, existingJob = null) {
     setStatus('正在生成角色回复，请稍候…');
     recordActivity('开始生成', '已将当前手机对话交给酒馆生成接口，正在等待模型返回。');
     try {
+        const systemPrompt = await composePhonePrompt(ctx, char, data);
+        recordActivity('生成配置', '使用当前酒馆连接' + (ctx?.mainApi ? ' · ' + ctx.mainApi : '') + '；手机历史 ' + buildPrompt(data).length + ' 条；单独预设条目 ' + (data?.config?.presetEntries?.length || 0) + ' 条；世界书条目 ' + (data?.config?.worldEntries?.length || 0) + ' 条。');
         const result = await generateWithTimeout(ctx, {
-            systemPrompt: createSystemPrompt(char, data),
+            systemPrompt,
             prompt: buildPrompt(data),
         });
         if (!sameSession(session)) return;
@@ -556,8 +588,9 @@ async function reviewOutgoingRequest() {
     recordActivity('好友申请', '已请求模型判断角色是否接受好友申请。');
     try {
         const profilePrompt = createSystemPrompt(char, data);
+        const selectedPrompt = await composePhonePrompt(ctx, char, data);
         const result = await generateWithTimeout(ctx, {
-            systemPrompt: `${profilePrompt}\n\n现在只判断角色是否愿意通过 user 的好友申请。请根据设定、已经发生的相处以及角色自己的意愿决定，不保证同意。只能输出一个英文单词：ACCEPT 或 REJECT。`,
+            systemPrompt: `${selectedPrompt}\n\n现在只判断角色是否愿意通过 user 的好友申请。请根据设定、已经发生的相处以及角色自己的意愿决定，不保证同意。只能输出一个英文单词：ACCEPT 或 REJECT。`,
             prompt: [
                 ...buildPrompt(data).slice(-8),
                 { role: 'user', content: '【好友申请事件】user 请求添加你为手机好友。只输出 ACCEPT 或 REJECT。' },
