@@ -2,14 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { deflateRawSync } from 'node:zlib';
 
 const source=readFileSync(new URL('../index.js',import.meta.url),'utf8').replaceAll('export function ','function ');
 const image='data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 function runtime(ctx={}) {
     const box={console,Date,structuredClone,setTimeout,clearTimeout,setInterval:()=>1,clearInterval(){},
+        Blob,Response,DecompressionStream,TextDecoder,Uint8Array,DataView,
         window:{SillyTavern:{getContext:()=>ctx}}, document:{querySelector:()=>null,createElement:()=>({innerHTML:'',id:''}),visibilityState:'visible'}};
     vm.createContext(box);
-    vm.runInContext(source+`\nglobalThis.api={currentPersona,personaNames,stickerLibrary,saveSticker,saveStickerLibrary,stickerPrompt,parseStickerReply,buildPrompt,parseChatImport,exportChatPayload,scanNpcSources,newData,postMoment,sendUserMessage,beginFilePicker,finishFilePicker,filePickerReturning,makeUI};`,box);
+    vm.runInContext(source+`\nglobalThis.api={currentPersona,personaNames,stickerLibrary,saveSticker,saveStickerLibrary,stickerPrompt,parseStickerReply,visibleStickerText,importStickerAssets,parseStickerCatalogCsv,zipStickerEntries,uploadStickerPack,buildPrompt,parseChatImport,exportChatPayload,scanNpcSources,newData,postMoment,sendUserMessage,beginFilePicker,finishFilePicker,filePickerReturning,makeUI};`,box);
     return box;
 }
 
@@ -74,6 +76,89 @@ test('character selects only catalog stickers; history and JSON preserve image w
     const backup=api.exportChatPayload({},data);
     const imported=api.parseChatImport(JSON.stringify(backup));
     assert.equal(imported[1].image,image);assert.equal(imported[1].sticker,true);assert.equal(imported[1].stickerName,'开心');
+    assert.equal(api.visibleStickerText({from:'user',text:'[表情包：非常长的内容说明和配文]',sticker:true,image},null,null),'');
+    assert.equal(api.visibleStickerText({from:'character',text:'[表情包：角色用的备注]',sticker:true,image},null,null),'');
+    assert.equal(api.visibleStickerText({from:'character',text:'普通聊天'},null,null),'普通聊天');
+});
+
+test('user pressing a sticker sends the image as user, not as the character',async()=>{
+    let calls=0;
+    const ctx={characterId:0,chatId:'A',characters:[{name:'角色甲'}],chatMetadata:{},
+        extensionSettings:{gujiguji:{stickers:[{id:'s-cat',label:'猫咪跑来，配文我来啦',image}]}},
+        saveMetadata:async()=>{},generateRaw:async()=>{calls++;return '哈哈，收到了';}};
+    const box=runtime(ctx);
+    ctx.chatMetadata.st_little_phone_v1={...box.api.newData(),friendship:{state:'friends'}};
+    vm.runInContext(`mounted=true;render=()=>{};renderMessages=()=>{};updateBusy=()=>{};
+        nodes={input:{value:''},quotedPreview:{},morePanel:{},emojiPanel:{},status:{dataset:{}},diagnosticState:{}};
+        globalThis.chooseSticker=useSticker;`,box);
+    await box.chooseSticker('s-cat','send');
+    const messages=ctx.chatMetadata.st_little_phone_v1.messages;
+    assert.equal(messages.length,2);
+    assert.equal(messages[0].from,'user');
+    assert.equal(messages[0].image,image);
+    assert.equal(messages[0].sticker,true);
+    assert.equal(messages[1].from,'character');
+    assert.equal(messages[1].image,undefined);
+    assert.equal(calls,1);
+});
+
+test('bulk importing 100 stickers saves once and skips overflow safely',async()=>{
+    let saves=0;
+    const ctx={extensionSettings:{},saveSettingsDebounced(){saves++;}};
+    const box=runtime(ctx);
+    box.FileReader=class {readAsDataURL(file){this.result=file.image;this.onload();}};
+    const assets=Array.from({length:108},(_,i)=>({file:{type:'image/png',size:300,name:'cat'+i+'.png',
+        image:'data:image/png;base64,'+'A'.repeat(400)+String(i).padStart(4,'0').replace(/\d/g,d=>'ABCDEFGHIJ'[Number(d)])},label:'猫猫'+i,usage:'撒娇'}));
+    const result=await box.api.importStickerAssets(assets,ctx);
+    assert.equal(result.added,100);assert.equal(result.skipped,8);
+    assert.equal(saves,1,'settings must not be serialized 100 times');
+    assert.equal(box.api.stickerLibrary(ctx).length,100);
+    assert.equal(box.api.stickerLibrary(ctx)[0].usage,'撒娇');
+});
+
+test('CSV catalog imports description and use-tags even with quoted commas',()=>{
+    const csv='index,编号,内容,用途,原文件名,相对路径\n1,e001,"猫咪, 跑过来","撒娇、邀请",猫.jpg,images/猫.jpg\n';
+    const catalog=runtime().api.parseStickerCatalogCsv(csv);
+    assert.equal(catalog.get('images/猫.jpg').label,'猫咪, 跑过来');
+    assert.equal(catalog.get('猫.jpg').usage,'撒娇、邀请');
+});
+
+function makeZipFixture(files) {
+    const local=[],central=[];let offset=0;
+    for(const [name,plain] of files){
+        const filename=Buffer.from(name,'utf8'),bytes=Buffer.isBuffer(plain)?plain:Buffer.from(plain,'utf8');
+        const compressed=deflateRawSync(bytes),header=Buffer.alloc(30),entry=Buffer.alloc(46);
+        header.writeUInt32LE(0x04034b50,0);header.writeUInt16LE(8,8);
+        header.writeUInt32LE(compressed.length,18);header.writeUInt32LE(bytes.length,22);header.writeUInt16LE(filename.length,26);
+        entry.writeUInt32LE(0x02014b50,0);entry.writeUInt16LE(8,10);
+        entry.writeUInt32LE(compressed.length,20);entry.writeUInt32LE(bytes.length,24);
+        entry.writeUInt16LE(filename.length,28);entry.writeUInt32LE(offset,42);
+        local.push(header,filename,compressed);central.push(entry,filename);
+        offset+=header.length+filename.length+compressed.length;
+    }
+    const directory=Buffer.concat(central),end=Buffer.alloc(22);
+    end.writeUInt32LE(0x06054b50,0);end.writeUInt16LE(files.length,8);
+    end.writeUInt16LE(files.length,10);end.writeUInt32LE(directory.length,12);end.writeUInt32LE(offset,16);
+    return Buffer.concat([...local,directory,end]);
+}
+
+test('ZIP with compressed CSV catalog auto-imports matching labels and uses one save',async()=>{
+    let saves=0;
+    const ctx={extensionSettings:{},saveSettingsDebounced(){saves++;}};
+    const box=runtime(ctx);
+    box.FileReader=class {readAsDataURL(file){
+        file.arrayBuffer().then(data=>{this.result='data:'+file.type+';base64,'+Buffer.from(data).toString('base64');this.onload();});
+    }};
+    const csv='index,编号,内容,用途,原文件名,相对路径\n1,e001,跑来小猫,打招呼、撒娇,猫.gif,images/猫.gif\n';
+    const packed=makeZipFixture([['表情包目录.csv',csv],['images/猫.gif',Buffer.from(image.split(',')[1],'base64')]]);
+    const file={name:'表情包库.zip',size:packed.length,arrayBuffer:async()=>packed.buffer.slice(packed.byteOffset,packed.byteOffset+packed.byteLength)};
+    await box.api.uploadStickerPack([file]);
+    assert.equal(saves,1);
+    const imported=box.api.stickerLibrary(ctx);
+    assert.equal(imported.length,1);
+    assert.equal(imported[0].label,'跑来小猫');
+    assert.equal(imported[0].usage,'打招呼、撒娇');
+    assert.equal(imported[0].image,image);
 });
 
 test('player and character exchange stickers through normal host generation',async()=>{

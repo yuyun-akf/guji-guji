@@ -371,10 +371,10 @@ test('modal entirely outside the viewport produces a visible diagnostic error', 
 test('diagnostic bootstrap is the manifest entry and exposes lifecycle hooks', () => {
     const manifest = JSON.parse(readFileSync(resolve(testRoot, '../manifest.json'), 'utf8'));
     const bootstrap = readFileSync(resolve(testRoot, '../bootstrap.js'), 'utf8');
-    assert.equal(manifest.version, '0.8.7');
+    assert.equal(manifest.version, '0.8.8');
     assert.equal(manifest.minimum_client_version, '1.18.0');
     assert.equal(manifest.js, 'bootstrap.js');
-    assert.match(bootstrap, /import\('\.\/index\.js\?v=0\.8\.7'\)/);
+    assert.match(bootstrap, /import\('\.\/index\.js\?v=0\.8\.8'\)/);
     assert.match(bootstrap, /export function onActivate\(/);
     assert.match(bootstrap, /export function onEnable\(/);
     assert.match(bootstrap, /export function onDisable\(/);

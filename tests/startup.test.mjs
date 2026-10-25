@@ -6,7 +6,7 @@ import vm from 'node:vm';
 const main = readFileSync(new URL('../index.js', import.meta.url), 'utf8').replaceAll('export function ', 'function ');
 const boot = readFileSync(new URL('../bootstrap.js', import.meta.url), 'utf8')
     .replaceAll('export function ', 'function ')
-    .replace("import('./index.js?v=0.8.7')", 'mockImport()');
+    .replace("import('./index.js?v=0.8.8')", 'mockImport()');
 
 function dom() {
     const observers = new Set();
@@ -43,7 +43,7 @@ function dom() {
     const body = new Node('body');
     const find = (node, id) => node.id === id ? node : node.children.map(child => find(child,id)).find(Boolean);
     return {
-        document: { body, createElement: tag => new Node(tag), getElementById: id => find(body,id) },
+        document: { body, createElement: tag => new Node(tag), createTextNode: value => {const text = new Node('#text');text.textContent=value;return text;}, getElementById: id => find(body,id) },
         MutationObserver: class { constructor(fn) { this.fn = fn; } observe() { observers.add(this); } disconnect() { observers.delete(this); } },
         mutate() { for (const observer of observers) observer.fn(); },
         observers,
@@ -114,6 +114,36 @@ test('mount failure keeps wand entry and permits a clean retry', () => {
     vm.runInContext('mount = () => { mounted = true; };', runtime);
     runtime.api.onActivate();
     assert.equal(menu.children.length, 1);
+});
+
+test('extension settings drawer is unique, opens phone, and toggles the real floating launcher', () => {
+    const host=dom(),settings=host.document.createElement('div');
+    settings.id='extensions_settings';host.document.body.append(settings);
+    const ctx={extensionSettings:{gujiguji:{}},chatMetadata:{},saveSettingsDebounced(){this.saved=(this.saved||0)+1;}};
+    const runtime={...host,console,Date,structuredClone,
+        window:{SillyTavern:{getContext:()=>ctx},addEventListener(){},removeEventListener(){}},
+        setTimeout(){return 1;},clearTimeout(){},setInterval(){return 1;},clearInterval(){}};
+    vm.createContext(runtime);
+    vm.runInContext(main+'\nrender=()=>{};renderDiagnostics=()=>{};globalThis.api={onActivate,onDisable,controls:()=>nodes};',runtime);
+    runtime.api.onActivate();
+    assert.equal(settings.children.length,1);
+    assert.equal(host.document.getElementById('gujiguji-extension-settings').tagName,'details');
+    const checkbox=host.document.getElementById('gujiguji-host-floating');
+    assert.equal(checkbox.checked,false);
+    checkbox.checked=true;checkbox.listeners.change();
+    assert.equal(ctx.extensionSettings.gujiguji.floatingLauncher,true);
+    assert.equal(ctx.saved,1);
+    const launcher=host.document.getElementById('gujiguji-floating-launcher');
+    assert.equal(launcher.hidden,false);
+    assert.equal(launcher.style.display,'grid');
+    host.mutate();assert.equal(settings.children.length,1);
+    checkbox.checked=false;checkbox.listeners.change();
+    assert.equal(launcher.hidden,true);
+    assert.equal(launcher.style.display,'none');
+    runtime.api.onDisable();assert.equal(settings.children.length,0);
+    const css=readFileSync(new URL('../style.css',import.meta.url),'utf8');
+    assert.match(css,/#gujiguji-floating-launcher\.lp-launcher\s*\{[\s\S]*?position:\s*fixed/);
+    assert.match(css,/#gujiguji-floating-launcher\.lp-launcher\[hidden\]/);
 });
 
 function bootRuntime(mockImport) {
