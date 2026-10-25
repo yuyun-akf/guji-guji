@@ -675,7 +675,7 @@ function avatarSources(ctx, data) {
             user = allowedAvatarSrc(picked?.getAttribute('src'));
         } catch { /* default */ }
     }
-    return {character:character || '/img/default-avatar.png',user:user || '/img/default-user.png'};
+    return {character:character || '/img/ai4.png',user:user || '/img/user-default.png'};
 }
 function makeAvatarElement(src, label) {
     const img = document.createElement('img');
@@ -684,7 +684,7 @@ function makeAvatarElement(src, label) {
     img.src = src;
     img.loading = 'lazy';
     img.addEventListener('error', () => {
-        if (!img.dataset.fallback) { img.dataset.fallback='1'; img.src='/img/default-avatar.png'; }
+        if (!img.dataset.fallback) { img.dataset.fallback='1'; img.src=label?.includes('我的') ? '/img/user-default.png' : '/img/ai4.png'; }
     });
     return img;
 }
@@ -1471,7 +1471,7 @@ function mount() {
     floating.textContent = '☏';
     floating.setAttribute('aria-label','打开咕叽咕机');
     document.body.append(floating);
-    nodes = Object.fromEntries(['title', 'name', 'subtitle', 'back', 'close', 'time',
+    nodes = Object.fromEntries(['title', 'subtitle', 'back', 'close', 'time',
         'homeTime', 'homeCharacter', 'homeMessageCount', 'homeLogCount',
         'friendLabel', 'friendActions','profileAvatar','profileName','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','avatarUserFile','resetCharAvatar','resetUserAvatar',
