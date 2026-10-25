@@ -46,6 +46,10 @@ let lifecycleToken = 0;
 const diagnostics = [];
 let configWriteQueue = Promise.resolve();
 let viewportListener = null;
+let autonomousTicker = null;
+let autonomousWorking = false;
+let relationSyncWorking = false;
+let momentImageDraft = '';
 let pickerState = null;
 let pickerReturnTimer = null;
 let pickerGuardUntil = 0;
@@ -374,6 +378,97 @@ function readRootData(ctx) {
         conversations:base.conversations&&typeof base.conversations==='object'&&!Array.isArray(base.conversations)?base.conversations:{}
     };
 }
+
+const SOCIAL_DEFAULTS = {messages:{mode:'off',days:3},moments:{mode:'off',days:3},relationSync:true,phoneInPast:false};
+function socialConfig(root) {
+    const saved=root.socialConfig||{};
+    return {
+        messages:{mode:['off','fixed','random'].includes(saved.messages?.mode)?saved.messages.mode:'off',days:Math.max(0.04,Math.min(30,Number(saved.messages?.days)||3))},
+        moments:{mode:['off','fixed','random'].includes(saved.moments?.mode)?saved.moments.mode:'off',days:Math.max(0.04,Math.min(30,Number(saved.moments?.days)||3))},
+        relationSync:saved.relationSync!==false,
+        phoneInPast:saved.phoneInPast===true
+    };
+}
+function nextActivityTime(config,now=Date.now(),random=Math.random) {
+    if(!config||config.mode==='off')return 0;
+    const duration=Math.round(Math.max(0.04,Math.min(30,Number(config.days)||3))*86400000);
+    if(config.mode==='fixed')return now+duration;
+    return now+Math.max(15*60000,Math.floor(random()*duration));
+}
+function knownOldFriend(text) {
+    const t=String(text||'').slice(0,12000);
+    return /(从大[一二三四]|多年|好几年的|认识多年|认识很久|从小|青梅竹马|十几年|两年多|三年多|已婚|结婚多年|夫妻|闺蜜|发小|老朋友|多年好友|室友多年|大学以来|小学起|高中起)/.test(t)&&/(室友|朋友|闺蜜|好友|发小|青梅竹马|夫妻|伴侣|微信|联系|认识|结婚)/.test(t) ||
+        /(?:已是好友|互加(?:了)?微信|双方微信好友|微信好友多年|早已交换联系方式)/.test(t);
+}
+function initialFriendState(ctx,id=PRIMARY_CONTACT_ID) {
+    const person=getContactInfo(ctx,id);
+    const name=person.name||'';
+    const root=readRootData(ctx);
+    const char=selectedCharacter(ctx);
+    const current=currentPersona(ctx);
+    const charText=String(char?.data?.description||char?.description||'')+'\n'+String(char?.data?.scenario||char?.scenario||'');
+    const ptext=current.description;
+    const info=[person.description||'',person.relationship||''].join('\n');
+    // A long-standing relation must refer to this person, not another named NPC.
+    const paragraphs=(ptext+'\n'+charText).split(/\n|[。！？]/).filter(v=>v.includes(name)&&v.length<1000);
+    return knownOldFriend(info)||paragraphs.some(knownOldFriend);
+}
+function classifyStoryFriendEvent(text,name,primary=false) {
+    const chunks=String(text||'').slice(0,14000).split(/[。！？!?\n]/).map(v=>v.trim()).filter(Boolean);
+    for(const clause of chunks){
+        if(!primary&&!clause.includes(name))continue;
+        if(/(?:没有|没|尚未|还没|拒绝|假如|如果|打算|准备|想要|可能|也许|未曾|不会|不能)/.test(clause.slice(0,22)))continue;
+        if(/(?:互加(?:了)?(?:微信|好友)|成为(?:了)?(?:微信|手机)好友|通过(?:了)?(?:对方|他|她)?(?:的)?好友申请|已添加.*好友|扫码后互相通过)/.test(clause))return {state:'friends',evidence:clause};
+        if(/(?:发来(?:了)?好友申请|向(?:你|我|user|玩家)发送(?:了)?好友申请|申请添加(?:你|我|user|玩家)为好友|请求添加(?:你|我|user|玩家)为好友)/.test(clause))return {state:'incoming',evidence:clause};
+    }
+    return null;
+}
+async function syncStoryRelationships(ctx=context(),force=false) {
+    if(relationSyncWorking||autonomousWorking||busy||!selectedCharacter(ctx)||!ctx?.chatMetadata)return;
+    const root=readRootData(ctx),options=socialConfig(root);
+    if(!options.relationSync||options.phoneInPast)return;
+    const messages=Array.isArray(ctx.chat)?ctx.chat:[];
+    const saved=root.relationSync||{};
+    const starting=force?Math.max(0,messages.length-450):
+        (Number.isInteger(saved.cursor)&&saved.cursor<=messages.length?saved.cursor:Math.max(0,messages.length-450));
+    const first=!saved.initialized;
+    if(!first&&!force&&starting===messages.length)return;
+    relationSyncWorking=true;
+    const meta=ctx.chatMetadata,charId=ctx.characterId,chatId=ctx.chatId;
+    const work=structuredClone(root);
+    let modified=false;
+    try{
+        for(const id of [PRIMARY_CONTACT_ID,...work.contacts.map(c=>c.id)]){
+            const previous=readData(ctx,id),state=friendshipState(previous);
+            const convo=id===PRIMARY_CONTACT_ID?work:(work.conversations[id]||={messages:[],friendship:{state:'stranger'}});
+            if(state!=='stranger')continue;
+            if(first&&initialFriendState(ctx,id)) {
+                convo.friendship={state:'friends'};
+                (convo.friendEvents||=[]).push({at:new Date().toISOString(),state:'friends',notice:'初始化：设定中有明确的长期既有关系'});
+                modified=true;continue;
+            }
+            const name=getContactInfo(ctx,id).name;
+            for(const entry of messages.slice(starting)){
+                const ev=classifyStoryFriendEvent(messageText(entry),name,id===PRIMARY_CONTACT_ID);
+                if(!ev)continue;
+                convo.friendship={state:ev.state};
+                (convo.friendEvents||=[]).push({at:new Date().toISOString(),state:ev.state,notice:'主线事件：'+ev.evidence.slice(0,140)});
+                modified=true;
+                break;
+            }
+        }
+        work.relationSync={initialized:true,cursor:messages.length};
+        // Only write once; never mutate saved messages or existing explicit statuses.
+        if(modified||force||first||starting!==messages.length) {
+            if(ctx.chatMetadata===meta&&ctx.characterId===charId&&ctx.chatId===chatId) {
+                await writeData(ctx,{...work,__contactId:PRIMARY_CONTACT_ID});
+                if(mounted&&ctx.chatMetadata===meta)render();
+            }
+        }
+    }catch(e){recordError('主线好友关系同步',e);}
+    finally{relationSyncWorking=false;}
+}
+
 function validContactId(root,id) {
     return id===PRIMARY_CONTACT_ID || root.contacts.some(c=>c.id===id);
 }
