@@ -1,5 +1,18 @@
 # 回归记录
 
+## v0.8.4 — 2026-10-25
+
+执行 `node --test tests/core.test.mjs tests/startup.test.mjs tests/social.test.mjs`：**75/75 通过**。`node --check index.js`、`node --check bootstrap.js` 与 `git diff --check` 通过（代码静态测试）。
+
+- 角色头像上传走与「我」同一张压缩图片编码器，不再错误要求原图小于 350KB。图片表情包仍受原限额约束。
+- 主动消息为不同联系人独立保存未读数量；UI 既有手机外提醒，也有手机内顶部提醒；引用栏新增取消操作。
+- 新消息采用故事时间递增、日历手动调整后的故事时段；既有消息原时间保持不变。
+- 角色卡信息/当前 user 人设、实际关系阶段、职业保密、当日时段和动态名字宏进入手机提示；不修改原角色卡文字。
+- 多本世界书设置实际显示复选框，选中多本后进入分组条目管理；关闭单本暂停注入且保留勾选。动态触发仍为受控子集，不承诺完全复制酒馆原生世界书引擎。
+- 关系重查返回有区分的状态，保存活动设置给出成功提示。
+
+**未完成：**浏览器及 Termux/SillyDroid 真机验证、真实模型是否遵守保密规则。以上 Node 测试的 UI 通过来自受控 DOM，并非安装酒馆后的截图验收。建议在实际机型验证手机通知层级、文件选择返回与多本世界书条目点击；原聊天数据不会由升级主动改写。
+
 ## v0.8.3 — 2026-10-25
 
 执行 `node --test tests/core.test.mjs tests/startup.test.mjs tests/social.test.mjs`：**68/68 通过**。`node --check index.js` 与 `git diff --check` 通过。测试使用 Node VM 和受控 DOM，不等于在 SillyTavern 真实页面验证。
