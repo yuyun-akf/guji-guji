@@ -1292,8 +1292,25 @@ function renderChatLists(ctx,char,data) {
         if(state==='friends')nodes.contactsList.append(makeListContact(person,view,FRIEND_LABELS[state],()=>switchContact(id,'profile'),label));
         else nodes.storyPeopleList.append(makeListContact(person,view,'',()=>switchContact(id,'profile'),label));
         if (state==='incoming' || state==='outgoing') {
-            nodes.requestsList.append(makeListContact(person,view,state==='incoming'?'请求添加你为好友':state==='outgoing'?'好友申请处理中':'可发送好友申请',()=>switchContact(id,'profile'),label));
-            if(state!=='stranger') requests++;
+            if(state==='incoming'){
+                const group=document.createElement('div');group.className='lp-request-entry';
+                group.append(makeListContact(person,view,'对方向你发送了好友申请',()=>switchContact(id,'profile'),label));
+                const choices=document.createElement('div');choices.className='lp-request-actions';
+                for(const [action,title] of [['friends','同意'],['stranger','拒绝']]){
+                    const button=document.createElement('button');button.type='button';button.textContent=title;
+                    button.addEventListener('click',async()=>{
+                        if(busy)return;
+                        activeContactId=id;
+                        const notice=action==='friends'?'你同意了对方的好友申请':'你拒绝了对方的好友申请';
+                        if(await changeFriendship(action,notice))setScreen('requests');
+                    });
+                    choices.append(button);
+                }
+                group.append(choices);nodes.requestsList.append(group);
+            }else{
+                nodes.requestsList.append(makeListContact(person,view,'好友申请处理中',()=>switchContact(id,'profile'),label));
+            }
+            requests++;
         }
     }
     nodes.requestBadge.textContent=requests ? requests+' 条' : '';
