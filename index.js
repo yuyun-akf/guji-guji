@@ -7,6 +7,8 @@ const ROOT_ID = 'st-little-phone-root';
 const DATA_KEY = 'st_little_phone_v1';
 const PRIMARY_CONTACT_ID = 'primary';
 let activeContactId = PRIMARY_CONTACT_ID;
+let selectedMessageId = null;
+let quotedMessageId = null;
 let npcCandidates = [];
 let npcScanSession = null;
 let npcScanning = false;
@@ -151,7 +153,7 @@ async function phoneGenerate(ctx, options, data) {
     if (!cfg.model.trim()) throw new Error('请填写独立 API 模型名称');
     const prompts = Array.isArray(options.prompt) ? options.prompt : [{role:'user',content:String(options.prompt || '')}];
     const messages = [{role:'system',content:String(options.systemPrompt || '')},
-        ...prompts.map(m=>({role:m.role==='assistant'?'assistant':'user',content:String(m.content || '')}))];
+        ...prompts.map(m=>({role:m.role==='assistant'?'assistant':'user',content:Array.isArray(m.content)?m.content:String(m.content || '')}))];
     const result = await ctx.ChatCompletionService.sendRequest({
         chat_completion_source:'custom',custom_url:url,
         custom_include_headers:JSON.stringify({Authorization:'Bearer ' + key}),
@@ -567,7 +569,10 @@ function buildPrompt(data) {
         .filter(message => typeof message.text === 'string' && ['user', 'character'].includes(message.from))
         .map(message => ({
             role: message.from === 'character' ? 'assistant' : 'user',
-            content: message.text,
+            content: message.image && typeof message.image==='string' && /^data:image\/(?:jpeg|png|webp);base64,/.test(message.image)
+              ? [{type:'text',text:(message.text||'')+'（请根据图片中实际可见内容回复，不要虚构看不到的细节）'},
+                 {type:'image_url',image_url:{url:message.image,detail:'auto'}}]
+              : ((message.replyQuote?'[引用：'+message.replyQuote+']\n':'')+message.text),
         }));
 }
 
@@ -1319,6 +1324,89 @@ async function clearOrDeleteChat(deleteConversation=false) {
         setScreen(deleteConversation?'chatList':'chat');
     } catch(e) {setStatus(recordError('删除聊天记录',e),'error');}
 }
+
+function openMessageActions(id) {
+    if(busy)return;
+    selectedMessageId=id;
+    nodes.messageActions.hidden=false;
+}
+function closeMessageActions() {
+    selectedMessageId=null;
+    nodes.messageActions.hidden=true;
+}
+async function handleMessageOperation(action) {
+    const ctx=context();
+    const current=readData(ctx);
+    const msg=current.messages.find(x=>x.id===selectedMessageId);
+    if(!msg)return closeMessageActions();
+    if(action==='quote'){
+        quotedMessageId=msg.id;
+        nodes.quotedPreview.textContent='引用：'+msg.text.slice(0,100);
+        nodes.quotedPreview.hidden=false;
+        nodes.input.focus();
+    } else if(action==='edit'){
+        if(msg.from!=='user')return setStatus('只能编辑自己发送的消息','error');
+        const replacement=window.prompt('编辑这条消息',msg.text);
+        if(replacement===null)return;
+        const data=structuredClone(current);
+        const target=data.messages.find(x=>x.id===msg.id);
+        if(target){target.text=replacement.slice(0,5000);target.editedAt=new Date().toISOString();}
+        try{await writeData(ctx,data);render();}catch(e){setStatus(recordError('编辑消息',e),'error');}
+    } else if(action==='forward'){
+        const root=readRootData(ctx);
+        const targets=[PRIMARY_CONTACT_ID,...root.contacts.map(x=>x.id)].filter(id=>id!==activeContactId&&friendshipState(readData(ctx,id))==='friends');
+        if(!targets.length)return setStatus('暂无其他已添加的好友可以转发','error');
+        const description=targets.map((id,i)=>(i+1)+'. '+contactDisplayName(ctx,id)).join('\n');
+        const choice=window.prompt('转发到哪位好友？输入序号：\n'+description);
+        if(choice===null)return;
+        const chosen=targets[Number(choice)-1];
+        if(!chosen)return setStatus('选择的联系人无效','error');
+        const data=structuredClone(readData(ctx,chosen));
+        data.messages.push({...makeMessage('user','[转发] '+msg.text,data.storyTime),forwardFrom:contactDisplayName(ctx)});
+        try{await writeData(ctx,data);setStatus('已转发到 '+contactDisplayName(ctx,chosen));}
+        catch(e){setStatus(recordError('转发消息',e),'error');}
+    } else if(action==='delete'){
+        closeMessageActions();await deleteIndividualMessage(msg.id);return;
+    } else if(action==='copy'){
+        try{await navigator.clipboard.writeText(msg.text);setStatus('已复制消息');}
+        catch(e){setStatus(recordError('复制消息',e),'error');}
+    }
+    closeMessageActions();
+}
+async function sendImageFile(file) {
+    if(!file||busy)return;
+    if(!['image/jpeg','image/png','image/webp'].includes(file.type))return setStatus('目前支持 PNG、JPG、WebP 图片','error');
+    if(file.size>650*1024)return setStatus('图片暂限 650KB，请先缩小图片再发送','error');
+    const ctx=context();
+    if(readApiOptions(readData(ctx)).mode!=='custom')return setStatus('图片识别需要在设置中使用支持视觉输入的独立 OpenAI 兼容 API','error');
+    const reader=new FileReader();
+    const session=captureSession(ctx);
+    reader.onerror=()=>setStatus('图片读取失败','error');
+    reader.onload=()=>{if(sameSession(session)&&typeof reader.result==='string')void sendUserMessage('[图片]',reader.result);};
+    reader.readAsDataURL(file);
+}
+function toggleChatTools(type) {
+    if(!nodes)return;
+    nodes.emojiPanel.hidden=type!=='emoji' || !nodes.emojiPanel.hidden;
+    nodes.morePanel.hidden=type!=='more' || !nodes.morePanel.hidden;
+}
+function startChatTool(action) {
+    if(action==='photo'){nodes.chatImageInput.click();return;}
+    if(action==='location'){
+        const location=window.prompt('输入故事中的地点');
+        if(location?.trim()){nodes.input.value='[分享位置] '+location.trim().slice(0,160);nodes.input.focus();}
+    } else if(action==='transfer'){
+        const amount=window.prompt('剧情内转账金额（虚拟金额，不涉及真实支付）');
+        if(amount!==null && /^\d+(?:\.\d{1,2})?$/.test(amount)&&Number(amount)>0){
+            nodes.input.value='[剧情转账] 向'+contactDisplayName(context())+'转账 '+amount+' 元（虚拟情节）';nodes.input.focus();
+        }
+    } else if(action==='call'){
+        nodes.input.value='[剧情语音通话邀请] 方便接电话吗？';nodes.input.focus();
+    } else if(action==='emoji'){
+        toggleChatTools('emoji');
+    } else if(action==='more')toggleChatTools('more');
+}
+
 async function deleteIndividualMessage(id) {
     if (busy) return;
     const ctx=context();
@@ -1333,6 +1421,7 @@ async function deleteIndividualMessage(id) {
 
 function renderMessages(data) {
     nodes.messages.replaceChildren();
+    nodes.messageActions.hidden=true;
     if (!data.messages.length) {
         const empty = document.createElement('p');
         empty.className='lp-empty';
@@ -1350,6 +1439,8 @@ function renderMessages(data) {
         const bubble=document.createElement('div');
         bubble.className='lp-bubble';
         bubble.textContent=message.text;
+        if(message.replyQuote){const quote=document.createElement('div');quote.className='lp-inline-quote';quote.textContent=message.replyQuote;bubble.prepend(quote);}
+        if(message.image){const picture=document.createElement('img');picture.className='lp-chat-image';picture.src=message.image;picture.alt='聊天图片';bubble.append(picture);}
         const stamp=document.createElement('small');
         stamp.className='lp-message-time';
         stamp.textContent=String(message.storyTime || '').replace('T',' ');
@@ -1361,10 +1452,10 @@ function renderMessages(data) {
         remove.type='button';
         remove.className='lp-message-remove';
         remove.textContent='⋯';
-        remove.setAttribute('aria-label','删除这条消息');
-        remove.addEventListener('click',()=>void deleteIndividualMessage(message.id));
+        remove.setAttribute('aria-label','消息操作');
+        remove.addEventListener('click',()=>openMessageActions(message.id));
         row.append(remove);
-        bubble.addEventListener('contextmenu',event=>{event.preventDefault();void deleteIndividualMessage(message.id);});
+        bubble.addEventListener('contextmenu',event=>{event.preventDefault();openMessageActions(message.id);});
         fragment.append(row);
     }
     if (busy && busyKind==='reply') {
@@ -1525,38 +1616,34 @@ async function retryLastReply() {
     await runReply(ctx, char, data, captureSession(ctx));
 }
 
-async function send() {
+async function sendUserMessage(text,image='') {
     if (!mounted || busy) return;
-    const ctx = context();
-    const char = contactCharacter(ctx);
-    const content = nodes.input.value.trim();
-    if (!char || !content || friendshipState(readData(ctx)) !== 'friends') return;
-    if (typeof ctx.generateRaw !== 'function' && !ctx.ChatCompletionService?.sendRequest) {
-        setStatus(recordError('生成前检查', new Error('当前酒馆未提供生成接口。')), 'error');
-        return;
-    }
-
-    const session = captureSession(ctx);
-    const data = structuredClone(readData(ctx));
-    data.messages.push(makeMessage('user', content, data.storyTime));
-    data.chatDeleted = false;
-
-    const job = startBusy('reply');
-    recordActivity('发送消息', '正在将玩家消息保存到当前手机存档。');
-    setStatus('正在发送消息，并将自动生成角色回复…');
+    const ctx=context();
+    const char=contactCharacter(ctx);
+    const content=String(text||'').trim();
+    if(!char||!content||friendshipState(readData(ctx))!=='friends')return;
+    if(image && readApiOptions(readData(ctx)).mode!=='custom')return setStatus('图片发送需使用支持视觉输入的独立 API','error');
+    if(typeof ctx.generateRaw!=='function' && !ctx.ChatCompletionService?.sendRequest)return setStatus('当前酒馆未提供生成接口','error');
+    const session=captureSession(ctx);
+    const data=structuredClone(readData(ctx));
+    const quoted=data.messages.find(x=>x.id===quotedMessageId);
+    const message=makeMessage('user',content,data.storyTime);
+    if(quoted){message.replyTo=quoted.id;message.replyQuote=quoted.text.slice(0,180);}
+    if(image)message.image=image;
+    data.messages.push(message);data.chatDeleted=false;
+    const job=startBusy('reply');
+    recordActivity('发送消息','正在保存玩家消息');
     try {
-        await writeData(ctx, data);
-        if (!sameSession(session)) return;
-        nodes.input.value = '';
-        await runReply(ctx, char, data, session, job);
-    } catch (error) {
-        const message = recordError('保存用户消息', error);
-        if (sameSession(session)) setStatus(message, 'error');
-    } finally {
-        finishBusy(job);
-        if (mounted) render();
-    }
+        await writeData(ctx,data);
+        if(!sameSession(session))return;
+        nodes.input.value='';
+        quotedMessageId=null;nodes.quotedPreview.hidden=true;
+        nodes.morePanel.hidden=true;nodes.emojiPanel.hidden=true;
+        await runReply(ctx,char,data,session,job);
+    }catch(e){if(sameSession(session))setStatus(recordError('发送消息',e),'error');}
+    finally{finishBusy(job);if(mounted)render();}
 }
+async function send() { return sendUserMessage(nodes.input.value); }
 
 function rememberFriendship(data, nextState, notice) {
     const from = friendshipState(data);
@@ -1933,8 +2020,29 @@ function makeUI() {
         <section class="lp-screen lp-chat" data-lp-screen="chat" aria-label="聊天" hidden>
           <div class="lp-chat-error" data-lp="chatError" hidden></div>
           <div class="lp-messages" data-lp="messages" role="log" aria-label="手机聊天记录"></div>
+          <div class="lp-message-actions" data-lp="messageActions" hidden>
+            <button type="button" data-message-action="quote">引用</button>
+            <button type="button" data-message-action="forward">转发</button>
+            <button type="button" data-message-action="edit">编辑</button>
+            <button type="button" data-message-action="copy">复制</button>
+            <button type="button" data-message-action="delete">删除</button>
+            <button type="button" data-message-action="cancel">关闭</button>
+          </div>
+          <div class="lp-quoted-preview" data-lp="quotedPreview" hidden></div>
+          <div class="lp-emoji-panel" data-lp="emojiPanel" hidden>
+            <button type="button" data-emoji="😊">😊</button><button type="button" data-emoji="🥺">🥺</button><button type="button" data-emoji="😭">😭</button><button type="button" data-emoji="❤️">❤️</button><button type="button" data-emoji="😼">😼</button><button type="button" data-emoji="🥰">🥰</button><button type="button" data-emoji="👀">👀</button><button type="button" data-emoji="💢">💢</button>
+          </div>
+          <div class="lp-more-panel" data-lp="morePanel" hidden>
+            <button type="button" data-chat-tool="photo">相册</button>
+            <button type="button" data-chat-tool="call">电话</button>
+            <button type="button" data-chat-tool="transfer">转账</button>
+            <button type="button" data-chat-tool="location">定位</button>
+          </div>
+          <input type="file" accept="image/png,image/jpeg,image/webp" data-lp="chatImageInput" hidden />
           <div class="lp-composer">
+            <button type="button" class="lp-tool-btn" data-chat-tool="emoji" aria-label="表情">☺</button>
             <textarea data-lp="input" rows="1" placeholder="发送消息" aria-label="手机消息内容"></textarea>
+            <button type="button" class="lp-tool-btn" data-chat-tool="more" aria-label="更多功能">＋</button>
             <button type="button" data-lp="send" aria-label="发送并生成">发送</button>
             <button type="button" class="lp-retry" data-lp="retry" hidden>重试回复</button>
           </div>
@@ -2048,7 +2156,7 @@ function mount() {
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
         'presetSource','presetEntries','worldSource','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themeIcons',
         'diagnostics', 'diagnosticState', 'copyDiagnostics', 'clearDiagnostics',
-        'messages', 'input', 'retry', 'send', 'launcher']
+        'messages','messageActions','quotedPreview','emojiPanel','morePanel','chatImageInput','input', 'retry', 'send', 'launcher']
         .map(key => [key, key === 'launcher' ? floating : root.querySelector(`[data-lp="${key}"]`)]));
 
     nodes.launcher.addEventListener('click', () => {
@@ -2094,7 +2202,16 @@ function mount() {
         changeTheme({icons:{...(themeData().icons||{}),[iconName]:str || APP_ICONS[iconName]}});
     });
     nodes.floatingLauncher.addEventListener('change', event => setFloatLauncherEnabled(event.target.checked));
-    nodes.send.addEventListener('click', send);
+    nodes.send.addEventListener('click',send);
+    nodes.chatImageInput.addEventListener('change',event=>{void sendImageFile(event.target.files?.[0]);event.target.value='';});
+    root.addEventListener('click',event=>{
+        const tool=event.target.closest('button[data-chat-tool]');
+        if(tool&&root.contains(tool)){startChatTool(tool.dataset.chatTool);return;}
+        const emoji=event.target.closest('button[data-emoji]');
+        if(emoji&&root.contains(emoji)){nodes.input.value+=emoji.dataset.emoji;nodes.emojiPanel.hidden=true;nodes.input.focus();return;}
+        const action=event.target.closest('button[data-message-action]');
+        if(action&&root.contains(action)){if(action.dataset.messageAction==='cancel')closeMessageActions();else void handleMessageOperation(action.dataset.messageAction);}
+    });
     nodes.retry.addEventListener('click', retryLastReply);
     nodes.friendSave.addEventListener('click', saveManualFriendship);
     nodes.addNpcSave.addEventListener('click',()=>void addNpcContact());
