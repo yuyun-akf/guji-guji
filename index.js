@@ -858,8 +858,10 @@ function extractNpcCandidatesFromText(sourceText,source,mainName) {
         //  宁肆锦的母亲苏晚意 / 他的老师陈某某
         const relationWithName=new RegExp('(?:[\\u3400-\\u9fff·]{2,6}|他|她|我|你)的('+rel+')([\\u3400-\\u9fff·]{2,4})(?=[，,。；;\\s（(]|$)','g');
         while((m=relationWithName.exec(trimmed))!==null)hits.push({name:m[2],relation:m[1]});
+        const userRelation=new RegExp('(?:user|玩家|\\{\\{user\\}\\})的('+rel+')([\\u3400-\\u9fff·]{2,4})(?=[，,。；;\\s]|$)','gi');
+        while((m=userRelation.exec(trimmed))!==null)hits.push({name:m[2],relation:m[1]});
         // 苏晚意（宁肆锦的母亲） / 宁致远：知名导演，宁肆锦父亲
-        const namedRelation=new RegExp('^([\\u3400-\\u9fff·]{2,5})[：:（(，,\\s]{1,4}[^。\\n]{0,85}?(?:'+rel+')(?=[，,。；;）)\\s]|$)');
+        const namedRelation=new RegExp('^([\\u3400-\\u9fff·]{2,5})[：:（(][^。\\n]{0,85}?(?:'+rel+')(?=[，,。；;）)\\s]|$)');
         m=trimmed.match(namedRelation);
         if(m)hits.push({name:m[1],relation:trimmed.match(new RegExp(rel))?.[0]||''});
         // Explicit named worldbook title, e.g. 苏晚意 - 人物档案
