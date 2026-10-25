@@ -63,7 +63,7 @@ test('character receives the current relationship and past relationship transiti
     rememberFriendship(data, 'outgoing', '重新申请');
     const prompt = createSystemPrompt({ name: '测试角色', description: '普通朋友' }, data);
     assert.ok(prompt.includes('当前好友关系：已发送好友申请'));
-    assert.ok(prompt.includes('已是好友 → 非好友'));
+    assert.ok(prompt.includes('非好友 → 已发送好友申请'));
 });
 
 test('diagnostic text hides obvious credentials', () => {
@@ -94,7 +94,7 @@ test('phone opens into a launcher with one send-and-generate action', () => {
 test('pressing send saves one player message and automatically generates one reply', async () => {
     let generationCount = 0;
     let saveCount = 0;
-    const chatMetadata = {};
+    const chatMetadata = { st_little_phone_v1: { ...newData(), friendship: { state: 'friends' } } };
     const ctx = {
         groupId: null,
         characterId: 0,
@@ -117,7 +117,7 @@ test('pressing send saves one player message and automatically generates one rep
       renderMessages = () => {};
       updateBusy = () => {};
       mounted = true;
-      nodes = { input: {value: '你好呀'}, status: {dataset: {}}, diagnosticState: {textContent: ''} };
+      nodes = { input: {value: '你好呀'}, quotedPreview: {}, morePanel: {}, emojiPanel: {}, status: {dataset: {}}, diagnosticState: {textContent: ''} };
       globalThis.sendOnce = send;
       globalThis.readText = () => nodes.input.value;
       globalThis.logs = diagnostics;
@@ -374,7 +374,7 @@ test('diagnostic bootstrap is the manifest entry and exposes lifecycle hooks', (
     assert.equal(manifest.version, '0.7.0');
     assert.equal(manifest.minimum_client_version, '1.18.0');
     assert.equal(manifest.js, 'bootstrap.js');
-    assert.match(bootstrap, /import\('\.\/index\.js'\)/);
+    assert.match(bootstrap, /import\('\.\/index\.js\?v=0\.7\.0'\)/);
     assert.match(bootstrap, /export function onActivate\(/);
     assert.match(bootstrap, /export function onEnable\(/);
     assert.match(bootstrap, /export function onDisable\(/);
@@ -435,17 +435,17 @@ test('mobile settings use dedicated full-screen searchable item pickers', () => 
 test('split phone messages preserve content even above five bubbles', () => {
     const runtime = { console, Date, structuredClone, window:{} };
     vm.createContext(runtime);
-    vm.runInContext(source + '\\nglobalThis.split = splitPhoneReply;', runtime);
+    vm.runInContext(source + '\nglobalThis.split = splitPhoneReply;', runtime);
     const original = Array.from({length:7}, (_,i)=>'msg'+i).join('[PHONE_NEXT]');
     const actual = runtime.split(original, {});
     assert.equal(actual.length,5);
-    assert.equal(actual.join('\\n').replace(/\\n/g,''),original.replaceAll('[PHONE_NEXT]',''));
+    assert.equal(actual.join('\n').replace(/\n/g,''),original.replaceAll('[PHONE_NEXT]',''));
     assert.equal(JSON.stringify(runtime.split(original,{config:{messageStyle:'unrestricted'}})),JSON.stringify([original]));
 });
 test('independent API uses a separate model and ephemeral key without changing host settings', async () => {
     const runtime = {console,Date,structuredClone,URL,window:{}};
     vm.createContext(runtime);
-    vm.runInContext(source + '\\nglobalThis.api = {phoneGenerate, apiSessionId, transientApiKeys};',runtime);
+    vm.runInContext(source + '\nglobalThis.api = {phoneGenerate, apiSessionId, transientApiKeys};',runtime);
     let outbound;
     const settings = {theme:'unchanged'};
     const ctx = {
@@ -478,7 +478,7 @@ test('messenger has messages, contacts, requests, profile, settings and import/e
 test('chat import validates schema, sender roles and length limits', () => {
     const runtime = {console,Date,structuredClone,window:{},document:{}};
     vm.createContext(runtime);
-    vm.runInContext(source + '\\nglobalThis.importParse = parseChatImport;',runtime);
+    vm.runInContext(source + '\nglobalThis.importParse = parseChatImport;',runtime);
     const json=JSON.stringify({format:'gujiguji-chat',version:1,messages:[{from:'user',text:'你好'},{from:'character',text:'在'}]});
     const list=runtime.importParse(json);
     assert.equal(list.length,2);
@@ -670,3 +670,4 @@ test('chat backup round trip retains multimedia image payload', () => {
     assert.equal(runtime.chatFns.parseChatImport(JSON.stringify(payload))[0].image,image);
     assert.equal(runtime.chatFns.buildPrompt(data)[0].content[1].type,'image_url');
 });
+
