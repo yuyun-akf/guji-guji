@@ -43,7 +43,7 @@ let configWriteQueue = Promise.resolve();
 let viewportListener = null;
 const transientApiKeys = new Map();
 const APP_ICONS = {chat:'💬',diagnostics:'🛠️',settings:'⚙️',calendar:'📅',theme:'🎨',album:'🖼️',shopping:'🛍️',takeout:'🥡'};
-const SCREENS = new Set(['home', 'chat', 'chatList', 'contacts', 'requests', 'profile', 'chatOptions', 'settings', 'diagnostics', 'calendar', 'theme', 'presetPicker', 'worldPicker']);
+const SCREENS = new Set(['home', 'chat', 'chatList', 'contacts', 'requests', 'profile', 'addNpc', 'chatOptions', 'settings', 'diagnostics', 'calendar', 'theme', 'presetPicker', 'worldPicker']);
 
 function context() {
     try {
@@ -643,8 +643,8 @@ function setScreen(screen) {
         section.hidden = section.dataset.lpScreen !== screen;
     }
     nodes.back.hidden = screen === 'home';
-    const titles = { home:'咕叽咕机',chat:'',chatList:'咕叽聊',contacts:'通讯录',requests:'新的朋友',profile:'联系人资料',chatOptions:'聊天设置',settings:'设置',diagnostics:'运行日志',calendar:'日历',theme:'主题',presetPicker:'选择预设条目',worldPicker:'选择世界书条目' };
-    nodes.title.textContent = screen === 'chat' ? getCharacterName(selectedCharacter(context())) : titles[screen];
+    const titles = { home:'咕叽咕机',chat:'',chatList:'咕叽聊',contacts:'通讯录',requests:'新的朋友',profile:'联系人资料',addNpc:'添加 NPC',chatOptions:'聊天设置',settings:'设置',diagnostics:'运行日志',calendar:'日历',theme:'主题',presetPicker:'选择预设条目',worldPicker:'选择世界书条目' };
+    nodes.title.textContent = screen === 'chat' ? contactDisplayName(context()) : titles[screen];
     nodes.chatMenu.hidden = screen !== 'chat';
     if (screen === 'diagnostics') renderDiagnostics();
     if (screen === 'settings' && screen !== previous) { loadPhoneApiUI(); loadPhoneMessageStyle(); void populateConfigLists(); }
@@ -1066,16 +1066,23 @@ function renderFriendship(data) {
 function render() {
     if (!mounted || !nodes) return;
     const ctx = context();
-    const char = selectedCharacter(ctx);
-    const data = char ? readData(ctx) : null;
+    const primary = selectedCharacter(ctx);
+    if (!validContactId(readRootData(ctx),activeContactId)) activeContactId=PRIMARY_CONTACT_ID;
+    const char = primary ? contactCharacter(ctx) : null;
+    const data = primary ? readData(ctx) : null;
 
-    nodes.profileName.textContent = char ? getCharacterName(char) : '请先选择角色';
+    nodes.profileName.textContent = char ? contactDisplayName(ctx) : '请先选择角色';
+    nodes.contactRemark.value = getContactInfo(ctx).remark || '';
+    nodes.profileDescription.textContent = activeContactId===PRIMARY_CONTACT_ID
+        ? '当前酒馆角色卡'
+        : [getContactInfo(ctx).relationship,getContactInfo(ctx).description].filter(Boolean).join(' · ').slice(0,500);
+    nodes.deleteNpc.hidden = activeContactId===PRIMARY_CONTACT_ID;
     nodes.profileAvatar.src = avatarSources(ctx,data).character;
     renderChatLists(ctx,char,data);
     nodes.subtitle.textContent = char ? '故事中的小手机 · 独立聊天' : '请先选择单人角色存档';
-    nodes.homeCharacter.textContent = char ? `与 ${getCharacterName(char)} 的故事` : '等待进入角色存档';
+    nodes.homeCharacter.textContent = primary ? `与 ${getCharacterName(primary)} 的故事` : '等待进入角色存档';
     nodes.homeTime.textContent = (data?.storyTime || localDateTime()).replace('T', ' ');
-    nodes.homeMessageCount.textContent = `${data?.messages?.filter(message => message.from !== 'system').length || 0} 条聊天记录`;
+    nodes.homeMessageCount.textContent = `${readRootData(ctx).contacts.length+1} 位联系人`;
     nodes.time.value = data?.storyTime || localDateTime();
     updateApiInfo();
     renderFriendship(data);
@@ -1159,8 +1166,8 @@ async function runReply(ctx, char, data, session, existingJob = null) {
 async function retryLastReply() {
     if (!mounted || busy) return;
     const ctx = context();
-    const char = selectedCharacter(ctx);
-    if (!char) return;
+    const char = contactCharacter(ctx);
+    if (!selectedCharacter(ctx)) return;
     const data = structuredClone(readData(ctx));
     if (friendshipState(data) !== 'friends' || data.messages.at(-1)?.from !== 'user') return;
     if (typeof ctx.generateRaw !== 'function' && !ctx.ChatCompletionService?.sendRequest) {
@@ -1173,7 +1180,7 @@ async function retryLastReply() {
 async function send() {
     if (!mounted || busy) return;
     const ctx = context();
-    const char = selectedCharacter(ctx);
+    const char = contactCharacter(ctx);
     const content = nodes.input.value.trim();
     if (!char || !content || friendshipState(readData(ctx)) !== 'friends') return;
     if (typeof ctx.generateRaw !== 'function' && !ctx.ChatCompletionService?.sendRequest) {
@@ -1240,9 +1247,9 @@ async function changeFriendship(nextState, notice) {
 async function reviewOutgoingRequest() {
     if (!mounted || busy) return;
     const ctx = context();
-    const char = selectedCharacter(ctx);
+    const char = contactCharacter(ctx);
     const data = structuredClone(readData(ctx));
-    if (!char || friendshipState(data) !== 'outgoing') return;
+    if (!selectedCharacter(ctx) || friendshipState(data) !== 'outgoing') return;
     if (typeof ctx.generateRaw !== 'function' && !ctx.ChatCompletionService?.sendRequest) {
         setStatus(recordError('处理好友申请', new Error('酒馆未提供生成接口，申请将保持待处理。')), 'error');
         return;
@@ -1253,7 +1260,6 @@ async function reviewOutgoingRequest() {
     setStatus('好友申请已发出，正在等待角色决定…');
     recordActivity('好友申请', '已请求模型判断角色是否接受好友申请。');
     try {
-        const profilePrompt = createSystemPrompt(char, data);
         const selectedPrompt = await composePhonePrompt(ctx, char, data);
         const result = await generateWithTimeout(ctx, {
             systemPrompt: `${selectedPrompt}\n\n现在只判断角色是否愿意通过 user 的好友申请。请根据设定、已经发生的相处以及角色自己的意愿决定，不保证同意。只能输出一个英文单词：ACCEPT 或 REJECT。`,
@@ -1465,6 +1471,7 @@ function makeUI() {
         <section class="lp-screen lp-chatlist" data-lp-screen="contacts" aria-label="通讯录" hidden>
           <div class="lp-list-body">
             <button type="button" class="lp-list-action" data-lp-open="requests"><span>✉</span><span>新的朋友</span><span data-lp="requestBadge"></span></button>
+            <button type="button" class="lp-list-action" data-lp-open="addNpc"><span>＋</span><span>添加故事人物</span></button>
             <div class="lp-list-heading">联系人</div>
             <div data-lp="contactsList"></div>
           </div>
@@ -1479,10 +1486,24 @@ function makeUI() {
             <div data-lp="requestsList"></div>
           </div>
         </section>
+        <section class="lp-screen lp-chatlist" data-lp-screen="addNpc" aria-label="添加 NPC" hidden>
+          <div class="lp-list-body lp-npc-editor">
+            <h2>添加故事中的人物</h2>
+            <label>姓名<input data-lp="npcName" type="text" maxlength="60" placeholder="NPC 姓名" /></label>
+            <label>与 user 的关系<input data-lp="npcRelation" type="text" maxlength="180" placeholder="同学、家人、朋友等（可选）" /></label>
+            <label>人物设定<textarea data-lp="npcDescription" maxlength="3500" rows="6" placeholder="填写或粘贴角色卡、世界书里的 NPC 设定"></textarea></label>
+            <button type="button" data-lp="addNpcSave">创建联系人</button>
+            <p class="lp-npc-note">当前为手动创建；不会跨角色卡读取人物。自动识别世界书 NPC 将在后续版本单独开发。</p>
+          </div>
+        </section>
         <section class="lp-screen lp-profile" data-lp-screen="profile" aria-label="联系人资料" hidden>
           <div class="lp-profile-hero">
             <img data-lp="profileAvatar" alt="角色头像" class="lp-profile-avatar" />
-            <div><strong data-lp="profileName"></strong><div data-lp="friendLabel" class="lp-profile-state"></div></div>
+            <div><strong data-lp="profileName"></strong><div data-lp="friendLabel" class="lp-profile-state"></div><div data-lp="profileDescription" class="lp-profile-state"></div></div>
+          </div>
+          <div class="lp-profile-remark">
+            <label>联系人备注<input type="text" maxlength="60" data-lp="contactRemark" placeholder="备注名（可选）" /></label>
+            <button type="button" data-lp="saveContactRemark">保存备注</button>
           </div>
           <div class="lp-profile-actions" data-lp="friendActions"></div>
           <button type="button" class="lp-profile-chat" data-lp-open="chat">进入聊天</button>
@@ -1497,6 +1518,7 @@ function makeUI() {
             </select>
             <button type="button" data-lp="friendSave">保存关系设定</button>
           </details>
+          <button type="button" class="lp-delete-npc" data-lp="deleteNpc" hidden>删除此 NPC 联系人</button>
           <div class="lp-profile-upload">
             <label>角色头像（默认读取酒馆角色）<input type="file" accept="image/*" data-lp="avatarCharFile" /></label>
             <button type="button" data-lp="resetCharAvatar">恢复角色原头像</button>
@@ -1617,7 +1639,7 @@ function mount() {
     document.body.append(floating);
     nodes = Object.fromEntries(['title', 'subtitle', 'back', 'close', 'time',
         'homeTime', 'homeCharacter', 'homeMessageCount', 'homeLogCount',
-        'friendLabel', 'friendActions','profileAvatar','profileName','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
+        'friendLabel', 'friendActions','profileAvatar','profileName','profileDescription','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','avatarUserFile','resetCharAvatar','resetUserAvatar',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
         'presetSource','presetEntries','worldSource','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themeIcons',
@@ -1637,7 +1659,7 @@ function mount() {
     });
     nodes.chatMenu.addEventListener('click',()=>setScreen('chatOptions'));
     nodes.back.addEventListener('click', () => setScreen({
-        chat: 'chatList', contacts: 'chatList', profile: 'contacts', requests:'contacts', chatOptions:'chat', presetPicker:'settings', worldPicker:'settings'
+        chat: 'chatList', contacts: 'chatList', profile: 'contacts', requests:'contacts', addNpc:'contacts', chatOptions:'chat', presetPicker:'settings', worldPicker:'settings'
     }[activeScreen] || 'home'));
     root.addEventListener('click', event => {
         const button = event.target.closest('button[data-lp-open]');
@@ -1669,6 +1691,9 @@ function mount() {
     nodes.send.addEventListener('click', send);
     nodes.retry.addEventListener('click', retryLastReply);
     nodes.friendSave.addEventListener('click', saveManualFriendship);
+    nodes.addNpcSave.addEventListener('click',()=>void addNpcContact());
+    nodes.saveContactRemark.addEventListener('click',()=>void saveContactRemark());
+    nodes.deleteNpc.addEventListener('click',()=>void removeNpcContact());
     nodes.friendActions.addEventListener('click', event => {
         const button = event.target.closest('button[data-friend-action]');
         if (button) handleFriendAction(button.dataset.friendAction);
@@ -1718,6 +1743,7 @@ function mount() {
         listeningSource = ctx.eventSource;
         listeningEvent = ctx.event_types.CHAT_CHANGED;
         chatChangedHandler = () => {
+            activeContactId=PRIMARY_CONTACT_ID;
             statusText = '';
             statusKind = 'info';
             render();
