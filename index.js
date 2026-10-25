@@ -1790,6 +1790,7 @@ function unmount() {
     root?.remove();
     root = null;
     nodes = null;
+    activeContactId = PRIMARY_CONTACT_ID;
     statusText = '';
     statusKind = 'info';
     activeScreen = 'home';
