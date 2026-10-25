@@ -708,8 +708,12 @@
 #gujiguji-floating-launcher {
   position: fixed;
   z-index: 2147483645;
-  right: max(14px, env(safe-area-inset-right));
-  bottom: max(84px, calc(env(safe-area-inset-bottom) + 80px));
+  top: auto;
+  left: auto;
+  right: 14px;
+  bottom: 84px;
+  transform: none;
+  margin: 0;
   display: grid;
   place-items: center;
   width: 54px; height: 54px;

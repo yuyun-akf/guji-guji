@@ -87,6 +87,24 @@ test('browser startup, delayed menu, lifecycle, old data and v0.7 UI', async () 
         await page.evaluate(() => { document.getElementById('extensionsMenu').replaceWith(Object.assign(document.createElement('div'), { id: 'extensionsMenu' })); });
         await page.waitForSelector('.gujiguji-wand-button');
         assert.equal(await page.locator('#gujiguji-wand-entry').count(), 1);
+        // A transformed/scrolled host body makes ordinary fixed controls drift
+        // away from the visible viewport on some Android WebViews.
+        const launcherPosition=await page.evaluate(() => {
+            document.body.style.minHeight='2400px';
+            document.body.style.transform='translateZ(0)';
+            const checkbox=document.getElementById('gujiguji-host-floating');
+            checkbox.checked=true;
+            checkbox.dispatchEvent(new Event('change',{bubbles:true}));
+            window.scrollTo(0,950);
+            const button=document.getElementById('gujiguji-floating-launcher');
+            const rect=button.getBoundingClientRect();
+            return {top:rect.top,bottom:rect.bottom,viewport:window.innerHeight,
+                topLayer:button.matches(':popover-open'),scrollY:window.scrollY};
+        });
+        assert.equal(launcherPosition.topLayer,true,'launcher must use the viewport top layer');
+        assert.ok(launcherPosition.scrollY>100,'test must exercise the scrolled host');
+        assert.ok(launcherPosition.top>=0&&launcherPosition.bottom<=launcherPosition.viewport,
+            `launcher escaped viewport: ${JSON.stringify(launcherPosition)}`);
         assert.deepEqual(errors, []);
     } finally { await browser.close(); }
 });

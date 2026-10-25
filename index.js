@@ -104,12 +104,24 @@ function updateLauncherVisibility() {
             };
             force('position','fixed','position');
             force('z-index','2147483645','zIndex');
-            force('right','max(14px, env(safe-area-inset-right))','right');
-            force('bottom','max(84px, calc(env(safe-area-inset-bottom) + 80px))','bottom');
+            force('top','auto','top');
+            force('left','auto','left');
+            force('right','14px','right');
+            force('bottom','84px','bottom');
+            force('transform','none','transform');
+            force('margin','0','margin');
             force('display',enabled?'grid':'none','display');
             force('visibility',enabled?'visible':'hidden','visibility');
             force('opacity',enabled?'1':'0','opacity');
             force('pointer-events',enabled?'auto':'none','pointerEvents');
+        }
+        // Top-layer popovers are anchored to the viewport even when a host
+        // theme transforms the document body (which re-bases position:fixed).
+        if(typeof nodes.launcher.showPopover==='function'){
+            try{
+                if(enabled && !nodes.launcher.matches(':popover-open'))nodes.launcher.showPopover();
+                else if(!enabled && nodes.launcher.matches(':popover-open'))nodes.launcher.hidePopover();
+            }catch{/* Older Android WebViews keep the standard fixed fallback. */}
         }
     }
     if (nodes?.floatingLauncher) nodes.floatingLauncher.checked=enabled;
@@ -143,10 +155,11 @@ function inspectLauncher(reason='状态检查') {
     if(typeof document==='undefined'||!mounted||!extensionEnabled)return null;
     const enabled=floatLauncherEnabled(),button=document.getElementById('gujiguji-floating-launcher');
     const connected=Boolean(button?.isConnected),owned=Boolean(button&&button===nodes?.launcher);
-    let css=null,rect=null,hit=null;
+    let css=null,rect=null,hit=null,topLayer=false;
     if(connected){
         try{css=window.getComputedStyle?.(button)||null;}catch{/* WebView fallback */}
         try{rect=button.getBoundingClientRect?.()||null;}catch{/* WebView fallback */}
+        try{topLayer=button.matches?.(':popover-open')===true;}catch{/* Older WebView */}
         if(rect?.width>0&&rect?.height>0){
             try{hit=document.elementFromPoint?.(rect.left+rect.width/2,rect.top+rect.height/2)||null;}catch{/* unsupported */}
         }
@@ -160,15 +173,15 @@ function inspectLauncher(reason='状态检查') {
         rect&&!visibleBox?'尺寸为零或位置在屏幕外':covered?'按钮位置被其他元素占用':visibleBox?'几何位置正常':'无法判断尺寸';
     const box=rect?`${Math.round(rect.left)},${Math.round(rect.top)} ${Math.round(rect.width)}×${Math.round(rect.height)}`:'未取得';
     const top=covered?String(hit?.tagName||'元素').slice(0,18)+'#'+String(hit?.id||'').slice(0,40):hit?'按钮自身':'未取得';
-    const detail=`${reason}：${state}；开关=${enabled?'开':'关'}，DOM=${connected?'存在':'缺失'}，引用=${owned?'一致':'不一致'}，display=${display}，visibility=${visibility}，位置=${box}，中心命中=${top}`;
-    const signature=[enabled,state,connected,owned,display,visibility,box,top].join('|');
+    const detail=`${reason}：${state}；开关=${enabled?'开':'关'}，DOM=${connected?'存在':'缺失'}，引用=${owned?'一致':'不一致'}，顶层=${topLayer?'已启用':typeof button?.showPopover==='function'?'未启用':'不支持'}，display=${display}，visibility=${visibility}，位置=${box}，中心命中=${top}`;
+    const signature=[enabled,state,connected,owned,topLayer,display,visibility,box,top].join('|');
     if(signature!==lastLauncherProbe){lastLauncherProbe=signature;recordActivity('悬浮按钮诊断',detail,state==='按钮位置被其他元素占用'||state==='按钮未挂载'||state==='样式隐藏'?'error':'info');}
     const hint=document.getElementById?.('gujiguji-host-floating-status');
     if(hint&&enabled){
         const message=`悬浮按钮：${state}。详细状态请看小手机「运行日志」。`;
         if(hint.textContent!==message)hint.textContent=message;
     }
-    return {state,connected,owned,display,visibility,visibleBox,covered};
+    return {state,connected,owned,topLayer,display,visibility,visibleBox,covered};
 }
 function scheduleLauncherProbe(reason) {
     if(typeof setTimeout!=='function')return;
@@ -3430,7 +3443,7 @@ function makeUI() {
         <button type="button" class="lp-inline-notification" data-lp="inlineNotification" aria-label="打开新消息" hidden></button>
         <section class="lp-screen lp-home" data-lp-screen="home" aria-label="手机桌面">
           <div class="lp-home-hero">
-            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.8.10</div>
+            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.8.11</div>
             <div class="lp-home-time" data-lp="homeTime">故事时间</div>
             <div class="lp-home-character" data-lp="homeCharacter">等待进入角色存档</div>
           </div>
@@ -3783,6 +3796,7 @@ function mount() {
     floating.type = 'button';
     floating.id = 'gujiguji-floating-launcher';
     floating.className = 'lp-launcher';
+    floating.setAttribute('popover','manual');
     const floatingIcon=document.createElement('i');
     floatingIcon.className='fa-solid fa-mobile-screen-button';
     floatingIcon.setAttribute('aria-hidden','true');
