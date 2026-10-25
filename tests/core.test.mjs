@@ -371,7 +371,7 @@ test('modal entirely outside the viewport produces a visible diagnostic error', 
 test('diagnostic bootstrap is the manifest entry and exposes lifecycle hooks', () => {
     const manifest = JSON.parse(readFileSync(resolve(testRoot, '../manifest.json'), 'utf8'));
     const bootstrap = readFileSync(resolve(testRoot, '../bootstrap.js'), 'utf8');
-    assert.equal(manifest.version, '0.6.0');
+    assert.equal(manifest.version, '0.6.1');
     assert.equal(manifest.minimum_client_version, '1.18.0');
     assert.equal(manifest.js, 'bootstrap.js');
     assert.match(bootstrap, /import\('\.\/index\.js'\)/);
@@ -556,4 +556,67 @@ test('NPC creation and remarks have dedicated mobile UI', () => {
       'contactRemark','saveContactRemark','deleteNpc']) {
       assert.ok(html.includes('data-lp="' + name + '"') || html.includes('data-lp-screen="' + name + '"'));
     }
+});
+
+test('NPC extraction finds explicit names and preserves who the relationship belongs to', () => {
+    const runtime = {console,Date,structuredClone,window:{}};
+    vm.createContext(runtime);
+    vm.runInContext(source+'\nglobalThis.extract=extractNpcCandidatesFromText;',runtime);
+    const text = '林知远的母亲人物乙，社区志愿者。\n父亲：人物丙\nuser的老师李春华，是大学教授。';
+    const results=runtime.extract(text,'当前角色卡','林知远');
+    const get=name=>results.find(x=>x.name===name);
+    assert.equal(get('人物乙')?.relation,'林知远的母亲');
+    assert.ok(get('人物丙')?.relation.includes('父亲'));
+    assert.equal(get('李春华')?.relation,'user 的老师');
+    assert.equal(results.some(x=>x.name==='林知远'),false);
+});
+test('NPC scanner does not mistake an occupation phrase for a name', () => {
+    const runtime={console,Date,structuredClone,window:{}};
+    vm.createContext(runtime);
+    vm.runInContext(source+'\nglobalThis.extract=extractNpcCandidatesFromText;',runtime);
+    const results=runtime.extract('人物丙：修理技师，林知远的父亲。','人物档案','林知远');
+    assert.ok(results.some(x=>x.name==='人物丙'));
+    assert.equal(results.some(x=>x.name==='修理技师'),false);
+});
+test('NPC scanner reads only the current character and its configured lorebooks, without API use', async () => {
+    const runtime={console,Date,structuredClone,window:{}};
+    vm.createContext(runtime);
+    vm.runInContext(source+'\nglobalThis.scan=scanNpcSources;',runtime);
+    let worldCalls=0;
+    const ctx={characterId:0,chatId:'story-A',
+        characters:[
+            {name:'林知远',data:{description:'林知远的母亲人物乙，社区志愿者。',extensions:{world:'角色资料'}}},
+            {name:'其他角色',data:{description:'姓名：不相干的人物'}}
+        ],
+        chatMetadata:{st_little_phone_v1:{version:1,storyTime:'2026-10-25T09:00',messages:[],friendship:{state:'friends'}}},
+        loadWorldInfo:async name=>{worldCalls++;assert.equal(name,'角色资料');return {entries:{
+            1:{comment:'人物丙',content:'人物丙\n身份：修理技师，林知远的父亲。'}
+        }};}
+    };
+    const results=await runtime.scan(ctx);
+    const names=results.candidates.map(x=>x.name);
+    assert.ok(names.includes('人物乙'));
+    assert.ok(names.includes('人物丙'));
+    assert.equal(names.includes('不相干的人物'),false);
+    assert.equal(worldCalls,1);
+    assert.equal(results.candidates.find(x=>x.name==='人物丙')?.description.includes('修理技师'),true);
+    assert.equal(ctx.chatMetadata.st_little_phone_v1.contacts,undefined);
+});
+test('NPC scanner excludes people already saved and has review-only UI', () => {
+    const runtime={console,Date,structuredClone,window:{}};
+    vm.createContext(runtime);
+    vm.runInContext(source+'\nglobalThis.filter=mergeNpcCandidates;',runtime);
+    const found=runtime.filter([
+        {name:'人物乙',description:'社区志愿者',source:'一'},
+        {name:'人物乙',description:'社区志愿者',source:'二'},
+        {name:'林知远',description:'当前 char',source:'三'},
+        {name:'人物丙',description:'父亲',source:'四'}
+    ],{contacts:[{id:'npc:s',name:'人物乙'}]},'林知远');
+    assert.equal(found.length,1);
+    assert.equal(found[0].name,'人物丙');
+    const html=makeUI().innerHTML;
+    assert.ok(html.includes('data-lp-screen="discoverNpc"'));
+    assert.ok(html.includes('data-lp="npcScanButton"'));
+    assert.ok(html.includes('data-lp="npcSaveCandidates"'));
+    assert.ok(html.includes('data-lp="npcWorldSelect"'));
 });
