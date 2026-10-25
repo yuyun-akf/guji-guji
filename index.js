@@ -397,7 +397,7 @@ function contactCharacter(ctx,id=activeContactId) {
         name:contact.name,
         description:contact.description || '',
         personality:contact.personality || '',
-        scenario:contact.relationship ? '与 user 的关系：'+contact.relationship : ''
+        scenario:contact.relationship ? '人物关系：'+contact.relationship : ''
     }};
 }
 function contactDisplayName(ctx,id=activeContactId) {
@@ -873,7 +873,10 @@ function extractNpcCandidatesFromText(sourceText,source,mainName) {
             const context=[lines[Math.max(0,i-1)]||'',line,lines[i+1]||''].join('\n').slice(0,900);
             const meaningful=context.replace(/\s/g,'').length>=8;
             if(!meaningful)continue;
-            found.push({name,relation:hit.relation,description:context,source,confidence:hit.relation?'关系明确':'人物条目'});
+            const r=hit.relation ? (new RegExp('(?:user|玩家|\\{\\{user\\}\\})的?'+hit.relation).test(context) ? 'user 的'+hit.relation
+                : context.includes(mainName+'的'+hit.relation) ? mainName+'的'+hit.relation
+                : '当前角色的'+hit.relation+'（请核对）') : '';
+            found.push({name,relation:r,description:context,source,confidence:hit.relation?'关系线索':'人物条目'});
         }
     }
     return found;
@@ -965,7 +968,7 @@ function renderNpcCandidates() {
         const title=document.createElement('strong');title.textContent=c.name;
         header.append(input,title);row.append(header);
         const meta=document.createElement('small');meta.textContent=c.confidence+' · '+c.source;row.append(meta);
-        for(const [field,value,placeholder,max] of [['name',c.name,'姓名',60],['relation',c.relation,'与 user 的关系（可修改）',180]]){
+        for(const [field,value,placeholder,max] of [['name',c.name,'姓名',60],['relation',c.relation,'人物关系（可修改）',180]]){
             const edit=document.createElement('input');
             edit.type='text';edit.maxLength=max;edit.dataset.npcField=field;edit.dataset.npcIndex=String(index);
             edit.value=value;edit.placeholder=placeholder;row.append(edit);
@@ -1736,7 +1739,7 @@ function makeUI() {
           <div class="lp-list-body lp-npc-editor">
             <h2>添加故事中的人物</h2>
             <label>姓名<input data-lp="npcName" type="text" maxlength="60" placeholder="NPC 姓名" /></label>
-            <label>与 user 的关系<input data-lp="npcRelation" type="text" maxlength="180" placeholder="同学、家人、朋友等（可选）" /></label>
+            <label>人物关系（请说明与谁的关系）<input data-lp="npcRelation" type="text" maxlength="180" placeholder="如：宁肆锦的母亲、user的同学" /></label>
             <label>人物设定<textarea data-lp="npcDescription" maxlength="3500" rows="6" placeholder="填写或粘贴角色卡、世界书里的 NPC 设定"></textarea></label>
             <button type="button" data-lp="addNpcSave">创建联系人</button>
             <div class="lp-inline-status" data-lp="npcStatus" role="status" aria-live="polite"></div>
