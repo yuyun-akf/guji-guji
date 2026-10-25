@@ -1,5 +1,5 @@
 /**
- * GujiGuji v0.3.6: a modular phone shell with an isolated chat app.
+ * GujiGuji v0.4.0: a modular phone shell with isolated per-chat context.
  * No direct host-module imports; uses only the documented context surface.
  */
 
@@ -885,20 +885,21 @@ function makeUI() {
         </header>
         <section class="lp-screen lp-home" data-lp-screen="home" aria-label="手机桌面">
           <div class="lp-home-hero">
-            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.3.6</div>
+            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.4.0</div>
             <div class="lp-home-time" data-lp="homeTime">故事时间</div>
             <div class="lp-home-character" data-lp="homeCharacter">等待进入角色存档</div>
           </div>
           <div class="lp-home-summary" data-lp="homeMessageCount">0 条聊天记录</div>
           <div class="lp-app-grid" aria-label="小手机应用">
-            <button type="button" class="lp-app-tile" data-lp-open="chat"><span class="lp-app-icon lp-app-chat">💬</span><span>咕叽聊</span><small>可使用</small></button>
-            <button type="button" class="lp-app-tile" data-lp-open="diagnostics"><span class="lp-app-icon lp-app-log">🛠️</span><span>运行日志</span><small data-lp="homeLogCount">0 条记录</small></button>
-            <button type="button" class="lp-app-tile" data-lp-open="settings"><span class="lp-app-icon lp-app-settings">⚙️</span><span>设置</span><small>故事时间</small></button>
-            <div class="lp-app-tile lp-app-soon" aria-label="相册，待开发"><span class="lp-app-icon">🖼️</span><span>相册</span><small>待开发</small></div>
-            <div class="lp-app-tile lp-app-soon" aria-label="购物，待开发"><span class="lp-app-icon">🛍️</span><span>购物</span><small>待开发</small></div>
-            <div class="lp-app-tile lp-app-soon" aria-label="外卖，待开发"><span class="lp-app-icon">🥡</span><span>外卖</span><small>待开发</small></div>
+            <button type="button" class="lp-app-tile" data-lp-open="chat"><span class="lp-app-icon lp-app-chat" data-lp-icon="chat">💬</span><span>咕叽聊</span><small>可使用</small></button>
+            <button type="button" class="lp-app-tile" data-lp-open="diagnostics"><span class="lp-app-icon lp-app-log" data-lp-icon="diagnostics">🛠️</span><span>运行日志</span><small data-lp="homeLogCount">0 条记录</small></button>
+            <button type="button" class="lp-app-tile" data-lp-open="settings"><span class="lp-app-icon lp-app-settings" data-lp-icon="settings">⚙️</span><span>设置</span></button>
+            <button type="button" class="lp-app-tile" data-lp-open="calendar"><span class="lp-app-icon" data-lp-icon="calendar">📅</span><span>日历</span></button>
+            <button type="button" class="lp-app-tile" data-lp-open="theme"><span class="lp-app-icon" data-lp-icon="theme">🎨</span><span>主题</span></button>
+            <div class="lp-app-tile lp-app-soon" aria-label="相册，待开发"><span class="lp-app-icon" data-lp-icon="album">🖼️</span><span>相册</span><small>待开发</small></div>
+            <div class="lp-app-tile lp-app-soon" aria-label="购物，待开发"><span class="lp-app-icon" data-lp-icon="shopping">🛍️</span><span>购物</span><small>待开发</small></div>
+            <div class="lp-app-tile lp-app-soon" aria-label="外卖，待开发"><span class="lp-app-icon" data-lp-icon="takeout">🥡</span><span>外卖</span><small>待开发</small></div>
           </div>
-          <p class="lp-home-note">现在先把聊天打磨好；相册、购物和外卖会按模块逐个开发。</p>
         </section>
         <section class="lp-screen lp-chat" data-lp-screen="chat" aria-label="咕叽聊" hidden>
           <div class="lp-chat-contact">联系人：<strong data-lp="name">角色</strong></div>
@@ -933,24 +934,52 @@ function makeUI() {
             <button type="button" data-lp="send">发送并生成</button>
           </div>
         </section>
-        <section class="lp-screen lp-settings" data-lp-screen="settings" aria-label="小手机设置" hidden>
+        <section class="lp-screen lp-settings" data-lp-screen="settings" aria-label="设置" hidden>
+          <h2>API</h2>
+          <div class="lp-settings-card" data-lp="apiInfo">当前酒馆连接</div>
+          <p>当前版本沿用酒馆连接。独立模型连接尚未开放。</p>
+          <h2>预设条目</h2>
+          <select data-lp="presetSource" aria-label="选择预设"></select>
+          <div class="lp-config-list" data-lp="presetEntries"></div>
+          <h2>世界书条目</h2>
+          <select data-lp="worldSource" aria-label="选择世界书"></select>
+          <div class="lp-config-list" data-lp="worldEntries"></div>
           <h2>打开方式</h2>
-          <p>默认从酒馆的魔法棒菜单选择「咕叽咕机」打开。也可以额外开启悬浮按钮。</p>
-          <label class="lp-entry-option"><input type="checkbox" data-lp="floatingLauncher" /> 在聊天页面显示悬浮按钮</label>
-          <h2>故事时间</h2>
-          <p>这里设置的是小手机的剧情时间；它可以早于正文开始，不会自动修改正文时间。</p>
+          <label class="lp-entry-option"><input type="checkbox" data-lp="floatingLauncher" /> 显示悬浮按钮</label>
+          <div class="lp-settings-status" data-lp="settingsStatus" role="status" aria-live="polite"></div>
+        </section>
+        <section class="lp-screen lp-settings" data-lp-screen="calendar" aria-label="日历" hidden>
+          <h2>当前故事时间</h2>
           <div class="lp-timebar">
-            <label for="lp-story-time">手机当前时间</label>
+            <label for="lp-story-time">日期与时间</label>
             <input id="lp-story-time" type="datetime-local" data-lp="time" aria-label="小手机故事时间" />
           </div>
-          <div class="lp-settings-status" data-lp="settingsStatus" role="status" aria-live="polite"></div>
-          <h2>小手机功能</h2>
-          <p>聊天记录按当前角色和存档保存。后续可以继续加入相册、购物、外卖等独立 App。</p>
-          <button type="button" class="lp-settings-link" data-lp-open="diagnostics">查看运行日志与 API 错误 →</button>
+          <p>当前角色 · 当前聊天存档</p>
+        </section>
+        <section class="lp-screen lp-settings" data-lp-screen="theme" aria-label="主题" hidden>
+          <h2>手机壁纸</h2>
+          <input type="file" accept="image/*" data-lp="themeWallpaper" aria-label="选择壁纸图片" />
+          <button type="button" class="lp-settings-link" data-lp="themeResetWallpaper">恢复默认壁纸</button>
+          <h2>字体</h2>
+          <select data-lp="themeFont" aria-label="选择手机字体">
+            <option value="system">系统字体</option>
+            <option value="serif">衬线字体</option>
+            <option value="rounded">圆润字体</option>
+          </select>
+          <h2>App 图标</h2>
+          <div class="lp-theme-icons" data-lp="themeIcons">
+            <label>咕叽聊 <input data-theme-icon="chat" maxlength="12" /></label>
+            <label>运行日志 <input data-theme-icon="diagnostics" maxlength="12" /></label>
+            <label>设置 <input data-theme-icon="settings" maxlength="12" /></label>
+            <label>日历 <input data-theme-icon="calendar" maxlength="12" /></label>
+            <label>主题 <input data-theme-icon="theme" maxlength="12" /></label>
+            <label>相册 <input data-theme-icon="album" maxlength="12" /></label>
+            <label>购物 <input data-theme-icon="shopping" maxlength="12" /></label>
+            <label>外卖 <input data-theme-icon="takeout" maxlength="12" /></label>
+          </div>
         </section>
         <section class="lp-screen lp-diagnostics" data-lp-screen="diagnostics" aria-label="运行日志与报错" hidden>
           <div class="lp-diagnostic-state" data-lp="diagnosticState" role="status" aria-live="polite">空闲</div>
-          <p class="lp-diagnostic-note">这里记录咕叽咕机发起的生成和保存操作、返回结果及捕获的报错。无法直接读取 SillyDroid 或酒馆服务端的全部后台日志。</p>
           <div class="lp-diagnostic-head"><strong>本次打开页面后的记录</strong><button type="button" data-lp="copyDiagnostics">复制日志</button></div>
           <div class="lp-diagnostic-list" data-lp="diagnostics"></div>
           <button type="button" class="lp-clear-logs" data-lp="clearDiagnostics">清空本次运行日志</button>
