@@ -216,3 +216,25 @@ test('moment composer and autonomous UI are present without external background 
        assert.ok(html.includes('data-lp="'+id+'"'),id);
     }
 });
+
+test('model-driven incoming friend request is opt-in and never approves itself',async()=>{
+  let calls=0;
+  const ctx={
+    characterId:0,chatId:'current',characters:[{name:'宁肆锦',data:{description:'性格傲娇'}}],
+    chat:[{mes:'宁肆锦和user交换了微信。'}],
+    chatMetadata:{st_little_phone_v1:{version:1,storyTime:'2026-10-25T18:00',
+      messages:[],friendship:{state:'stranger'},contacts:[],conversations:{},
+      socialConfig:{relationSync:true,phoneInPast:false,characterRequests:true,
+       messages:{mode:'off',days:3},moments:{mode:'off',days:3}}}},
+    async saveMetadata(){},
+    async generateRaw(){calls++;return 'APPLY';}
+  };
+  const box=runtime(ctx);
+  box.document.visibilityState='visible';
+  const decision=vm.runInContext('maybeAutoFriendRequest',box);
+  await decision(ctx);
+  assert.equal(ctx.chatMetadata.st_little_phone_v1.friendship.state,'incoming');
+  assert.equal(calls,1);
+  await decision(ctx);
+  assert.equal(calls,1,'no duplicate requests from same event');
+});
