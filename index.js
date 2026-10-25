@@ -1357,7 +1357,13 @@ function renderChatLists(ctx,char,data) {
             requests++;
         }
     }
-    nodes.requestBadge.textContent=requests ? requests+' 条' : '';
+    const incomingCount=ids.filter(id=>friendshipState(readData(ctx,id))==='incoming').length;
+    nodes.requestBadge.textContent=incomingCount ? String(incomingCount) : '';
+    nodes.requestBadge.hidden=!incomingCount;
+    root.querySelectorAll('.lp-tabbar button[data-lp-open="contacts"]').forEach(button=>{
+        button.classList.toggle('lp-has-requests',incomingCount>0);
+    });
+    root.querySelectorAll('[data-lp-open="requests"]').forEach(button=>button.classList.toggle('lp-has-requests',incomingCount>0));
     if (!nodes.requestsList.children.length) {
         const empty=document.createElement('p');
         empty.className='lp-list-empty';
@@ -1958,8 +1964,8 @@ function renderFriendship(data) {
 
     const options = {
         friends: [['remove', '删除好友'], ['block', '拉黑']],
-        stranger: [['add', '添加好友'], ['block', '拉黑']],
-        outgoing: [['review', '重试申请'], ['cancel', '撤回申请'], ['block', '拉黑']],
+        stranger: [['incoming-manual', '补录对方的好友申请'], ['block', '拉黑']],
+        outgoing: [['convert-incoming', '改为对方向我申请'], ['cancel', '撤回旧申请'], ['block', '拉黑']],
         incoming: [['accept', '同意申请'], ['decline', '拒绝'], ['block', '拉黑']],
         blocked: [['unblock', '解除拉黑']],
     };
@@ -1968,7 +1974,7 @@ function renderFriendship(data) {
         button.type = 'button';
         button.dataset.friendAction = action;
         button.textContent = label;
-        button.disabled = busy || (action==='add'&&!access.allowed);
+        button.disabled = busy;
         nodes.friendActions.append(button);
     }
 }
@@ -2211,9 +2217,12 @@ async function handleFriendAction(action) {
         }
     } else if (action === 'unblock' && state === 'blocked') {
         await changeFriendship('stranger', '你已解除拉黑，可以重新添加好友。');
-    } else if (action === 'add' && state === 'stranger') {
-        if(!contactAccess(ctx).allowed)return setStatus('正文尚无交换联系方式的证据，可在人物资料中手动确认','error');
-        if (await changeFriendship('outgoing', '你向对方发送了好友申请。')) await reviewOutgoingRequest();
+    } else if (action === 'incoming-manual' && state === 'stranger') {
+        if(!window.confirm('确认当前剧情中对方向 {{user}} 发来了好友申请？此操作仅补录申请，不会自动成为好友。'))return;
+        if(await changeFriendship('incoming', '对方向你发送了好友申请，等待你同意或拒绝。'))setScreen('requests');
+    } else if (action === 'convert-incoming' && state === 'outgoing') {
+        if(!window.confirm('将旧版「我申请对方」记录改为「对方向我申请」？不会直接通过好友申请。'))return;
+        if(await changeFriendship('incoming', '对方向你发送了好友申请，等待你同意或拒绝。'))setScreen('requests');
     } else if (action === 'review' && state === 'outgoing') {
         await reviewOutgoingRequest();
     } else if (action === 'cancel' && state === 'outgoing') {
@@ -2387,7 +2396,7 @@ function makeUI() {
         </section>
         <section class="lp-screen lp-chatlist" data-lp-screen="contacts" aria-label="通讯录" hidden>
           <div class="lp-list-body">
-            <button type="button" class="lp-list-action" data-lp-open="requests"><span>✉</span><span>新的朋友</span><span data-lp="requestBadge"></span></button>
+            <button type="button" class="lp-list-action" data-lp-open="requests"><span>✉</span><span>新的朋友</span><span data-lp="requestBadge" class="lp-friend-request-badge" hidden></span></button>
             <button type="button" class="lp-list-action" data-lp-open="addNpc"><span>＋</span><span>添加好友／故事人物</span></button>
             <div class="lp-list-heading">好友</div>
             <div data-lp="contactsList"></div>
