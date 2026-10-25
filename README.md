@@ -1,6 +1,6 @@
 # 🍡 咕叽咕机 · GujiGuji
 
-SillyTavern 1.19.0 / SillyDroid 虚拟手机插件，**v0.5.0 测试版**。
+SillyTavern 1.19.0 / SillyDroid 虚拟手机插件，**v0.5.1 测试版**。
 
 安装与更新：`https://github.com/yuyun-akf/guji-guji`。酒馆魔法棒 →「咕叽咕机」。悬浮入口可选，默认关闭。
 
@@ -40,3 +40,7 @@ SillyTavern 1.19.0 / SillyDroid 虚拟手机插件，**v0.5.0 测试版**。
 5. 更换聊天存档，确认以前的数据不混淆。
 
 仓库代码仍保留旧数据存储键；如需保留聊天内容，请在首次清空前导出备份。
+
+## v0.5.1 兼容性修正
+
+最低客户端版本从 SillyTavern 1.19.0 调整为 **1.18.0**（与该版本的扩展生命周期钩子、ChatCompletionService、generateRaw、getWorldInfoNames、loadWorldInfo、getPresetManager、getThumbnailUrl 等接口核对）。这仅解决版本门槛，不保证任何特定安卓系统或浏览器上的运行；若扩展仍灰色不可勾选，请先核实实际 SillyTavern 版本，并检查扩展管理器/浏览器控制台的加载错误。对于低于 1.18 的酒馆，暂不声明完整兼容。
