@@ -1138,16 +1138,27 @@ function personaNames(ctx) {
     return names;
 }
 function renderPersona(ctx) {
-    const persona = currentPersona(ctx);
-    nodes.myIdentity.textContent = persona.name;
-    nodes.myPersona.textContent = persona.description || '尚未填写人设';
-    nodes.myAvatar.onerror=()=>{
-        nodes.myAvatar.onerror=null;
-        const display=persona.name.slice(0,1).replace(/[<>&"']/g,'');
-        const svg='<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96"><rect width="96" height="96" rx="20" fill="#d4bee9"/><circle cx="48" cy="36" r="17" fill="#fff" opacity=".85"/><path d="M16 91c2-23 19-35 32-35s30 12 32 35" fill="#fff" opacity=".85"/></svg>';
-        nodes.myAvatar.src='data:image/svg+xml,'+encodeURIComponent(svg);
+    const persona=currentPersona(ctx);
+    nodes.myIdentity.textContent=persona.name;
+    nodes.myPersona.textContent=persona.description||'尚未填写人设';
+    nodes.myAvatarFallback.textContent=(persona.name||'U').slice(0,1);
+    const image=nodes.myAvatar;
+    const source=allowedAvatarSrc(readRootData(ctx).avatars?.user)||persona.avatar;
+    if(image.dataset.currentSource===source)return;
+    image.dataset.currentSource=source;
+    image.classList.remove('lp-avatar-loaded');
+    image.onload=()=>{
+        if(image.dataset.currentSource!==source)return;
+        image.classList.add('lp-avatar-loaded');
     };
-    nodes.myAvatar.src=readRootData(ctx).avatars?.user||persona.avatar;
+    image.onerror=()=>{
+        if(image.dataset.currentSource!==source)return;
+        image.classList.remove('lp-avatar-loaded');
+        if(nodes?.myAvatarStatus)nodes.myAvatarStatus.textContent='未能加载头像，可点击「更换」重新上传。';
+        recordActivity('头像显示','图片无法加载：'+(source.startsWith('data:')?'本地图片数据':'酒馆图片路径'),'error');
+    };
+    image.src=source;
+    if(image.complete&&image.naturalWidth>0)image.classList.add('lp-avatar-loaded');
 }
 
 function loadAutonomyUI(ctx=context()) {
@@ -1299,21 +1310,64 @@ async function importMomentPhoto(file) {
     reader.onerror=()=>setStatus('朋友圈图片读取失败','error');
     reader.readAsDataURL(file);
 }
+async function encodeAvatarPhoto(file) {
+    if(!file||!/^image\/(?:png|jpeg|webp|gif)$/.test(file.type))
+        throw new Error('请选择 JPG、PNG、WebP 或 GIF 图片');
+    if(file.size>12*1024*1024)throw new Error('图片超过 12MB，请选择较小的图片');
+    const dataUrl=await new Promise((resolve,reject)=>{
+        const reader=new FileReader();
+        reader.onerror=()=>reject(new Error('手机文件读取失败'));
+        reader.onload=()=>resolve(reader.result);
+        reader.readAsDataURL(file);
+    });
+    if(typeof dataUrl!=='string'||!allowedAvatarSrc(dataUrl))throw new Error('图片数据不符合格式要求');
+    // Save a compact square thumbnail in chat metadata. Normal phone photos are usually much bigger than 350KB.
+    if(typeof Image!=='function'||typeof document.createElement!=='function'){
+        if(dataUrl.length<=280000)return dataUrl;
+        throw new Error('当前浏览器无法缩小大图，请换一张较小的图片');
+    }
+    try{
+        const picture=await new Promise((resolve,reject)=>{
+            const img=new Image();
+            img.onload=()=>resolve(img);
+            img.onerror=()=>reject(new Error('图片解码失败'));
+            img.src=dataUrl;
+        });
+        const canvas=document.createElement('canvas');
+        const edge=256,ratio=Math.min(1,edge/Math.max(picture.width,picture.height));
+        canvas.width=Math.max(1,Math.round(picture.width*ratio));
+        canvas.height=Math.max(1,Math.round(picture.height*ratio));
+        const paint=canvas.getContext('2d');
+        if(!paint)throw new Error('当前浏览器不支持图片缩放');
+        paint.drawImage(picture,0,0,canvas.width,canvas.height);
+        const encoded=canvas.toDataURL('image/jpeg',0.8);
+        if(encoded.length>280000)throw new Error('头像压缩后仍然过大，请换一张图片');
+        return encoded;
+    }catch(error){
+        if(dataUrl.length<=280000)return dataUrl;
+        throw error;
+    }
+}
 async function uploadMyAvatar(file) {
-    if(!file||busy)return;
-    if(!['image/jpeg','image/png','image/webp','image/gif'].includes(file.type)||file.size>350*1024)
-       return setStatus('头像需是 350KB 内的图片','error');
-    const ctx=context(),meta=ctx.chatMetadata;
-    const reader=new FileReader();
-    reader.onload=async()=>{
-        if(ctx.chatMetadata!==meta||typeof reader.result!=='string')return;
+    if(!file){finishFilePicker();return;}
+    if(busy){finishFilePicker();nodes.myAvatarStatus.textContent='正在处理其他操作，请稍后再试';return;}
+    const ctx=context(),meta=ctx.chatMetadata,characterId=ctx.characterId;
+    nodes.myAvatarStatus.textContent='正在处理头像…';
+    try{
+        const image=await encodeAvatarPhoto(file);
+        finishFilePicker();
+        if(ctx.chatMetadata!==meta||ctx.characterId!==characterId)throw new Error('聊天存档已切换，请重新上传头像');
         const data=structuredClone(readRootData(ctx));
-        data.avatars={...data.avatars,user:reader.result};
-        try {await writeData(ctx,{...data,__contactId:PRIMARY_CONTACT_ID});render();}
-        catch(e){setStatus(recordError('上传我的头像',e),'error');}
-    };
-    reader.onerror=()=>setStatus('头像读取失败','error');
-    reader.readAsDataURL(file);
+        data.avatars={...(data.avatars||{}),user:image};
+        await writeData(ctx,{...data,__contactId:PRIMARY_CONTACT_ID});
+        nodes.myAvatarStatus.textContent='头像已保存到当前故事存档';
+        recordActivity('头像上传','已保存用户自定义头像','success');
+        renderPersona(ctx);
+    }catch(error){
+        finishFilePicker();
+        nodes.myAvatarStatus.textContent='头像上传失败：'+String(error?.message||error);
+        recordError('用户头像上传',error);
+    }
 }
 
 function renderChatLists(ctx,char,data) {
@@ -2435,15 +2489,17 @@ function makeUI() {
   <div class="lp-list-body lp-me-page">
     <div class="lp-me-hero">
       <label class="lp-me-avatar-wrap" title="更换头像">
+        <span data-lp="myAvatarFallback" class="lp-me-avatar-fallback" aria-hidden="true">U</span>
         <img data-lp="myAvatar" class="lp-me-avatar" alt="当前用户头像" />
         <span>更换</span>
-        <input data-lp="myAvatarUpload" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden />
+        <input data-lp="myAvatarUpload" class="lp-me-avatar-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" />
       </label>
       <div class="lp-me-profile">
         <strong data-lp="myIdentity">user</strong>
         <span>我的故事 · 个人主页</span>
       </div>
     </div>
+    <div data-lp="myAvatarStatus" class="lp-me-avatar-status" role="status" aria-live="polite"></div>
     <details class="lp-me-section">
       <summary>个人设定 <span>查看当前 user 人设</span></summary>
       <div data-lp="myPersona" class="lp-persona-description"></div>
@@ -2689,7 +2745,7 @@ function mount() {
     document.body.append(floating);
     nodes = Object.fromEntries(['title', 'subtitle', 'back', 'close', 'time',
         'homeTime', 'homeCharacter', 'homeMessageCount', 'homeLogCount',
-        'momentsPost', 'momentsText', 'momentsFeed', 'momentsPreview','momentImageUpload','momentRemovePhoto','myAvatarUpload','myIdentity', 'myAvatar', 'myPersona', 'autoMessagesMode','autoMessagesDays','autoMomentsMode','autoMomentsDays','relationAutoSync','phoneInPast','characterRequests','autonomyStatus','saveAutonomy','rescanRelations', 'stickerUpload', 'stickerStatus', 'stickerLibrary',
+        'momentsPost', 'momentsText', 'momentsFeed', 'momentsPreview','momentImageUpload','momentRemovePhoto','myAvatarUpload','myAvatarFallback','myAvatarStatus','myIdentity', 'myAvatar', 'myPersona', 'autoMessagesMode','autoMessagesDays','autoMomentsMode','autoMomentsDays','relationAutoSync','phoneInPast','characterRequests','autonomyStatus','saveAutonomy','rescanRelations', 'stickerUpload', 'stickerStatus', 'stickerLibrary',
         'friendLabel', 'friendActions','profileAvatar','profileName','profileDescription','contactEvidence','contactExchange','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcScanState','npcCandidates','npcSaveCandidates','storyPeopleList','viewPrimaryContact','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','avatarUserFile','resetCharAvatar','resetUserAvatar',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
@@ -2724,7 +2780,11 @@ function mount() {
     nodes.momentsPost.addEventListener('click',()=>void postMoment());
     nodes.momentImageUpload.addEventListener('change',event=>{void importMomentPhoto(event.target.files?.[0]);event.target.value='';});
     nodes.momentRemovePhoto.addEventListener('click',()=>{momentImageDraft='';nodes.momentsPreview.replaceChildren();});
-    nodes.myAvatarUpload.addEventListener('change',event=>{void uploadMyAvatar(event.target.files?.[0]);event.target.value='';});
+    nodes.myAvatarUpload.addEventListener('click',()=>beginFilePicker());
+    nodes.myAvatarUpload.addEventListener('change',event=>{
+        const file=event.target.files?.[0];event.target.value='';
+        void uploadMyAvatar(file);
+    });
     nodes.saveAutonomy.addEventListener('click',()=>void saveAutonomySettings());
     nodes.rescanRelations.addEventListener('click',()=>void syncStoryRelationships(context(),true));
 
