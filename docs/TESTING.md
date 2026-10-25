@@ -1,5 +1,13 @@
 # 回归记录
 
+## v0.8.6 — 2026-10-25
+
+- `node --test tests/core.test.mjs tests/startup.test.mjs tests/social.test.mjs`：**84/84 通过**；`node --check index.js`、`node --check bootstrap.js`、`git diff --check` 通过。
+- 桌面只保留「咕叽聊」内「发现→朋友圈」，不再重复提供朋友圈桌面应用；「吱付宝」仅为独立空壳，无支付操作。
+- 手机设置的预设来源每次依据酒馆当前选择显示，不继承旧下拉框缓存；只注入当前宿主预设对应的勾选条目，不抹除其他预设的历史勾选。
+- 手机界面当前角色、user 面具的可见文本按 `{{char}}`、`{{user}}` 动态替换；公共测试不再包含私人角色名。
+- 当前仅为 Node VM / 受控 DOM 回归与代码静态检查，**不代表已在真实酒馆、安卓或 Termux 测通**。宿主刷新后全局预设被其他机制修改的情况需要单独复现。
+
 ## v0.8.5 — 2026-10-25
 
 执行 `node --test tests/core.test.mjs tests/startup.test.mjs tests/social.test.mjs`：**82/82 通过**；`node --check index.js`、`node --check bootstrap.js`、`git diff --check` 通过。
