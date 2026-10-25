@@ -858,8 +858,10 @@ function extractNpcCandidatesFromText(sourceText,source,mainName) {
         //  {{char}}的亲属人物甲 / 他的老师人物乙
         const relationWithName=new RegExp('(?:[\\u3400-\\u9fff·]{2,6}|他|她|我|你)的('+rel+')([\\u3400-\\u9fff·]{2,4})(?=[，,。；;\\s（(]|$)','g');
         while((m=relationWithName.exec(trimmed))!==null)hits.push({name:m[2],relation:m[1]});
+        const userRelation=new RegExp('(?:user|玩家|\\{\\{user\\}\\})的('+rel+')([\\u3400-\\u9fff·]{2,4})(?=[，,。；;\\s]|$)','gi');
+        while((m=userRelation.exec(trimmed))!==null)hits.push({name:m[2],relation:m[1]});
         // 人物甲（{{char}}的亲属） / 人物乙：修理技师，{{char}}的亲属
-        const namedRelation=new RegExp('^([\\u3400-\\u9fff·]{2,5})[：:（(，,\\s]{1,4}[^。\\n]{0,85}?(?:'+rel+')(?=[，,。；;）)\\s]|$)');
+        const namedRelation=new RegExp('^([\\u3400-\\u9fff·]{2,5})[：:（(][^。\\n]{0,85}?(?:'+rel+')(?=[，,。；;）)\\s]|$)');
         m=trimmed.match(namedRelation);
         if(m)hits.push({name:m[1],relation:trimmed.match(new RegExp(rel))?.[0]||''});
         // Explicit named worldbook title, e.g. 人物乙 - 人物档案
