@@ -1219,6 +1219,13 @@ async function tickAutonomousActivity(manualChannel='') {
     if(!channel)return;
     const friends=autonomyContacts(ctx);
     if(!friends.length){
+        if(!manualChannel){
+            const updated=structuredClone(base);
+            updated.socialSchedule={...(updated.socialSchedule||{})};
+            updated.socialSchedule[channel]={...(updated.socialSchedule[channel]||{}),nextDue:nextActivityTime(cfg[channel],now)};
+            try{await writeData(ctx,{...updated,__contactId:PRIMARY_CONTACT_ID});}
+            catch(e){recordError('调整自主活动计划',e);}
+        }
         const msg='没有已添加的好友，无法主动发消息；请先根据剧情建立好友关系';
         recordActivity('角色自主活动',msg,'info');
         if(manualChannel&&nodes?.autonomyStatus)nodes.autonomyStatus.textContent=msg;
@@ -1411,7 +1418,7 @@ function renderChatLists(ctx,char,data) {
         }
         if(state==='friends')nodes.contactsList.append(makeListContact(person,view,FRIEND_LABELS[state],()=>switchContact(id,'profile'),label));
         else nodes.storyPeopleList.append(makeListContact(person,view,'',()=>switchContact(id,'profile'),label));
-        if (state==='incoming' || state==='outgoing') {
+        if (state==='incoming') {
             if(state==='incoming'){
                 const group=document.createElement('div');group.className='lp-request-entry';
                 group.append(makeListContact(person,view,'对方向你发送了好友申请',()=>switchContact(id,'profile'),label));
