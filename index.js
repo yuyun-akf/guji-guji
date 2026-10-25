@@ -882,7 +882,7 @@ function renderChatLists(ctx,char,data) {
 }
 
 const NPC_RELATIONS = '父亲|母亲|爸爸|妈妈|养父|养母|哥哥|姐姐|弟弟|妹妹|兄长|兄弟|妻子|丈夫|老师|导师|教授|同学|室友|朋友|闺蜜|同事|上司|下属|邻居|管家|助理|经纪人|秘书|儿子|女儿|表哥|表姐|舅舅|姑姑|叔叔|阿姨|恋人|未婚夫|未婚妻';
-const NPC_COMMON_WORDS = new Set(['人物','角色','背景','故事','正文','世界','设定','学校','老师','学生','朋友','同学','室友','父亲','母亲','爸爸','妈妈','其他','玩家','用户','主角','姓名','年龄','性格','描述','关系','身份','简介','经历','小说','人物设定','个人资料','角色介绍','个人信息','主要人物','背景资料','角色设定','男主','女主','女主角','男主角','职业','特长','喜好','偏好','爱好','兴趣','职业经历','人物身份','教育背景','家庭','父母','性别','身高','体重','外貌','长相','服装','着装','声音','身份信息','家庭关系','成长经历','背景故事','联系方式','备注','老师们','同伴','称呼','职位']);
+const NPC_COMMON_WORDS = new Set(['人物','角色','背景','故事','正文','世界','设定','学校','老师','学生','朋友','同学','室友','父亲','母亲','爸爸','妈妈','其他','玩家','用户','主角','姓名','年龄','性格','描述','关系','身份','简介','经历','小说','人物设定','个人资料','角色介绍','个人信息','主要人物','背景资料','角色设定','男主','女主','女主角','男主角','职业','特长','喜好','偏好','爱好','兴趣','职业经历','人物身份','教育背景','家庭','父母','性别','身高','体重','外貌','长相','服装','着装','声音','身份信息','家庭关系','成长经历','背景故事','联系方式','备注','与同学','与朋友','与室友','范畴内','范畴外','同学们','朋友们','老师们','老师们','同伴','称呼','职位']);
 function cleanNpcName(name) {
     const value=String(name||'').replace(/[“”"'「」『』【】<>()（）]/g,'').trim().replace(/^(?:名叫|名为|叫)/,'');
     if (!/^[\u3400-\u9fff·]{2,8}$/.test(value)||NPC_COMMON_WORDS.has(value)) return '';
@@ -913,6 +913,12 @@ function extractNpcCandidatesFromText(sourceText,source,mainName) {
         const namedAs=new RegExp('(?:[\\u3400-\\u9fff·]{2,6}|他|她|我|你)的('+rel+')叫([\\u3400-\\u9fff·]{2,4})(?=[，,。；;\\s]|是|为|在|$)','g');
         while((m=namedAs.exec(trimmed))!==null)hits.push({name:m[2],relation:m[1]});
         const userRelation=new RegExp('(?:user|玩家|\\{\\{user\\}\\})的('+rel+')([\\u3400-\\u9fff·]{2,4})(?=[，,。；;\\s]|是|为|在|会|曾|现|于|$)','gi');
+
+        const namedUserFriend=new RegExp('(?:^|[，,。；;\\s（(])([\\u3400-\\u9fff·]{2,5})\\s*(?:是|为|即|（|\\()\\s*(?:user|玩家|我|\\{\\{user\\}\\})的('+rel+')(?=[，,。；;）)\\s]|$)','gi');
+        while((m=namedUserFriend.exec(trimmed))!==null)hits.push({name:m[1],relation:m[2]});
+        const friendKey=trimmed.match(/^(?:好友|朋友|闺蜜|室友|同学|老师|昵称|外号)[：:\s]+([\u3400-\u9fff·]{2,5})(?=[，,。；;\s]|$)/);
+        if(friendKey)hits.push({name:friendKey[1],relation:trimmed.split(/[：:]/)[0].slice(0,8)});
+
         while((m=userRelation.exec(trimmed))!==null)hits.push({name:m[2],relation:m[1]});
         // 苏晚意（宁肆锦的母亲） / 宁致远：知名导演，宁肆锦父亲
         const namedRelation=new RegExp('^([\\u3400-\\u9fff·]{2,5})[：:（(][^。\\n]{0,85}?(?:'+rel+')(?=[，,。；;）)\\s]|$)');
@@ -959,7 +965,7 @@ function embeddedCharacterLore(char) {
     const entries=info.character_book?.entries||char?.character_book?.entries||[];
     return Array.isArray(entries)?entries:[];
 }
-async function scanNpcSources(ctx,extraWorld='') {
+async function scanNpcSources(ctx,extraWorld='',scanAllWorlds=false) {
     const char=selectedCharacter(ctx);
     if(!char)throw new Error('请先打开角色卡的单人聊天');
     const info=char.data||char;
@@ -977,8 +983,9 @@ async function scanNpcSources(ctx,extraWorld='') {
     const configured=readRootData(ctx).config?.worldEntries||[];
     for(const row of configured)if(typeof row.book==='string'&&row.book.trim())names.add(row.book.trim());
     if(extraWorld)names.add(extraWorld);
+    if(scanAllWorlds){ for(const name of (ctx?.getWorldInfoNames?.()||[]).slice(0,60)) if(typeof name==='string')names.add(name); }
     let loaded=0,failures=[];
-    for(const name of [...names].slice(0,12)){
+    for(const name of [...names].slice(0,scanAllWorlds?60:12)){
         if(typeof ctx.loadWorldInfo!=='function'){failures.push('世界书接口不可用');break;}
         try {
             const book=await ctx.loadWorldInfo(name);
@@ -1059,7 +1066,7 @@ async function scanNpcUI() {
     nodes.npcScanButton.disabled=true;
     nodes.npcScanState.textContent='正在读取角色卡和世界书…';
     try {
-        const result=await scanNpcSources(ctx,nodes.npcWorldSelect.value);
+        const result=await scanNpcSources(ctx,nodes.npcWorldSelect.value,nodes.npcScanAllWorlds.checked);
         if(!sameNpcScanSession(snapshot))return;
         npcCandidates=result.candidates;
         renderNpcCandidates();
@@ -1777,8 +1784,7 @@ function makeUI() {
         <section class="lp-screen lp-chatlist" data-lp-screen="contacts" aria-label="通讯录" hidden>
           <div class="lp-list-body">
             <button type="button" class="lp-list-action" data-lp-open="requests"><span>✉</span><span>新的朋友</span><span data-lp="requestBadge"></span></button>
-            <button type="button" class="lp-list-action" data-lp-open="addNpc"><span>＋</span><span>手动添加故事人物</span></button>
-            <button type="button" class="lp-list-action" data-lp-open="discoverNpc"><span>⌕</span><span>从设定中发现人物</span></button>
+            <button type="button" class="lp-list-action" data-lp-open="addNpc"><span>＋</span><span>添加好友／故事人物</span></button>
             <div class="lp-list-heading">联系人</div>
             <div data-lp="contactsList"></div>
           </div>
@@ -1797,6 +1803,7 @@ function makeUI() {
           <div class="lp-list-body lp-npc-discovery">
             <h2>从角色设定与世界书中发现人物</h2>
             <p>本地扫描，不会调用 API。仅从明确的人物资料与关系描述中提取候选；勾选并确认后才加入通讯录。</p>
+            <label class="lp-npc-check"><input type="checkbox" data-lp="npcScanAllWorlds" checked /> 包含用户世界书／其他可用世界书（最多 60 本）</label>
             <label>额外指定一本世界书（可选）
               <select data-lp="npcWorldSelect"></select>
             </label>
@@ -1809,6 +1816,8 @@ function makeUI() {
         <section class="lp-screen lp-chatlist" data-lp-screen="addNpc" aria-label="添加 NPC" hidden>
           <div class="lp-list-body lp-npc-editor">
             <h2>添加故事中的人物</h2>
+            <button type="button" class="lp-npc-discover-button" data-lp-open="discoverNpc">从角色设定／世界书扫描人物</button>
+            <p class="lp-npc-note">也可以在下方手动创建人物；两种方式都会进入当前存档的联系人系统。</p>
             <label>姓名<input data-lp="npcName" type="text" maxlength="60" placeholder="NPC 姓名" /></label>
             <label>人物关系（请说明与谁的关系）<input data-lp="npcRelation" type="text" maxlength="180" placeholder="如：宁肆锦的母亲、user的同学" /></label>
             <label>人物设定<textarea data-lp="npcDescription" maxlength="3500" rows="6" placeholder="填写或粘贴角色卡、世界书里的 NPC 设定"></textarea></label>
@@ -1963,7 +1972,7 @@ function mount() {
     document.body.append(floating);
     nodes = Object.fromEntries(['title', 'subtitle', 'back', 'close', 'time',
         'homeTime', 'homeCharacter', 'homeMessageCount', 'homeLogCount',
-        'friendLabel', 'friendActions','profileAvatar','profileName','profileDescription','contactEvidence','contactExchange','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcScanState','npcCandidates','npcSaveCandidates','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
+        'friendLabel', 'friendActions','profileAvatar','profileName','profileDescription','contactEvidence','contactExchange','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanAllWorlds','npcScanButton','npcScanState','npcCandidates','npcSaveCandidates','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','avatarUserFile','resetCharAvatar','resetUserAvatar',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
         'presetSource','presetEntries','worldSource','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themeIcons',
@@ -1983,7 +1992,7 @@ function mount() {
     });
     nodes.chatMenu.addEventListener('click',()=>setScreen('chatOptions'));
     nodes.back.addEventListener('click', () => setScreen({
-        chat: 'chatList', contacts: 'chatList', profile: 'contacts', requests:'contacts', addNpc:'contacts', discoverNpc:'contacts', chatOptions:'chat', presetPicker:'settings', worldPicker:'settings'
+        chat: 'chatList', contacts: 'chatList', profile: 'contacts', requests:'contacts', addNpc:'contacts', discoverNpc:'addNpc', chatOptions:'chat', presetPicker:'settings', worldPicker:'settings'
     }[activeScreen] || 'home'));
     root.addEventListener('click', event => {
         const button = event.target.closest('button[data-lp-open]');
