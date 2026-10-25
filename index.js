@@ -90,12 +90,31 @@ function floatLauncherEnabled() {
 function updateLauncherVisibility() {
     const enabled=floatLauncherEnabled();
     if (nodes?.launcher) {
+        if(enabled && !nodes.launcher.isConnected && typeof document!=='undefined' && document.body)document.body.append(nodes.launcher);
         nodes.launcher.hidden=!enabled;
-        if(nodes.launcher.style)nodes.launcher.style.display=enabled?'grid':'none';
+        // Keep the floating control usable even if Android WebView has cached old CSS
+        // or a third-party SillyTavern theme overrides generic button styles.
+        if(nodes.launcher.style){
+            const style=nodes.launcher.style;
+            const force=(name,value,property)=>{
+                if(typeof style.setProperty==='function')style.setProperty(name,value,'important');
+                else style[property]=value;
+            };
+            force('position','fixed','position');
+            force('z-index','2147483645','zIndex');
+            force('right','max(14px, env(safe-area-inset-right))','right');
+            force('bottom','max(84px, calc(env(safe-area-inset-bottom) + 80px))','bottom');
+            force('display',enabled?'grid':'none','display');
+            force('visibility',enabled?'visible':'hidden','visibility');
+            force('opacity',enabled?'1':'0','opacity');
+            force('pointer-events',enabled?'auto':'none','pointerEvents');
+        }
     }
     if (nodes?.floatingLauncher) nodes.floatingLauncher.checked=enabled;
     const hostSwitch=typeof document!=='undefined'?document.getElementById?.('gujiguji-host-floating'):null;
     if(hostSwitch)hostSwitch.checked=enabled;
+    const feedback=typeof document!=='undefined'?document.getElementById?.('gujiguji-host-floating-status'):null;
+    if(feedback)feedback.textContent=enabled?'悬浮按钮已开启：关闭小手机后，可在酒馆页面右下角找到小手机图标。':'悬浮按钮目前关闭；魔法棒入口仍可使用。';
 }
 
 function setFloatLauncherEnabled(value) {
@@ -3330,21 +3349,27 @@ function installExtensionSettingsEntry() {
     const host=document.getElementById?.('extensions_settings')||document.getElementById?.('extensions_settings2');
     if(!host)return false;
     let panel=document.getElementById?.(EXTENSION_PANEL_ID);
-    if(panel?.parentElement===host)return true;
+    if(panel?.parentElement===host && panel.querySelector('.inline-drawer-header'))return true;
     panel?.remove();
-    panel=document.createElement('details');panel.id=EXTENSION_PANEL_ID;
-    panel.className='gujiguji-host-settings';
-    const summary=document.createElement('summary');summary.textContent='📱 咕叽咕机 · GujiGuji';
-    const controls=document.createElement('div');controls.className='gujiguji-host-controls';
-    const open=document.createElement('button');open.type='button';open.textContent='打开咕叽咕机';
+    panel=document.createElement('div');panel.id=EXTENSION_PANEL_ID;panel.className='extension_container';
+    const drawer=document.createElement('div');drawer.className='inline-drawer wide100p';
+    const header=document.createElement('div');header.className='inline-drawer-toggle inline-drawer-header';
+    header.setAttribute('role','button');header.setAttribute('tabindex','0');
+    const title=document.createElement('b');title.textContent='咕叽咕机 · GujiGuji';
+    const chevron=document.createElement('div');chevron.className='fa-solid fa-circle-chevron-down inline-drawer-icon down';
+    header.append(title,chevron);
+    header.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();header.click();}});
+    const controls=document.createElement('div');controls.className='inline-drawer-content gujiguji-host-controls';
+    const open=document.createElement('button');open.type='button';open.className='menu_button menu_button_icon';open.textContent='打开咕叽咕机';
     open.addEventListener('click',openPhone);
-    const label=document.createElement('label');
+    const label=document.createElement('label');label.className='checkbox_label';
     const checkbox=document.createElement('input');checkbox.id='gujiguji-host-floating';checkbox.type='checkbox';
     checkbox.checked=floatLauncherEnabled();
     checkbox.addEventListener('change',()=>setFloatLauncherEnabled(checkbox.checked));
     label.append(checkbox,document.createTextNode(' 显示页面内悬浮按钮'));
-    const note=document.createElement('small');note.textContent='悬浮按钮仅显示在酒馆页面内；也可使用魔法棒打开。';
-    controls.append(open,label,note);panel.append(summary,controls);host.append(panel);
+    const note=document.createElement('small');note.id='gujiguji-host-floating-status';
+    note.textContent=checkbox.checked?'悬浮按钮已开启：关闭小手机后，可在酒馆页面右下角找到小手机图标。':'悬浮按钮目前关闭；魔法棒入口仍可使用。';
+    controls.append(open,label,note);drawer.append(header,controls);panel.append(drawer);host.append(panel);
     extensionSettingsPanel=panel;
     return true;
 }
@@ -3364,7 +3389,7 @@ function makeUI() {
         <button type="button" class="lp-inline-notification" data-lp="inlineNotification" aria-label="打开新消息" hidden></button>
         <section class="lp-screen lp-home" data-lp-screen="home" aria-label="手机桌面">
           <div class="lp-home-hero">
-            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.8.8</div>
+            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.8.9</div>
             <div class="lp-home-time" data-lp="homeTime">故事时间</div>
             <div class="lp-home-character" data-lp="homeCharacter">等待进入角色存档</div>
           </div>
@@ -3717,7 +3742,10 @@ function mount() {
     floating.type = 'button';
     floating.id = 'gujiguji-floating-launcher';
     floating.className = 'lp-launcher';
-    floating.textContent = '☏';
+    const floatingIcon=document.createElement('i');
+    floatingIcon.className='fa-solid fa-mobile-screen-button';
+    floatingIcon.setAttribute('aria-hidden','true');
+    floating.append(floatingIcon);
     floating.setAttribute('aria-label','打开咕叽咕机');
     floating.hidden = !floatLauncherEnabled();
     document.body.append(floating);
