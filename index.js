@@ -35,7 +35,7 @@ let chatChangedHandler = null;
 let listeningSource = null;
 let listeningEvent = null;
 let bootstrapTimer = null;
-let wandAttempts = 0;
+let wandObserver = null;
 let wandEntry = null;
 let extensionEnabled = true;
 let statusText = '';
@@ -1800,8 +1800,9 @@ function syncPhoneViewport() {
 }
 
 function openPhone() {
+    if (!extensionEnabled) return;
     try {
-        if (!mounted || !root) mount();
+        if (!mounted || !root) bindReady();
         if (!mounted || !root || !nodes) throw new Error('手机界面尚未初始化');
         // A native modal occupies the browser's top layer, outside the host's
         // stacking contexts. The previous html-root fixed overlay could end up
@@ -1849,7 +1850,7 @@ function installWandEntry() {
     const menu = document.getElementById('extensionsMenu');
     if (!menu) return false;
     const previous = document.getElementById(WAND_ENTRY_ID);
-    if (previous?.isConnected && previous === wandEntry) return true;
+    if (previous?.isConnected && previous === wandEntry && previous.parentElement === menu) return true;
     // A prior module instance can leave a button with a stale click handler.
     previous?.remove();
 
@@ -1888,7 +1889,7 @@ function makeUI() {
         </header>
         <section class="lp-screen lp-home" data-lp-screen="home" aria-label="手机桌面">
           <div class="lp-home-hero">
-            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.6.1</div>
+            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.7.0</div>
             <div class="lp-home-time" data-lp="homeTime">故事时间</div>
             <div class="lp-home-character" data-lp="homeCharacter">等待进入角色存档</div>
           </div>
@@ -1996,7 +1997,7 @@ function makeUI() {
             <label>人物设定<textarea data-lp="npcDescription" maxlength="3500" rows="6" placeholder="填写或粘贴角色卡、世界书里的 NPC 设定"></textarea></label>
             <button type="button" data-lp="addNpcSave">创建联系人</button>
             <div class="lp-inline-status" data-lp="npcStatus" role="status" aria-live="polite"></div>
-            <p class="lp-npc-note">当前为手动创建；不会跨角色卡读取人物。自动识别世界书 NPC 将在后续版本单独开发。</p>
+            <p class="lp-npc-note">可手动填写，也可从上方扫描入口发现人物。扫描结果须核对并确认；不会自动成为好友。</p>
           </div>
         </section>
         <section class="lp-screen lp-profile" data-lp-screen="profile" aria-label="联系人资料" hidden>
@@ -2163,9 +2164,11 @@ function mount() {
     floating.className = 'lp-launcher';
     floating.textContent = '☏';
     floating.setAttribute('aria-label','打开咕叽咕机');
+    floating.hidden = !floatLauncherEnabled();
     document.body.append(floating);
     nodes = Object.fromEntries(['title', 'subtitle', 'back', 'close', 'time',
         'homeTime', 'homeCharacter', 'homeMessageCount', 'homeLogCount',
+        'momentsPost', 'momentsToggle', 'momentsText', 'momentsFeed', 'myIdentity',
         'friendLabel', 'friendActions','profileAvatar','profileName','profileDescription','contactEvidence','contactExchange','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanAllWorlds','npcScanButton','npcScanState','npcCandidates','npcSaveCandidates','storyPeopleList','viewPrimaryContact','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','avatarUserFile','resetCharAvatar','resetUserAvatar',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
@@ -2349,20 +2352,24 @@ function bindReady() {
     }
     if (bootstrapTimer) clearTimeout(bootstrapTimer);
     bootstrapTimer = null;
-    if (!mounted) mount();
-    if (!installWandEntry()) {
-        // On SillyTavern 1.19 the wand menu is normally ready before extensions,
-        // but retry briefly for hosts that inject it after our entry module.
-        if (wandAttempts++ < 30) {
-            bootstrapTimer = setTimeout(() => {
-                bootstrapTimer = null;
-                bindReady();
-            }, 500);
-        } else {
-            recordError('魔法棒入口', new Error('酒馆没有提供 #extensionsMenu，无法添加咕叽咕机入口。'));
+    // Both 1.18 and 1.19 insert #extensionsMenu asynchronously. Observe
+    // insertion/replacement without a 15-second deadline or polling forever.
+    if (!wandObserver && typeof MutationObserver === 'function') {
+        wandObserver = new MutationObserver(() => {
+            if (extensionEnabled) installWandEntry();
+        });
+        wandObserver.observe(document.body, { childList: true, subtree: true });
+    }
+    installWandEntry();
+    if (!mounted) {
+        try {
+            mount();
+        } catch (error) {
+            // Remove partial UI/listeners so a later activation can retry.
+            unmount();
+            installWandEntry();
+            throw error;
         }
-    } else {
-        wandAttempts = 0;
     }
 }
 
@@ -2374,8 +2381,10 @@ export function onDisable() {
     extensionEnabled = false;
     if (bootstrapTimer) clearTimeout(bootstrapTimer);
     bootstrapTimer = null;
-    wandAttempts = 0;
+    wandObserver?.disconnect();
+    wandObserver = null;
     unmount();
 }
 
-bindReady();
+// bootstrap owns activation, including imports that finish after disable.
+
