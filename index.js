@@ -648,6 +648,198 @@ async function generateWithTimeout(ctx, options, data) {
     }
 }
 
+function allowedAvatarSrc(src) {
+    if (typeof src !== 'string' || !src.trim()) return '';
+    const url = src.trim();
+    if (/^data:image\/(png|jpeg|webp|gif);base64,/i.test(url)) return url;
+    if (/^(https?:\/\/|\/|User Avatars\/)/i.test(url) && !/[<>]/.test(url)) return url;
+    return '';
+}
+function avatarSources(ctx, data) {
+    const char = selectedCharacter(ctx);
+    const custom = data?.avatars || {};
+    let character = allowedAvatarSrc(custom.character);
+    if (!character && char?.avatar && char.avatar !== 'none') {
+        try { character = allowedAvatarSrc(ctx?.getThumbnailUrl?.('avatar',char.avatar)); } catch { /* default */ }
+    }
+    let user = allowedAvatarSrc(custom.user);
+    if (!user) {
+        const last = Array.isArray(ctx?.chat) ? [...ctx.chat].reverse().find(m => m?.is_user && m.force_avatar) : null;
+        user = allowedAvatarSrc(last?.force_avatar);
+    }
+    if (!user) {
+        try {
+            const picked = document.querySelector('#user_avatar_block .selected img, #user_avatar_block .avatar-container.selected img, .mes[is_user="true"] .avatar img');
+            user = allowedAvatarSrc(picked?.getAttribute('src'));
+        } catch { /* default */ }
+    }
+    return {character:character || '/img/default-avatar.png',user:user || '/img/default-user.png'};
+}
+function makeAvatarElement(src, label) {
+    const img = document.createElement('img');
+    img.className = 'lp-person-avatar';
+    img.alt = label || '头像';
+    img.src = src;
+    img.loading = 'lazy';
+    img.addEventListener('error', () => {
+        if (!img.dataset.fallback) { img.dataset.fallback='1'; img.src='/img/default-avatar.png'; }
+    });
+    return img;
+}
+function makeListContact(char, data, label, action) {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'lp-conversation-row';
+    const avatars = avatarSources(context(), data);
+    const image = makeAvatarElement(avatars.character, getCharacterName(char));
+    const text = document.createElement('div');
+    text.className = 'lp-conversation-text';
+    const name = document.createElement('strong');
+    name.textContent = getCharacterName(char);
+    const small = document.createElement('small');
+    small.textContent = label;
+    text.append(name,small);
+    const chevron = document.createElement('span');
+    chevron.textContent = '›';
+    chevron.className = 'lp-chevron';
+    row.append(image,text,chevron);
+    row.addEventListener('click',action);
+    return row;
+}
+function renderChatLists(ctx,char,data) {
+    for (const key of ['recentChats','contactsList','requestsList']) nodes[key]?.replaceChildren();
+    if (!char || !data) return;
+    const last = [...data.messages].reverse().find(x=>x.from !== 'system');
+    if (!data.chatDeleted) {
+        nodes.recentChats.append(makeListContact(char,data,last?.text?.slice(0,64) || '点击开始聊天',()=>setScreen('chat')));
+    } else {
+        const hint = document.createElement('p');
+        hint.className = 'lp-list-empty';
+        hint.textContent = '暂无会话，可从通讯录重新开始聊天';
+        nodes.recentChats.append(hint);
+    }
+    nodes.contactsList.append(makeListContact(char,data,FRIEND_LABELS[friendshipState(data)],()=>setScreen('profile')));
+    const state=friendshipState(data);
+    nodes.requestBadge.textContent = state==='incoming' ? '1 条待处理' : state==='outgoing' ? '申请处理中' : '';
+    if (state==='incoming' || state==='outgoing') {
+        nodes.requestsList.append(makeListContact(char,data,state==='incoming'?'请求添加你为好友':'已发送好友申请',()=>setScreen('profile')));
+    } else {
+        const empty=document.createElement('p');
+        empty.className='lp-list-empty';
+        empty.textContent='暂无好友申请';
+        nodes.requestsList.append(empty);
+    }
+}
+async function updateAvatar(side, file) {
+    if (!file) return;
+    if (!['image/jpeg','image/png','image/webp','image/gif'].includes(file.type) || file.size>350*1024) {
+        setStatus('请使用不超过350KB的 PNG/JPG/WebP/GIF 图片','error');return;
+    }
+    const ctx=context();
+    if (!selectedCharacter(ctx)||busy) return;
+    const reader=new FileReader();
+    reader.onerror=()=>setStatus('头像读取失败','error');
+    reader.onload=async()=>{
+        if (typeof reader.result!=='string'||!allowedAvatarSrc(reader.result)) return setStatus('头像格式不支持','error');
+        const data=structuredClone(readData(ctx));
+        data.avatars ||= {};
+        data.avatars[side]=reader.result;
+        try { await writeData(ctx,data); if (mounted) render(); }
+        catch(e) {setStatus(recordError('保存头像',e),'error');}
+    };
+    reader.readAsDataURL(file);
+}
+async function resetAvatar(side) {
+    const ctx=context();
+    if (!selectedCharacter(ctx)||busy) return;
+    const data=structuredClone(readData(ctx));
+    if (data.avatars) delete data.avatars[side];
+    try { await writeData(ctx,data);render(); }
+    catch(e) {setStatus(recordError('重置头像',e),'error');}
+}
+function exportChatPayload(ctx,data) {
+    return {format:'gujiguji-chat',version:1,character:getCharacterName(selectedCharacter(ctx)),exportedAt:new Date().toISOString(),
+        messages:data.messages.map(({id,from,text,storyTime,createdAt})=>({id,from,text,storyTime,createdAt}))};
+}
+function parseChatImport(raw) {
+    const obj=JSON.parse(raw);
+    if (!obj || obj.format!=='gujiguji-chat'||obj.version!==1||!Array.isArray(obj.messages)||obj.messages.length>10000)
+        throw new Error('不是受支持的咕叽咕机聊天记录');
+    return obj.messages.map((m,i)=>{
+        if (!m || !['user','character','system'].includes(m.from) || typeof m.text!=='string'||m.text.length>50000)
+            throw new Error('第'+(i+1)+'条消息格式不合法');
+        return {id: typeof m.id==='string'&&m.id.length<100?m.id:'import-'+i+'-'+Date.now(),
+            from:m.from,text:m.text,storyTime:typeof m.storyTime==='string'?m.storyTime.slice(0,30):'',
+            createdAt:typeof m.createdAt==='string'?m.createdAt.slice(0,40):new Date().toISOString()};
+    });
+}
+function getChatExport() {
+    const ctx=context();
+    return JSON.stringify(exportChatPayload(ctx,readData(ctx)),null,2);
+}
+async function copyChatExport() {
+    try {
+        await navigator.clipboard.writeText(getChatExport());
+        setStatus('已复制聊天记录 JSON');
+    } catch(e){setStatus(recordError('复制聊天记录',e),'error');}
+}
+function downloadChatExport() {
+    try {
+        const payload=getChatExport();
+        const blob=new Blob([payload],{type:'application/json;charset=utf-8'});
+        const url=URL.createObjectURL(blob);
+        const anchor=document.createElement('a');
+        anchor.href=url;anchor.download='gujiguji-chat-'+new Date().toISOString().slice(0,10)+'.json';
+        document.body.append(anchor);
+        anchor.click();
+        anchor.remove();
+        setTimeout(()=>URL.revokeObjectURL(url),60000);
+        setStatus('已请求下载聊天记录');
+    } catch(e) {setStatus(recordError('导出聊天记录',e),'error');}
+}
+async function importChatFile(file) {
+    if (!file) return;
+    if (busy) return setStatus('生成期间无法导入','error');
+    if (file.size>5*1024*1024) return setStatus('聊天记录文件不能超过5MB','error');
+    try {
+        const messages=parseChatImport(await file.text());
+        if (!window.confirm('导入 '+messages.length+' 条记录并替换当前手机聊天消息？其他配置不会被覆盖。')) return;
+        const ctx=context();
+        const session=captureSession(ctx);
+        const data=structuredClone(readData(ctx));
+        data.messages=messages;
+        data.chatDeleted=false;
+        await writeData(ctx,data);
+        if (sameSession(session)) {setStatus('已导入 '+messages.length+' 条记录');render();setScreen('chat');}
+    } catch(e) {setStatus(recordError('导入聊天记录',e),'error');}
+}
+async function clearOrDeleteChat(deleteConversation=false) {
+    if (busy) return;
+    const ctx=context();
+    if (!selectedCharacter(ctx)) return;
+    const message=deleteConversation?'删除当前会话？消息会被清空，联系人关系和设置保留。':'清空当前聊天的全部消息？此操作不可撤销，建议先导出备份。';
+    if (!window.confirm(message)) return;
+    const data=structuredClone(readData(ctx));
+    data.messages=[];
+    data.chatDeleted=deleteConversation;
+    try {
+        await writeData(ctx,data);
+        render();
+        setScreen(deleteConversation?'chatList':'chat');
+    } catch(e) {setStatus(recordError('删除聊天记录',e),'error');}
+}
+async function deleteIndividualMessage(id) {
+    if (busy) return;
+    const ctx=context();
+    if (!selectedCharacter(ctx)) return;
+    if (!window.confirm('删除这条消息？')) return;
+    const data=structuredClone(readData(ctx));
+    const before=data.messages.length;
+    data.messages=data.messages.filter(x=>x.id!==id);
+    if (data.messages.length===before) return;
+    try { await writeData(ctx,data);render(); }catch(e){setStatus(recordError('删除消息',e),'error');}
+}
+
 function renderMessages(data) {
     nodes.messages.replaceChildren();
     if (!data.messages.length) {
@@ -659,6 +851,7 @@ function renderMessages(data) {
     }
 
     const fragment = document.createDocumentFragment();
+    const avatars=avatarSources(context(),data);
     for (const message of data.messages) {
         if (typeof message?.text !== 'string') continue;
         const item = document.createElement('div');
