@@ -163,3 +163,56 @@ test('Me owns composer and sticker upload, Discover owns feed, contacts has no e
     assert.ok(discover.includes('data-lp="momentsFeed"'));assert.ok(!discover.includes('data-lp="momentsText"'));
     assert.ok(!contacts.includes('storyPeopleList'));assert.ok(!html.includes('不代表已经拥有联系方式'));assert.ok(!html.includes('data-emoji='));assert.ok(!html.includes('npcScanAllWorlds'));
 });
+
+test('social activity intervals default off, fixed exactly, random within requested days',()=>{
+    const box=runtime(),api=vm.runInContext('({socialConfig,nextActivityTime,knownOldFriend,classifyStoryFriendEvent})',box);
+    const cfg=api.socialConfig({});
+    assert.equal(cfg.messages.mode,'off');
+    assert.equal(cfg.moments.mode,'off');
+    assert.equal(api.nextActivityTime(cfg.messages,1000),0);
+    assert.equal(api.nextActivityTime({mode:'fixed',days:3},1000),1000+3*86400000);
+    const minimum=api.nextActivityTime({mode:'random',days:3},1000,()=>0);
+    const maximum=api.nextActivityTime({mode:'random',days:3},1000,()=>0.999999);
+    assert.ok(minimum>=1000+15*60000);
+    assert.ok(maximum<=1000+3*86400000);
+    assert.ok(api.knownOldFriend('许明遥与user从大一至大三一直是室友'));
+    assert.ok(!api.knownOldFriend('今天刚认识的同学'));
+});
+test('mainline friend applications match their named sender, not unrelated NPCs',()=>{
+    const box=runtime();
+    const classify=vm.runInContext('classifyStoryFriendEvent',box);
+    const content='许明遥向你发送了好友申请。';
+    assert.equal(classify(content,'宁肆锦',true),null);
+    assert.equal(classify(content,'许明遥',false)?.state,'incoming');
+    assert.equal(classify('宁肆锦向你发送了好友申请。','宁肆锦',true)?.state,'incoming');
+    assert.equal(classify('宁肆锦和你互相加了微信。','宁肆锦',true)?.state,'friends');
+    assert.equal(classify('宁肆锦还没申请添加你为好友。','宁肆锦',true),null);
+});
+test('existing story chats and NPC messages remain intact after story relation sync',async()=>{
+    const ctx={
+        characterId:0,chatId:'saveA',
+        characters:[{name:'宁肆锦',data:{description:'现在是大三'}}],
+        chat:[{mes:'许明遥向你发送了好友申请。'}],
+        chatMetadata:{st_little_phone_v1:{version:1,messages:[{id:'main',from:'user',text:'旧私聊'}],
+           friendship:{state:'stranger'},storyTime:'2026-01-18T17:41',
+           contacts:[{id:'npc:room',name:'许明遥',relationship:'从大一到大三都是室友',description:'user的室友多年'}],
+           conversations:{'npc:room':{messages:[{id:'npcold',from:'user',text:'NPC旧私聊'}],friendship:{state:'stranger'}}}}},
+        async saveMetadata(){}
+    };
+    const box=runtime(ctx);
+    box.api.syncStoryRelationships=vm.runInContext('syncStoryRelationships',box);
+    await box.api.syncStoryRelationships(ctx);
+    const current=ctx.chatMetadata.st_little_phone_v1;
+    assert.equal(current.friendship.state,'stranger');
+    assert.equal(current.conversations['npc:room'].friendship.state,'friends');
+    assert.equal(current.messages[0].text,'旧私聊');
+    assert.equal(current.conversations['npc:room'].messages[0].text,'NPC旧私聊');
+});
+test('moment composer and autonomous UI are present without external background services',()=>{
+    const html=runtime().api.makeUI().innerHTML;
+    for(const id of ['momentImageUpload','momentsPreview','myAvatarUpload','autoMessagesMode',
+      'autoMessagesDays','autoMomentsMode','autoMomentsDays','relationAutoSync',
+      'phoneInPast','autonomyStatus','saveAutonomy','rescanRelations']){
+       assert.ok(html.includes('data-lp="'+id+'"'),id);
+    }
+});
