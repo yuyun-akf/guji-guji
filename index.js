@@ -37,6 +37,8 @@ let busyKind = '';
 let activeScreen = 'home';
 let lifecycleToken = 0;
 const diagnostics = [];
+let configWriteQueue = Promise.resolve();
+const APP_ICONS = {chat:'💬',diagnostics:'🛠️',settings:'⚙️',calendar:'📅',theme:'🎨',album:'🖼️',shopping:'🛍️',takeout:'🥡'};
 const SCREENS = new Set(['home', 'chat', 'settings', 'diagnostics', 'calendar', 'theme']);
 
 function context() {
@@ -73,6 +75,136 @@ function setFloatLauncherEnabled(value) {
     setStatus(value ? '已开启悬浮按钮；魔法棒入口仍然可用。' : '已关闭悬浮按钮；请从魔法棒进入咕叽咕机。');
 }
 
+function themeData() {
+    const theme = context()?.extensionSettings?.[SETTINGS_KEY]?.theme;
+    return theme && typeof theme === 'object' ? theme : {};
+}
+function applyTheme() {
+    if (!root) return;
+    const theme = themeData();
+    root.dataset.font = ['system','serif','rounded'].includes(theme.font) ? theme.font : 'system';
+    root.style.setProperty('--lp-wallpaper', theme.wallpaper?.startsWith('data:image/') ? 'url("' + theme.wallpaper + '")' : 'none');
+    for (const span of root.querySelectorAll('[data-lp-icon]')) {
+        span.textContent = typeof theme.icons?.[span.dataset.lpIcon] === 'string' ? theme.icons[span.dataset.lpIcon] : APP_ICONS[span.dataset.lpIcon];
+    }
+    if (nodes?.themeFont) nodes.themeFont.value = root.dataset.font;
+    if (nodes?.themeIcons) {
+        for (const input of nodes.themeIcons.querySelectorAll('[data-theme-icon]')) {
+            input.value = theme.icons?.[input.dataset.themeIcon] || APP_ICONS[input.dataset.themeIcon];
+        }
+    }
+}
+function changeTheme(partial) {
+    const ctx = context();
+    if (!ctx?.extensionSettings || !ctx.saveSettingsDebounced) return setStatus('保存主题失败', 'error');
+    const settings = ctx.extensionSettings[SETTINGS_KEY] ||= {};
+    settings.theme = { ...(settings.theme || {}), ...partial };
+    ctx.saveSettingsDebounced();
+    applyTheme();
+    setStatus('已保存');
+}
+function loadWallpaper(file) {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) return setStatus('请选择图片文件', 'error');
+    if (file.size > 750 * 1024) return setStatus('图片不能超过 750KB', 'error');
+    const reader = new FileReader();
+    reader.onload = () => { if (typeof reader.result === 'string') changeTheme({wallpaper:reader.result}); };
+    reader.onerror = () => setStatus('读取图片失败', 'error');
+    reader.readAsDataURL(file);
+}
+function updateApiInfo() {
+    if (!nodes?.apiInfo) return;
+    const ctx = context();
+    const settings = ctx?.chatCompletionSettings || {};
+    const model = ctx?.getChatCompletionModel?.() || settings.custom_model || settings.openai_model || settings.model || '未识别';
+    nodes.apiInfo.textContent = '连接：' + (ctx?.mainApi || '未连接') + ' · 模型：' + (typeof model === 'string' ? model : '当前所选模型');
+}
+function createCheckRow(entry, kind, checked) {
+    const label = document.createElement('label');
+    label.className = 'lp-config-row';
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.dataset.configKind = kind;
+    input.dataset.configId = entry.id;
+    input.checked = checked;
+    const title = document.createElement('span');
+    title.textContent = entry.name;
+    label.append(input, title);
+    return label;
+}
+function availablePresetEntries(name, ctx) {
+    const manager = ctx?.getPresetManager?.('openai');
+    const preset = manager?.getCompletionPresetByName?.(name);
+    return (preset?.prompts || []).filter(p => typeof p.content === 'string' && p.content.trim())
+        .map(p => ({id:String(p.identifier || p.name),name:p.name || p.identifier || '未命名条目'}));
+}
+async function populateConfigLists() {
+    if (!nodes?.presetSource || !nodes?.worldSource) return;
+    const ctx = context();
+    updateApiInfo();
+    const presets = ctx?.getPresetManager?.('openai')?.getAllPresets?.() || [];
+    const worlds = ctx?.getWorldInfoNames?.() || [];
+    const oldPreset = nodes.presetSource.value;
+    const oldWorld = nodes.worldSource.value;
+    nodes.presetSource.replaceChildren();
+    nodes.worldSource.replaceChildren();
+    for (const [select, values] of [[nodes.presetSource,presets],[nodes.worldSource,worlds]]) {
+        for (const name of values) {
+            const option = document.createElement('option');
+            option.value = name; option.textContent = name; select.append(option);
+        }
+    }
+    if (presets.includes(oldPreset)) nodes.presetSource.value = oldPreset;
+    if (worlds.includes(oldWorld)) nodes.worldSource.value = oldWorld;
+    showPresetEntries();
+    await showWorldEntries();
+}
+function showPresetEntries() {
+    if (!nodes?.presetEntries) return;
+    const ctx = context();
+    const name = nodes.presetSource.value;
+    const selected = readData(ctx)?.config?.presetEntries || [];
+    const entries = availablePresetEntries(name, ctx);
+    nodes.presetEntries.replaceChildren();
+    if (!entries.length) nodes.presetEntries.textContent = '没有可选的文本条目';
+    for (const entry of entries) nodes.presetEntries.append(createCheckRow(entry,'preset',selected.some(x=>x.preset===name && x.id===entry.id)));
+}
+async function showWorldEntries() {
+    if (!nodes?.worldEntries) return;
+    const ctx = context();
+    const name = nodes.worldSource.value;
+    nodes.worldEntries.replaceChildren();
+    if (!name || !ctx?.loadWorldInfo) { nodes.worldEntries.textContent = '没有可用的世界书'; return; }
+    try {
+        const book = await ctx.loadWorldInfo(name);
+        if (name !== nodes.worldSource.value) return;
+        const entries = Object.entries(book?.entries || {}).filter(([,value]) => typeof value?.content === 'string' && value.content.trim());
+        const selected = readData(ctx)?.config?.worldEntries || [];
+        if (!entries.length) nodes.worldEntries.textContent = '没有可选条目';
+        for (const [key,value] of entries) {
+            const id = String(value.uid ?? key);
+            nodes.worldEntries.append(createCheckRow({id,name:value.comment || value.key?.join('、') || id},'world',selected.some(x=>x.book===name && x.id===id)));
+        }
+    } catch (error) { nodes.worldEntries.textContent = '读取失败：' + redactDiagnostic(error?.message || error); }
+}
+function onConfigChange(input) {
+    const kind = input.dataset.configKind;
+    const id = input.dataset.configId;
+    const source = kind === 'preset' ? nodes.presetSource.value : nodes.worldSource.value;
+    const field = kind === 'preset' ? 'presetEntries' : 'worldEntries';
+    const key = kind === 'preset' ? 'preset' : 'book';
+    const checked = input.checked;
+    configWriteQueue = configWriteQueue.then(async () => {
+        const ctx = context();
+        if (!selectedCharacter(ctx)) return;
+        const data = structuredClone(readData(ctx));
+        data.config ||= {};
+        const selected = Array.isArray(data.config[field]) ? data.config[field] : [];
+        data.config[field] = selected.filter(x=>!(x[key] === source && x.id === id));
+        if (checked) data.config[field].push({[key]:source,id});
+        await writeData(ctx,data);
+    }).catch(e => setStatus(recordError('保存条目选择',e),'error'));
+}
 function localDateTime() {
     const now = new Date();
     const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
@@ -282,9 +414,11 @@ function setScreen(screen) {
         section.hidden = section.dataset.lpScreen !== screen;
     }
     nodes.back.hidden = screen === 'home';
-    const titles = { home: '咕叽咕机', chat: '咕叽聊', settings: '手机设置', diagnostics: '运行日志' };
+    const titles = { home: '咕叽咕机', chat: '咕叽聊', settings: '设置', diagnostics: '运行日志', calendar: '日历', theme: '主题' };
     nodes.title.textContent = titles[screen];
     if (screen === 'diagnostics') renderDiagnostics();
+    if (screen === 'settings') void populateConfigLists();
+    if (screen === 'theme') applyTheme();
     if (screen === 'chat') nodes.messages.scrollTop = nodes.messages.scrollHeight;
 }
 
@@ -416,8 +550,10 @@ function render() {
     nodes.homeTime.textContent = (data?.storyTime || localDateTime()).replace('T', ' ');
     nodes.homeMessageCount.textContent = `${data?.messages?.filter(message => message.from !== 'system').length || 0} 条聊天记录`;
     nodes.time.value = data?.storyTime || localDateTime();
+    updateApiInfo();
     renderFriendship(data);
     updateLauncherVisibility();
+    applyTheme();
     if (data) renderMessages(data);
     else {
         nodes.messages.replaceChildren();
@@ -820,7 +956,7 @@ function makeUI() {
           <button type="button" class="lp-clear-logs" data-lp="clearDiagnostics">清空本次运行日志</button>
         </section>
       </dialog>
-      <button type="button" class="lp-launcher" data-lp="launcher" aria-label="打开咕叽咕机" title="咕叽咕机">☏</button>`;
+      `;
     return container;
 }
 
@@ -829,13 +965,21 @@ function mount() {
     lifecycleToken += 1;
     root = makeUI();
     document.body.append(root);
+    const floating = document.createElement('button');
+    floating.type = 'button';
+    floating.id = 'gujiguji-floating-launcher';
+    floating.className = 'lp-launcher';
+    floating.textContent = '☏';
+    floating.setAttribute('aria-label','打开咕叽咕机');
+    document.body.append(floating);
     nodes = Object.fromEntries(['title', 'name', 'subtitle', 'back', 'close', 'time',
         'homeTime', 'homeCharacter', 'homeMessageCount', 'homeLogCount',
         'friendLabel', 'friendActions',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus', 'activity', 'diagnosticToggle',
+        'presetSource','presetEntries','worldSource','worldEntries','apiInfo','themeFont','themeWallpaper','themeResetWallpaper','themeIcons',
         'diagnostics', 'diagnosticState', 'copyDiagnostics', 'clearDiagnostics',
         'messages', 'input', 'retry', 'send', 'launcher']
-        .map(key => [key, root.querySelector(`[data-lp="${key}"]`)]));
+        .map(key => [key, key === 'launcher' ? floating : root.querySelector(`[data-lp="${key}"]`)]));
 
     nodes.launcher.addEventListener('click', () => {
         const opening = !root.classList.contains('lp-open');
@@ -853,6 +997,19 @@ function mount() {
         if (button && root.contains(button)) setScreen(button.dataset.lpOpen);
     });
     nodes.time.addEventListener('change', saveStoryTime);
+    nodes.presetSource.addEventListener('change', showPresetEntries);
+    nodes.worldSource.addEventListener('change', () => void showWorldEntries());
+    nodes.presetEntries.addEventListener('change', event => { if (event.target?.dataset?.configKind) onConfigChange(event.target); });
+    nodes.worldEntries.addEventListener('change', event => { if (event.target?.dataset?.configKind) onConfigChange(event.target); });
+    nodes.themeFont.addEventListener('change', () => changeTheme({font:nodes.themeFont.value}));
+    nodes.themeWallpaper.addEventListener('change', e => loadWallpaper(e.target.files?.[0]));
+    nodes.themeResetWallpaper.addEventListener('click', () => changeTheme({wallpaper:''}));
+    nodes.themeIcons.addEventListener('change', e => {
+        const iconName = e.target.dataset?.themeIcon;
+        if (!iconName) return;
+        const str = e.target.value.trim().slice(0,12);
+        changeTheme({icons:{...(themeData().icons||{}),[iconName]:str || APP_ICONS[iconName]}});
+    });
     nodes.floatingLauncher.addEventListener('change', event => setFloatLauncherEnabled(event.target.checked));
     nodes.send.addEventListener('click', send);
     nodes.retry.addEventListener('click', retryLastReply);
@@ -921,6 +1078,7 @@ function unmount() {
     chatChangedHandler = null;
     document.getElementById(WAND_ENTRY_ID)?.remove();
     wandEntry = null;
+    nodes?.launcher?.remove();
     root?.remove();
     root = null;
     nodes = null;
