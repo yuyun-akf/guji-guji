@@ -371,10 +371,10 @@ test('modal entirely outside the viewport produces a visible diagnostic error', 
 test('diagnostic bootstrap is the manifest entry and exposes lifecycle hooks', () => {
     const manifest = JSON.parse(readFileSync(resolve(testRoot, '../manifest.json'), 'utf8'));
     const bootstrap = readFileSync(resolve(testRoot, '../bootstrap.js'), 'utf8');
-    assert.equal(manifest.version, '0.8.5');
+    assert.equal(manifest.version, '0.8.6');
     assert.equal(manifest.minimum_client_version, '1.18.0');
     assert.equal(manifest.js, 'bootstrap.js');
-    assert.match(bootstrap, /import\('\.\/index\.js\?v=0\.8\.5'\)/);
+    assert.match(bootstrap, /import\('\.\/index\.js\?v=0\.8\.6'\)/);
     assert.match(bootstrap, /export function onActivate\(/);
     assert.match(bootstrap, /export function onEnable\(/);
     assert.match(bootstrap, /export function onDisable\(/);
@@ -402,6 +402,48 @@ test('phone preset entry selection only reads requested prompt content', async (
     const prompt = await composePhonePrompt(ctx,{name:'C'},data);
     assert.ok(prompt.includes('ONLY_THIS'));
     assert.equal(prompt.includes('NOT_THIS'),false);
+});
+test('current host preset is displayed on opening settings, ignoring a stale old phone selection', async () => {
+    const ctx={getPresetManager:()=>({
+        getAllPresets:()=>['A','B'],
+        getSelectedPresetName:()=> 'A',
+        getCompletionPresetByName:name=>({prompts:[{identifier:'p',name:name,content:'text'}]}),
+        selectPreset(){throw new Error('phone may not switch the host preset');}
+    }),getWorldInfoNames:()=>[]};
+    const runtime={console,Date,structuredClone,
+        window:{SillyTavern:{getContext:()=>ctx}},
+        document:{createElement:tag=>({tag,value:'',textContent:''})}};
+    const presetSource={value:'B',options:[],replaceChildren(){this.options=[];this.value='';},append(option){this.options.push(option);}};
+    const fixture={presetSource,presetInfo:{textContent:''},worldBookList:{}};
+    runtime.fixture=fixture;
+    vm.createContext(runtime);
+    vm.runInContext(`${source}
+        updateApiInfo=()=>{};
+        renderWorldBookSelector=()=>{};
+        showPresetEntries=()=>{};
+        nodes=fixture;
+        globalThis.refresh=populateConfigLists;
+    `,runtime);
+    await runtime.refresh();
+    assert.equal(presetSource.value,'A');
+    assert.deepEqual(presetSource.options.map(option=>option.value),['','A','B']);
+    assert.match(fixture.presetInfo.textContent,/当前预设：A/);
+    assert.match(fixture.presetInfo.textContent,/不会在当前生成中注入/);
+});
+test('saved entries of preset B never enter generation with host preset A',async()=>{
+    let hostSwitches=0;
+    const ctx={getPresetManager:()=>({
+        getSelectedPresetName:()=> 'A',
+        getCompletionPresetByName:name=>({prompts:[{identifier:'intro',content:name+'-CONTENT'}]}),
+        selectPreset(){hostSwitches+=1;}
+    })};
+    const data=newData();
+    data.config={presetEntries:[{preset:'B',id:'intro'},{preset:'A',id:'intro'}],worldEntries:[]};
+    const prompt=await composePhonePrompt(ctx,{name:'角色甲'},data);
+    assert.ok(prompt.includes('A-CONTENT'));
+    assert.equal(prompt.includes('B-CONTENT'),false);
+    assert.equal(hostSwitches,0);
+    assert.equal(data.config.presetEntries.length,2,'do not erase saved selections from other presets');
 });
 test('phone worldbook selection reads individual entries without changing source data', async () => {
     const book = {entries:{1:{uid:1,content:'ONE',constant:true},2:{uid:2,content:'TWO',constant:true}}};
@@ -487,19 +529,21 @@ test('story clock advances for replies, respects manual calendar jumps and eveni
     assert.equal(storyHourLabel(data.storyTime),'深夜');
 });
 test('placeholders resolve active user mask and selected contact without replacing stored card text',async()=>{
-    const ctx={name1:'梨子',powerUserSettings:{persona_description:'和{{char}}是网友'}};
-    const char={name:'宁肆锦',data:{description:'{{char}}认识{{user}}，但{{user}}不知道他是演员'}};
+    const ctx={name1:'玩家甲',powerUserSettings:{persona_description:'和{{char}}是网友'}};
+    const char={name:'角色甲',data:{description:'{{char}}认识{{user}}，但{{user}}不知道他是演员'}};
     const data=newData();
     const prompt=await composePhonePrompt(ctx,char,data);
-    assert.ok(prompt.includes('宁肆锦认识梨子'));
-    assert.ok(prompt.includes('梨子不知道他是演员'));
+    assert.ok(prompt.includes('角色甲认识玩家甲'));
+    assert.ok(prompt.includes('玩家甲不知道他是演员'));
     assert.ok(!prompt.includes('{{user}}')&&!prompt.includes('{{char}}'));
     assert.ok(prompt.includes('真实身份')&&prompt.includes('不得主动自曝'));
     assert.ok(prompt.includes('（'+storyHourLabel(data.storyTime)+'）'));
     assert.equal(char.data.description,'{{char}}认识{{user}}，但{{user}}不知道他是演员');
     const history=buildPrompt({messages:[{from:'user',text:'{{char}} 在吗？'}]},ctx,char);
-    assert.equal(history[0].content,'宁肆锦 在吗？');
-    assert.equal(resolvePhonePlaceholders('{{user}}和{{char}}',ctx,char),'梨子和宁肆锦');
+    assert.equal(history[0].content,'角色甲 在吗？');
+    assert.equal(resolvePhonePlaceholders('{{user}}和{{char}}',ctx,char),'玩家甲和角色甲');
+    assert.equal(resolvePhonePlaceholders('与 {{char}} 的故事',{name1:'另一个面具'},{name:'另一角色'}),'与 另一角色 的故事');
+    assert.equal(resolvePhonePlaceholders('如：{{char}}的母亲、{{user}}的同学',{name1:'另一个面具'},{name:'另一角色'}),'如：另一角色的母亲、另一个面具的同学');
 });
 test('message indicators count per contact; quote cancellation and activity feedback have controls',()=>{
     const data={contacts:[{id:'npc:a'},{id:'npc:b'}],unreadCounts:{primary:2,'npc:a':3,'npc:b':0}};

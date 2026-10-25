@@ -65,8 +65,8 @@ let pickerFocusListener = null;
 let stickerUploading = false;
 let notificationTimer = null;
 const transientApiKeys = new Map();
-const APP_ICONS = {chat:'💬',discover:'🌿',diagnostics:'🛠️',settings:'⚙️',calendar:'📅',theme:'🎨',album:'🖼️',shopping:'🛍️',takeout:'🥡'};
-const SCREENS = new Set(['home', 'chat', 'chatList', 'contacts', 'requests', 'profile', 'addNpc', 'discoverNpc', 'discover', 'me', 'chatOptions', 'settings', 'diagnostics', 'calendar', 'theme', 'presetPicker', 'worldPicker']);
+const APP_ICONS = {chat:'💬',wallet:'💠',diagnostics:'🛠️',settings:'⚙️',calendar:'📅',theme:'🎨',album:'🖼️',shopping:'🛍️',takeout:'🥡'};
+const SCREENS = new Set(['home', 'wallet', 'chat', 'chatList', 'contacts', 'requests', 'profile', 'addNpc', 'discoverNpc', 'discover', 'me', 'chatOptions', 'settings', 'diagnostics', 'calendar', 'theme', 'presetPicker', 'worldPicker']);
 
 function context() {
     try {
@@ -286,19 +286,28 @@ function availablePresetEntries(name, ctx) {
     return (preset?.prompts || []).filter(p => typeof p.content === 'string' && p.content.trim())
         .map(p => ({id:String(p.identifier || p.name),name:p.name || p.identifier || '未命名条目',content:p.content}));
 }
+function activeHostPresetName(ctx=context()) {
+    // SillyTavern 1.18/1.19: read only; never call selectPreset() from the phone.
+    const name=ctx?.getPresetManager?.('openai')?.getSelectedPresetName?.();
+    return typeof name==='string'?name.trim():'';
+}
 async function populateConfigLists() {
     if (!nodes?.presetSource || !nodes?.worldBookList) return;
     const ctx = context();
     updateApiInfo();
     const presets = ctx?.getPresetManager?.('openai')?.getAllPresets?.() || [];
     const worlds = ctx?.getWorldInfoNames?.() || [];
-    const oldPreset = nodes.presetSource.value;
+    const activePreset=activeHostPresetName(ctx);
     nodes.presetSource.replaceChildren();
+    const empty=document.createElement('option');empty.value='';empty.textContent='请选择预设';nodes.presetSource.append(empty);
     for (const name of presets) {
         const option = document.createElement('option');
         option.value = name; option.textContent = name; nodes.presetSource.append(option);
     }
-    if (presets.includes(oldPreset)) nodes.presetSource.value = oldPreset;
+    nodes.presetSource.value = presets.includes(activePreset)?activePreset:'';
+    if(nodes.presetInfo)nodes.presetInfo.textContent=activePreset
+        ?`酒馆当前预设：${activePreset}。其他预设的勾选记录会保留，但不会在当前生成中注入；此处仅浏览条目，不切换酒馆预设。`
+        :'未读取到酒馆当前预设；这里仅浏览条目，不会切换酒馆预设。';
     renderWorldBookSelector(ctx,worlds);
     showPresetEntries();
 }
@@ -885,7 +894,9 @@ async function composePhonePrompt(ctx, char, data) {
     const persona=currentPersona(ctx);
     const parts = [createSystemPrompt(char, data, persona)];
     const summary={preset:0,selected:0,world:0,skipped:0,characters:0};
-    const selectedPresets = Array.isArray(data?.config?.presetEntries) ? data.config.presetEntries : [];
+    const activePreset=activeHostPresetName(ctx);
+    const selectedPresets = (Array.isArray(data?.config?.presetEntries) ? data.config.presetEntries : [])
+        .filter(item=>!activePreset||item.preset===activePreset);
     if (selectedPresets.length) {
         const manager = ctx?.getPresetManager?.('openai');
         for (const item of selectedPresets) {
@@ -1099,7 +1110,7 @@ function setScreen(screen) {
         section.hidden = section.dataset.lpScreen !== screen;
     }
     nodes.back.hidden = screen === 'home';
-    const titles = { home:'咕叽咕机',chat:'',chatList:'咕叽聊',contacts:'通讯录',discover:'发现',me:'我',requests:'新的朋友',profile:'联系人资料',addNpc:'添加 NPC',discoverNpc:'发现故事人物',chatOptions:'聊天设置',settings:'设置',diagnostics:'运行日志',calendar:'日历',theme:'主题',presetPicker:'选择预设条目',worldPicker:'选择世界书条目' };
+    const titles = { home:'咕叽咕机',wallet:'吱付宝',chat:'',chatList:'咕叽聊',contacts:'通讯录',discover:'发现',me:'我',requests:'新的朋友',profile:'联系人资料',addNpc:'添加 NPC',discoverNpc:'发现故事人物',chatOptions:'聊天设置',settings:'设置',diagnostics:'运行日志',calendar:'日历',theme:'主题',presetPicker:'选择预设条目',worldPicker:'选择世界书条目' };
     nodes.title.textContent = screen === 'chat' ? contactDisplayName(context()) : titles[screen];
     nodes.chatMenu.hidden = screen !== 'chat';
     if (screen === 'diagnostics') renderDiagnostics();
@@ -2093,7 +2104,6 @@ function renderChatLists(ctx,char,data) {
     if(nodes.homeUnreadCount){nodes.homeUnreadCount.textContent=unread?`${unread} 条未读`:'可使用';nodes.homeUnreadCount.classList.toggle('lp-has-unread',unread>0);}
     root.querySelectorAll('.lp-tabbar button[data-lp-open="chatList"]').forEach(button=>button.classList.toggle('lp-has-unread',unread>0));
     const news=unreadMoments(story);
-    if(nodes.homeMomentCount){nodes.homeMomentCount.textContent=news?`${news} 条新动态`:'朋友圈';nodes.homeMomentCount.classList.toggle('lp-has-unread',news>0);}
     root.querySelectorAll('.lp-tabbar button[data-lp-open="discover"]').forEach(button=>button.classList.toggle('lp-has-unread',news>0));
     if (!nodes.requestsList.children.length) {
         const empty=document.createElement('p');
@@ -2730,7 +2740,8 @@ function render() {
     renderChatLists(ctx,char,data);
     renderMoments(ctx);
     nodes.subtitle.textContent = char ? '故事中的小手机 · 独立聊天' : '请先选择单人角色存档';
-    nodes.homeCharacter.textContent = primary ? `与 ${getCharacterName(primary)} 的故事` : '等待进入角色存档';
+    nodes.homeCharacter.textContent = primary ? resolvePhonePlaceholders('与 {{char}} 的故事',ctx,primary) : '等待进入角色存档';
+    nodes.npcRelation.placeholder=resolvePhonePlaceholders('如：{{char}}的母亲、{{user}}的同学',ctx,primary);
     nodes.homeTime.textContent = (data?.storyTime || localDateTime()).replace('T', ' ');
     nodes.time.value = data?.storyTime || localDateTime();
     updateApiInfo();
@@ -2956,7 +2967,7 @@ async function handleFriendAction(action) {
     } else if (action === 'unblock' && state === 'blocked') {
         await changeFriendship('stranger', '你已解除拉黑，可以重新添加好友。');
     } else if (action === 'incoming-manual' && state === 'stranger') {
-        if(!window.confirm('确认当前剧情中对方向 {{user}} 发来了好友申请？此操作仅补录申请，不会自动成为好友。'))return;
+        if(!window.confirm(resolvePhonePlaceholders('确认当前剧情中对方向 {{user}} 发来了好友申请？此操作仅补录申请，不会自动成为好友。',ctx,contactCharacter(ctx))))return;
         if(await changeFriendship('incoming', '对方向你发送了好友申请，等待你同意或拒绝。'))setScreen('requests');
     } else if (action === 'convert-incoming' && state === 'outgoing') {
         if(!window.confirm('将旧版「我申请对方」记录改为「对方向我申请」？不会直接通过好友申请。'))return;
@@ -3105,13 +3116,13 @@ function makeUI() {
         <button type="button" class="lp-inline-notification" data-lp="inlineNotification" aria-label="打开新消息" hidden></button>
         <section class="lp-screen lp-home" data-lp-screen="home" aria-label="手机桌面">
           <div class="lp-home-hero">
-            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.8.5</div>
+            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.8.6</div>
             <div class="lp-home-time" data-lp="homeTime">故事时间</div>
             <div class="lp-home-character" data-lp="homeCharacter">等待进入角色存档</div>
           </div>
           <div class="lp-app-grid" aria-label="小手机应用">
             <button type="button" class="lp-app-tile" data-lp-open="chatList"><span class="lp-app-icon lp-app-chat" data-lp-icon="chat">💬</span><span>咕叽聊</span><small data-lp="homeUnreadCount">可使用</small></button>
-            <button type="button" class="lp-app-tile" data-lp-open="discover"><span class="lp-app-icon" data-lp-icon="discover">🌿</span><span>朋友圈</span><small data-lp="homeMomentCount">朋友圈</small></button>
+            <button type="button" class="lp-app-tile" data-lp-open="wallet"><span class="lp-app-icon lp-app-wallet" data-lp-icon="wallet">💠</span><span>吱付宝</span><small>筹备中</small></button>
             <button type="button" class="lp-app-tile" data-lp-open="diagnostics"><span class="lp-app-icon lp-app-log" data-lp-icon="diagnostics">🛠️</span><span>运行日志</span><small data-lp="homeLogCount">0 条记录</small></button>
             <button type="button" class="lp-app-tile" data-lp-open="settings"><span class="lp-app-icon lp-app-settings" data-lp-icon="settings">⚙️</span><span>设置</span></button>
             <button type="button" class="lp-app-tile" data-lp-open="calendar"><span class="lp-app-icon" data-lp-icon="calendar">📅</span><span>日历</span></button>
@@ -3120,6 +3131,10 @@ function makeUI() {
             <div class="lp-app-tile lp-app-soon" aria-label="购物，待开发"><span class="lp-app-icon" data-lp-icon="shopping">🛍️</span><span>购物</span><small>待开发</small></div>
             <div class="lp-app-tile lp-app-soon" aria-label="外卖，待开发"><span class="lp-app-icon" data-lp-icon="takeout">🥡</span><span>外卖</span><small>待开发</small></div>
           </div>
+        </section>
+        <section class="lp-screen lp-wallet" data-lp-screen="wallet" aria-label="吱付宝" hidden>
+          <div class="lp-wallet-hero"><span class="lp-wallet-logo">💠</span><h2>吱付宝</h2><p>故事里的虚拟支付应用</p></div>
+          <div class="lp-wallet-placeholder"><strong>功能筹备中</strong><p>先保留应用入口和独立界面，具体钱包、账单、转账功能之后再设计。这里不会连接真实支付或操作真实资金。</p></div>
         </section>
         <section class="lp-screen lp-chatlist" data-lp-screen="chatList" aria-label="消息列表" hidden>
           <div class="lp-list-body">
@@ -3367,6 +3382,7 @@ function makeUI() {
           <button type="button" class="lp-settings-link" data-lp="saveMessageStyle">保存聊天方式</button>
           <h2>预设条目</h2>
           <select data-lp="presetSource" aria-label="选择预设"></select>
+          <p class="lp-settings-hint" data-lp="presetInfo"></p>
           <button type="button" class="lp-settings-link" data-lp="openPresetPicker">打开条目列表 · 搜索与勾选</button>
           <h2>选择世界书（可多选）</h2>
           <div class="lp-worldbook-list" data-lp="worldBookList" aria-label="可用世界书多选列表"></div>
@@ -3420,7 +3436,7 @@ function makeUI() {
           <h2>App 图标</h2>
           <div class="lp-theme-icons" data-lp="themeIcons">
             <label>咕叽聊 <input data-theme-icon="chat" maxlength="12" /></label>
-            <label>朋友圈 <input data-theme-icon="discover" maxlength="12" /></label>
+            <label>吱付宝 <input data-theme-icon="wallet" maxlength="12" /></label>
             <label>运行日志 <input data-theme-icon="diagnostics" maxlength="12" /></label>
             <label>设置 <input data-theme-icon="settings" maxlength="12" /></label>
             <label>日历 <input data-theme-icon="calendar" maxlength="12" /></label>
@@ -3456,12 +3472,12 @@ function mount() {
     floating.hidden = !floatLauncherEnabled();
     document.body.append(floating);
     nodes = Object.fromEntries(['title', 'subtitle', 'back', 'close', 'time',
-        'homeTime', 'homeCharacter', 'homeLogCount', 'homeUnreadCount','homeMomentCount','notification','inlineNotification',
+        'homeTime', 'homeCharacter', 'homeLogCount', 'homeUnreadCount','notification','inlineNotification',
         'momentsPost', 'momentsText', 'momentsFeed', 'momentFeedback','momentsPreview','momentImageUpload','momentRemovePhoto','myAvatarUpload','myAvatarFallback','myAvatarStatus','myIdentity', 'myAvatar', 'myPersona', 'autoMessagesMode','autoMessagesDays','autoMomentsMode','autoMomentsDays','relationAutoSync','phoneInPast','characterRequests','momentInteractions','autonomyStatus','autonomyFeedback','saveAutonomy','rescanRelations','testAutonomy', 'stickerUpload', 'stickerStatus', 'stickerLibrary',
         'friendLabel', 'friendActions','profileAvatar','profileName','profileDescription','contactEvidence','contactExchange','contactLinks','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcScanState','npcCandidates','npcSaveCandidates','storyPeopleList','viewPrimaryContact','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','avatarUserFile','resetCharAvatar','resetUserAvatar',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
-        'presetSource','presetEntries','worldBookList','worldSelectionSummary','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','readMainlineMemory','memorySource','phoneToMainline','saveContextSettings','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themeIcons',
+        'presetSource','presetInfo','presetEntries','worldBookList','worldSelectionSummary','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','readMainlineMemory','memorySource','phoneToMainline','saveContextSettings','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themeIcons',
         'diagnostics', 'diagnosticState', 'copyDiagnostics', 'clearDiagnostics',
         'messages','messageActions','quotedPreview','quotedText','cancelQuote','emojiPanel','morePanel','chatImageInput','input', 'retry', 'send', 'launcher']
         .map(key => [key, key === 'launcher' ? floating : root.querySelector(`[data-lp="${key}"]`)]));
@@ -3510,7 +3526,7 @@ function mount() {
     nodes.testAutonomy.addEventListener('click',()=>void testAutonomousMessage());
 
     nodes.back.addEventListener('click', () => setScreen({
-        chat: 'chatList', contacts: 'chatList', discover:'chatList', me:'chatList', profile: 'contacts', requests:'contacts', addNpc:'contacts', discoverNpc:'addNpc', chatOptions:'chat', presetPicker:'settings', worldPicker:'settings'
+        wallet:'home', chat: 'chatList', contacts: 'chatList', discover:'chatList', me:'chatList', profile: 'contacts', requests:'contacts', addNpc:'contacts', discoverNpc:'addNpc', chatOptions:'chat', presetPicker:'settings', worldPicker:'settings'
     }[activeScreen] || 'home'));
     root.addEventListener('click', event => {
         const button = event.target.closest('button[data-lp-open]');

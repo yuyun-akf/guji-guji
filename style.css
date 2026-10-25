@@ -210,6 +210,7 @@
 }
 
 #st-little-phone-root .lp-app-chat { background: #ddf5e2; }
+#st-little-phone-root .lp-app-wallet { background: #dceeff; }
 #st-little-phone-root .lp-app-log { background: #fff0d6; }
 #st-little-phone-root .lp-app-settings { background: #e6e8ff; }
 
@@ -217,6 +218,15 @@
   opacity: .57;
   cursor: default;
 }
+
+#st-little-phone-root .lp-wallet{flex:1 1 auto;min-height:0;padding:24px 18px;overflow-y:auto;background:#f4f8fc;}
+#st-little-phone-root .lp-wallet-hero{padding:34px 16px 26px;text-align:center;border-radius:20px;background:linear-gradient(145deg,#d9ecff,#fdfdff);color:#426b94;}
+#st-little-phone-root .lp-wallet-logo{display:grid;place-items:center;width:74px;height:74px;margin:0 auto 12px;border-radius:22px;background:#fff;box-shadow:0 8px 22px #83a6c54d;font-size:38px;}
+#st-little-phone-root .lp-wallet-hero h2{margin:0;font-size:22px;font-weight:600;}
+#st-little-phone-root .lp-wallet-hero p{font-size:12px;margin:7px 0 0;}
+#st-little-phone-root .lp-wallet-placeholder{margin-top:22px;padding:22px 17px;border:1px solid #e1eaf3;border-radius:16px;background:#fff;color:#6b8093;line-height:1.6;}
+#st-little-phone-root .lp-wallet-placeholder strong{color:#527b9f;}
+#st-little-phone-root .lp-wallet-placeholder p{margin:8px 0 0;font-size:12px;}
 
 #st-little-phone-root .lp-home-note {
   margin: auto 6px 0;

@@ -143,9 +143,9 @@ function socialStory() {
         contacts:[{id:'npc:b',name:'室友B'},{id:'npc:c',name:'网友C'}],
         conversations:{'npc:b':{messages:[{text:'室友旧消息'}],friendship:{state:'friends'}},
             'npc:c':{messages:[{text:'网友旧消息'}],friendship:{state:'friends'}}},
-        moments:[{id:'m-user',authorId:'user',author:'梨子',text:'我的动态'},
+        moments:[{id:'m-user',authorId:'user',author:'玩家甲',text:'我的动态'},
             {id:'m-c',authorId:'npc:c',author:'网友C',text:'C的动态'}]};
-    const ctx={name1:'梨子',characterId:0,chatId:'A',characters:[{name:'主角A',data:{description:'不透露演员职业'}}],
+    const ctx={name1:'玩家甲',characterId:0,chatId:'A',characters:[{name:'主角A',data:{description:'不透露演员职业'}}],
         chatMetadata:{st_little_phone_v1:data},saveMetadata:async()=>{}};
     return {ctx,data};
 }
@@ -161,7 +161,7 @@ test('moments require explicit mutual contact links between characters, not just
     assert.equal(api.charactersHaveContact(ctx,'npc:b','npc:c'),false);
     assert.deepEqual(Array.from(api.momentCandidates(ctx,cPost)),['primary']);
     cPost.comments=[{id:'x1',actorId:'npc:b',author:'室友B',text:'不知道对方是谁'},
-        {id:'x2',actorId:'user',author:'梨子',text:'你好'}];
+        {id:'x2',actorId:'user',author:'玩家甲',text:'你好'}];
     assert.deepEqual(Array.from(api.visibleMomentComments(ctx,cPost,'primary'),c=>c.id),['x2']);
     data.conversations['npc:c'].friendship={state:'blocked'};
     assert.equal(api.charactersHaveContact(ctx,'primary','npc:c'),false,'link is inactive if either person is no longer a friend');
@@ -239,9 +239,16 @@ test('new moment notifications and mutual-link settings appear in the rendered t
     const box=runtime();box.document.createElement=()=>({innerHTML:''});
     const html=box.api.makeUI().innerHTML;
     assert.ok(!html.includes('data-lp="homeMessageCount"'));
-    for(const name of ['homeMomentCount','momentFeedback','momentInteractions','contactLinks'])
+    for(const name of ['momentFeedback','momentInteractions','contactLinks'])
         assert.ok(html.includes('data-lp="'+name+'"'));
-    assert.ok(html.includes('data-lp-icon="discover"'));
+    assert.ok(!html.includes('data-lp="homeMomentCount"'));
+    const home=html.split('data-lp-screen="home"')[1].split('</section>')[0];
+    assert.ok(home.includes('data-lp-open="wallet"'));
+    assert.ok(!home.includes('data-lp-open="discover"'),'no duplicate Discover/Moments app on desktop');
+    assert.ok(html.includes('data-lp-screen="wallet"'));
+    assert.ok(html.includes('data-lp-open="discover"'),'Moments remains inside chat Discover tab');
+    assert.ok(html.includes('吱付宝'));
+    assert.ok(html.includes('data-lp="notification"'));
     const cfg=vm.runInContext('socialConfig({})',box);
     assert.equal(cfg.momentInteractions,false,'automatic paid interaction must default off');
 });
