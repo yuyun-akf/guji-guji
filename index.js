@@ -1391,15 +1391,15 @@ function extractNpcCandidatesFromText(sourceText,source,mainName) {
         const trimmed=line.replace(/^[-*\d.、\s#]+/,'');
         const hits=[];
         let m;
-        // A labeled character entry, e.g. 姓名：苏晚意 / 角色：宁致远
+        // A labeled character entry, e.g. 姓名：人物甲 / 角色：人物乙
         const labeled=trimmed.match(/^(?:姓名|人物|角色名|角色姓名|NPC|名字|名称)[：:\s]+([\u3400-\u9fff·]{2,8})(?=\s|[,，;；。]|$)/i);
         if(labeled)hits.push({name:labeled[1],relation:''});
         const heading=trimmed.match(/^(?:#+\s*)?(?:人物|角色|NPC)[：:\s]+([\u3400-\u9fff·]{2,8})(?=\s|[,，;；。]|$)/i);
         if(heading)hits.push({name:heading[1],relation:''});
-        // Relation label e.g. 父亲：宁致远
+        // Relation label e.g. 父亲：人物甲
         const relLabel=new RegExp('(?:^|[，,。；;\\s])('+rel+')[：:\\s]+([\\u3400-\\u9fff·]{2,8})(?=\\s|[，,。；;]|$)','g');
         while((m=relLabel.exec(trimmed))!==null)hits.push({name:m[2],relation:m[1]});
-        //  宁肆锦的母亲苏晚意 / 他的老师陈某某
+        //  {{char}}的母亲人物甲 / 他的老师人物乙
         const relationWithName=new RegExp('(?:[\\u3400-\\u9fff·]{2,6}|他|她|我|你)的('+rel+')([\\u3400-\\u9fff·]{2,4})(?=[，,。；;\\s（(]|是|为|在|会|曾|现|于|就|还|并|担任)','g');
         while((m=relationWithName.exec(trimmed))!==null)hits.push({name:m[2],relation:m[1]});
         const namedAs=new RegExp('(?:[\\u3400-\\u9fff·]{2,6}|他|她|我|你)的('+rel+')叫([\\u3400-\\u9fff·]{2,4})(?=[，,。；;\\s]|是|为|在|$)','g');
@@ -1412,11 +1412,11 @@ function extractNpcCandidatesFromText(sourceText,source,mainName) {
         if(friendKey)hits.push({name:friendKey[1],relation:trimmed.split(/[：:]/)[0].slice(0,8)});
 
         while((m=userRelation.exec(trimmed))!==null)hits.push({name:m[2],relation:m[1]});
-        // 苏晚意（宁肆锦的母亲） / 宁致远：知名导演，宁肆锦父亲
+        // 人物甲（{{char}}的母亲） / 人物乙：知名导演，{{char}}父亲
         const namedRelation=new RegExp('^([\\u3400-\\u9fff·]{2,5})[：:（(][^。\\n]{0,85}?(?:'+rel+')(?=[，,。；;）)\\s]|$)');
         m=trimmed.match(namedRelation);
         if(m)hits.push({name:m[1],relation:trimmed.match(new RegExp(rel))?.[0]||''});
-        // Explicit named worldbook title, e.g. 苏晚意 - 人物档案
+        // Explicit named worldbook title, e.g. 人物甲 - 人物档案
         if(i===0 || trimmed.startsWith('#')){
             m=trimmed.match(/^#*\s*([\u3400-\u9fff·]{2,5})\s*[-—｜|:：]\s*(?:人物|角色|NPC|档案|父亲|母亲|同学|老师|关系)/);
             if(m)hits.push({name:m[1],relation:''});
@@ -2505,7 +2505,7 @@ function makeUI() {
             <button type="button" class="lp-npc-discover-button" data-lp-open="discoverNpc">从角色设定／世界书扫描人物</button>
             <p class="lp-npc-note">也可以在下方手动创建人物；两种方式都会进入当前存档的联系人系统。</p>
             <label>姓名<input data-lp="npcName" type="text" maxlength="60" placeholder="NPC 姓名" /></label>
-            <label>人物关系（请说明与谁的关系）<input data-lp="npcRelation" type="text" maxlength="180" placeholder="如：宁肆锦的母亲、user的同学" /></label>
+            <label>人物关系（请说明与谁的关系）<input data-lp="npcRelation" type="text" maxlength="180" placeholder="如：{{char}}的母亲、{{user}}的同学" /></label>
             <label>人物设定<textarea data-lp="npcDescription" maxlength="3500" rows="6" placeholder="填写或粘贴角色卡、世界书里的 NPC 设定"></textarea></label>
             <button type="button" data-lp="addNpcSave">创建联系人</button>
             <div class="lp-inline-status" data-lp="npcStatus" role="status" aria-live="polite"></div>
