@@ -7,6 +7,9 @@ const ROOT_ID = 'st-little-phone-root';
 const DATA_KEY = 'st_little_phone_v1';
 const PRIMARY_CONTACT_ID = 'primary';
 let activeContactId = PRIMARY_CONTACT_ID;
+let npcCandidates = [];
+let npcScanSession = null;
+let npcScanning = false;
 const SETTINGS_KEY = 'gujiguji';
 const WAND_ENTRY_ID = 'gujiguji-wand-entry';
 const CONTEXT_MESSAGE_LIMIT = 24;
@@ -43,7 +46,7 @@ let configWriteQueue = Promise.resolve();
 let viewportListener = null;
 const transientApiKeys = new Map();
 const APP_ICONS = {chat:'💬',diagnostics:'🛠️',settings:'⚙️',calendar:'📅',theme:'🎨',album:'🖼️',shopping:'🛍️',takeout:'🥡'};
-const SCREENS = new Set(['home', 'chat', 'chatList', 'contacts', 'requests', 'profile', 'addNpc', 'chatOptions', 'settings', 'diagnostics', 'calendar', 'theme', 'presetPicker', 'worldPicker']);
+const SCREENS = new Set(['home', 'chat', 'chatList', 'contacts', 'requests', 'profile', 'addNpc', 'discoverNpc', 'chatOptions', 'settings', 'diagnostics', 'calendar', 'theme', 'presetPicker', 'worldPicker']);
 
 function context() {
     try {
@@ -647,12 +650,13 @@ function setScreen(screen) {
         section.hidden = section.dataset.lpScreen !== screen;
     }
     nodes.back.hidden = screen === 'home';
-    const titles = { home:'咕叽咕机',chat:'',chatList:'咕叽聊',contacts:'通讯录',requests:'新的朋友',profile:'联系人资料',addNpc:'添加 NPC',chatOptions:'聊天设置',settings:'设置',diagnostics:'运行日志',calendar:'日历',theme:'主题',presetPicker:'选择预设条目',worldPicker:'选择世界书条目' };
+    const titles = { home:'咕叽咕机',chat:'',chatList:'咕叽聊',contacts:'通讯录',requests:'新的朋友',profile:'联系人资料',addNpc:'添加 NPC',discoverNpc:'发现故事人物',chatOptions:'聊天设置',settings:'设置',diagnostics:'运行日志',calendar:'日历',theme:'主题',presetPicker:'选择预设条目',worldPicker:'选择世界书条目' };
     nodes.title.textContent = screen === 'chat' ? contactDisplayName(context()) : titles[screen];
     nodes.chatMenu.hidden = screen !== 'chat';
     if (screen === 'diagnostics') renderDiagnostics();
     if (screen === 'settings' && screen !== previous) { loadPhoneApiUI(); loadPhoneMessageStyle(); void populateConfigLists(); }
     if (screen === 'theme') applyTheme();
+    if (screen === 'discoverNpc' && screen !== previous) {populateNpcWorldSelect();renderNpcCandidates();}
     if (screen === 'presetPicker') {nodes.presetSearch.value=''; showPresetEntries();}
     if (screen === 'worldPicker') {nodes.worldSearch.value=''; void showWorldEntries();}
     if (screen === 'chat') nodes.messages.scrollTop = nodes.messages.scrollHeight;
@@ -824,6 +828,230 @@ function renderChatLists(ctx,char,data) {
         nodes.recentChats.append(empty);
     }
 }
+
+const NPC_RELATIONS = '父亲|母亲|爸爸|妈妈|养父|养母|哥哥|姐姐|弟弟|妹妹|兄长|兄弟|妻子|丈夫|老师|导师|教授|同学|室友|朋友|闺蜜|同事|上司|下属|邻居|管家|助理|经纪人|秘书|儿子|女儿|表哥|表姐|舅舅|姑姑|叔叔|阿姨|恋人|未婚夫|未婚妻';
+const NPC_COMMON_WORDS = new Set(['人物','角色','背景','故事','正文','世界','设定','学校','老师','学生','朋友','同学','室友','父亲','母亲','爸爸','妈妈','其他','玩家','用户','主角','姓名','年龄','性格','描述','关系','身份','简介','经历','小说','人物设定','个人资料','角色介绍','个人信息','主要人物','背景资料','角色设定','男主','女主','女主角','男主角']);
+function cleanNpcName(name) {
+    const value=String(name||'').replace(/[“”"'「」『』【】<>()（）]/g,'').trim();
+    if (!/^[\u3400-\u9fff·]{2,8}$/.test(value)||NPC_COMMON_WORDS.has(value)) return '';
+    if (/^(?:这位|那位|一个|两个|他的|她的|我的|你的|他们|她们|自己|没有|任何|所有|其它)/.test(value)) return '';
+    return value;
+}
+function extractNpcCandidatesFromText(sourceText,source,mainName) {
+    const text=String(sourceText||'').slice(0,40000);
+    const found=[];
+    const lines=text.split(/\r?\n|(?<=[。！？；])(?=[^\s])/).map(v=>v.trim()).filter(Boolean);
+    const rel=NPC_RELATIONS;
+    for(let i=0;i<lines.length&&i<850;i++){
+        const line=lines[i].slice(0,1200);
+        const trimmed=line.replace(/^[-*\d.、\s#]+/,'');
+        const hits=[];
+        let m;
+        // A labeled character entry, e.g. 姓名：苏晚意 / 角色：宁致远
+        const labeled=trimmed.match(/^(?:姓名|人物|角色名|角色姓名|NPC|名字|名称)[：:\s]+([\u3400-\u9fff·]{2,8})(?=\s|[,，;；。]|$)/i);
+        if(labeled)hits.push({name:labeled[1],relation:''});
+        const heading=trimmed.match(/^(?:#+\s*)?(?:人物|角色|NPC)[：:\s]+([\u3400-\u9fff·]{2,8})(?=\s|[,，;；。]|$)/i);
+        if(heading)hits.push({name:heading[1],relation:''});
+        // Relation label e.g. 父亲：宁致远
+        const relLabel=new RegExp('(?:^|[，,。；;\\s])('+rel+')[：:\\s]+([\\u3400-\\u9fff·]{2,8})(?=\\s|[，,。；;]|$)','g');
+        while((m=relLabel.exec(trimmed))!==null)hits.push({name:m[2],relation:m[1]});
+        //  宁肆锦的母亲苏晚意 / 他的老师陈某某
+        const relationWithName=new RegExp('(?:[\\u3400-\\u9fff·]{2,6}|他|她|我|你)的('+rel+')([\\u3400-\\u9fff·]{2,4})(?=[，,。；;\\s（(]|$)','g');
+        while((m=relationWithName.exec(trimmed))!==null)hits.push({name:m[2],relation:m[1]});
+        // 苏晚意（宁肆锦的母亲） / 宁致远：知名导演，宁肆锦父亲
+        const namedRelation=new RegExp('^([\\u3400-\\u9fff·]{2,5})[：:（(，,\\s]{1,4}[^。\\n]{0,85}?(?:'+rel+')(?=[，,。；;）)\\s]|$)');
+        m=trimmed.match(namedRelation);
+        if(m)hits.push({name:m[1],relation:trimmed.match(new RegExp(rel))?.[0]||''});
+        // Explicit named worldbook title, e.g. 苏晚意 - 人物档案
+        if(i===0 || trimmed.startsWith('#')){
+            m=trimmed.match(/^#*\s*([\u3400-\u9fff·]{2,5})\s*[-—｜|:：]\s*(?:人物|角色|NPC|档案|父亲|母亲|同学|老师|关系)/);
+            if(m)hits.push({name:m[1],relation:''});
+        }
+        for(const hit of hits){
+            const name=cleanNpcName(hit.name);
+            if(!name||name===mainName)continue;
+            const context=[lines[Math.max(0,i-1)]||'',line,lines[i+1]||''].join('\n').slice(0,900);
+            const meaningful=context.replace(/\s/g,'').length>=8;
+            if(!meaningful)continue;
+            found.push({name,relation:hit.relation,description:context,source,confidence:hit.relation?'关系明确':'人物条目'});
+        }
+    }
+    return found;
+}
+function mergeNpcCandidates(candidates,root,primaryName) {
+    const existing=new Set([primaryName,...root.contacts.map(x=>x.name)].map(x=>String(x).trim().toLocaleLowerCase()));
+    const unique=new Map();
+    for(const c of candidates){
+        const name=cleanNpcName(c.name);
+        if(!name||existing.has(name.toLocaleLowerCase()))continue;
+        const key=name.toLocaleLowerCase();
+        if(!unique.has(key))unique.set(key,{...c,name,description:String(c.description||'').slice(0,3500),relation:String(c.relation||'').slice(0,180)});
+        else {
+            const previous=unique.get(key);
+            if(c.relation&&!previous.relation)previous.relation=c.relation;
+            if(previous.description.length<700 && !previous.description.includes(c.description))previous.description=(previous.description+'\n'+c.description).slice(0,3500);
+            if(previous.source!==c.source)previous.source+='、'+c.source;
+        }
+    }
+    return [...unique.values()].slice(0,45);
+}
+function embeddedCharacterLore(char) {
+    const info=char?.data||char||{};
+    const entries=info.character_book?.entries||char?.character_book?.entries||[];
+    return Array.isArray(entries)?entries:[];
+}
+async function scanNpcSources(ctx,extraWorld='') {
+    const char=selectedCharacter(ctx);
+    if(!char)throw new Error('请先打开角色卡的单人聊天');
+    const info=char.data||char;
+    const sources=[];
+    const fields=['description','personality','scenario','mes_example','first_mes'];
+    const cardText=fields.map(k=>typeof info[k]==='string'?info[k]:'').filter(Boolean).join('\n');
+    if(cardText)sources.push({name:'当前角色卡',text:cardText.slice(0,40000)});
+    for(const entry of embeddedCharacterLore(char).slice(0,160)){
+        const title=String(entry.name||entry.comment||'');
+        const content=String(entry.content||'');
+        if(content)sources.push({name:'角色卡内嵌世界书 · '+title,text:title+'\n'+content});
+    }
+    const names=new Set();
+    if(typeof info.extensions?.world==='string'&&info.extensions.world.trim())names.add(info.extensions.world.trim());
+    const configured=readRootData(ctx).config?.worldEntries||[];
+    for(const row of configured)if(typeof row.book==='string'&&row.book.trim())names.add(row.book.trim());
+    if(extraWorld)names.add(extraWorld);
+    let loaded=0,failures=[];
+    for(const name of [...names].slice(0,12)){
+        if(typeof ctx.loadWorldInfo!=='function'){failures.push('世界书接口不可用');break;}
+        try {
+            const book=await ctx.loadWorldInfo(name);
+            if(!book?.entries){failures.push(name+'：没有返回条目');continue;}
+            loaded++;
+            const entries=Array.isArray(book.entries)?book.entries:Object.values(book.entries);
+            for(const entry of entries.slice(0,280)){
+                const title=String(entry?.comment||entry?.name||'');
+                const content=String(entry?.content||'');
+                if(content)sources.push({name:'世界书「'+name+'」 · '+title,text:title+'\n'+content});
+            }
+        }catch(e){failures.push(name+'：'+String(e?.message||e).slice(0,90));}
+    }
+    const candidates=[];
+    for(const source of sources){
+        const parsed=extractNpcCandidatesFromText(source.text,source.name,getCharacterName(char));
+        candidates.push(...parsed);
+    }
+    return {candidates:mergeNpcCandidates(candidates,readRootData(ctx),getCharacterName(char)),scanned:sources.length,worlds:loaded,failures};
+}
+function sameNpcScanSession(snapshot) {
+    const ctx=context();
+    return ctx?.chatMetadata===snapshot.metadata &&
+           ctx?.characterId===snapshot.characterId &&
+           ctx?.chatId===snapshot.chatId &&
+           lifecycleToken===snapshot.lifecycleToken;
+}
+function makeNpcScanSnapshot(ctx) {
+    return {metadata:ctx.chatMetadata,characterId:ctx.characterId,chatId:ctx.chatId,lifecycleToken};
+}
+function renderNpcCandidates() {
+    if(!nodes?.npcCandidates)return;
+    nodes.npcCandidates.replaceChildren();
+    if(!npcCandidates.length) {
+        nodes.npcCandidates.textContent='没有找到可确认的人物；可以改为手动创建，或额外指定一部世界书。';
+        return;
+    }
+    for(const [index,c] of npcCandidates.entries()){
+        const row=document.createElement('div');
+        row.className='lp-npc-candidate';
+        const header=document.createElement('label');
+        const input=document.createElement('input');input.type='checkbox';input.dataset.npcCandidate=String(index);
+        const title=document.createElement('strong');title.textContent=c.name;
+        header.append(input,title);row.append(header);
+        const meta=document.createElement('small');meta.textContent=c.confidence+' · '+c.source;row.append(meta);
+        for(const [field,value,placeholder,max] of [['name',c.name,'姓名',60],['relation',c.relation,'与 user 的关系（可修改）',180]]){
+            const edit=document.createElement('input');
+            edit.type='text';edit.maxLength=max;edit.dataset.npcField=field;edit.dataset.npcIndex=String(index);
+            edit.value=value;edit.placeholder=placeholder;row.append(edit);
+        }
+        const summary=document.createElement('details');
+        const st=document.createElement('summary');st.textContent='查看并编辑人物资料';
+        const note=document.createElement('textarea');note.dataset.npcField='description';note.dataset.npcIndex=String(index);
+        note.maxLength=3500;note.rows=5;note.value=c.description;
+        summary.append(st,note);row.append(summary);
+        nodes.npcCandidates.append(row);
+    }
+}
+async function scanNpcUI() {
+    if(npcScanning||busy)return;
+    const ctx=context();
+    if(!selectedCharacter(ctx))return setStatus('请先进入一条角色聊天存档','error');
+    npcScanning=true;
+    const snapshot=makeNpcScanSnapshot(ctx);
+    npcScanSession=snapshot;
+    nodes.npcScanButton.disabled=true;
+    nodes.npcScanState.textContent='正在读取角色卡和世界书…';
+    try {
+        const result=await scanNpcSources(ctx,nodes.npcWorldSelect.value);
+        if(!sameNpcScanSession(snapshot))return;
+        npcCandidates=result.candidates;
+        renderNpcCandidates();
+        nodes.npcScanState.textContent='扫描 '+result.scanned+' 段资料、'+result.worlds+' 本世界书，找到 '+npcCandidates.length+' 位候选人物。'+(result.failures.length?' 未读取：'+result.failures.join('；'):'');
+        recordActivity('NPC 扫描','候选 '+npcCandidates.length+'，未自动添加任何好友','success');
+    }catch(e){
+        if(sameNpcScanSession(snapshot)){
+            nodes.npcScanState.textContent='扫描失败：'+String(e.message||e);
+            recordError('扫描 NPC',e);
+        }
+    }finally{npcScanning=false;if(nodes?.npcScanButton)nodes.npcScanButton.disabled=false;}
+}
+async function saveSelectedNpcCandidates() {
+    if(busy||npcScanning||!npcScanSession||!sameNpcScanSession(npcScanSession))return setStatus('请重新扫描当前存档','error');
+    const selected=[...nodes.npcCandidates.querySelectorAll('input[data-npc-candidate]:checked')];
+    if(!selected.length)return setStatus('请先勾选要加入的人物','error');
+    const ctx=context();const root=structuredClone(readRootData(ctx));
+    const existing=new Set([getCharacterName(selectedCharacter(ctx)),...root.contacts.map(c=>c.name)].map(v=>v.toLocaleLowerCase()));
+    const additions=[];
+    for(const checkbox of selected){
+        const row=checkbox.closest('.lp-npc-candidate');
+        const get=key=>row?.querySelector('[data-npc-field="'+key+'"]')?.value?.trim()||'';
+        const name=cleanNpcName(get('name'));
+        const relation=get('relation').slice(0,180);
+        const description=get('description').slice(0,3500);
+        if(!name||!description)return setStatus('候选人物必须有合法姓名与人物设定','error');
+        if(existing.has(name.toLocaleLowerCase()))continue;
+        existing.add(name.toLocaleLowerCase());
+        if(root.contacts.length+additions.length>=60)break;
+        const index=Number(checkbox.dataset.npcCandidate);
+        const candidate=npcCandidates[index];if(!candidate)continue;
+        const id='npc:'+Date.now().toString(36)+Math.random().toString(36).slice(2,9);
+        additions.push({id,kind:'npc',name,remark:'',relationship:relation,description,source:candidate.source,createdAt:new Date().toISOString()});
+    }
+    if(!additions.length)return setStatus('这些人物已存在，或联系人数量已达上限','error');
+    if(!window.confirm('将选中的 '+additions.length+' 位人物加入当前存档通讯录？默认不是好友。'))return;
+    for(const person of additions){
+        root.contacts.push(person);
+        root.conversations[person.id]={messages:[],friendship:{state:'stranger'},friendEvents:[],chatDeleted:false};
+    }
+    try {
+        await writeData(ctx,{...root,__contactId:PRIMARY_CONTACT_ID});
+        npcCandidates=[];npcScanSession=null;
+        renderNpcCandidates();
+        render();setScreen('contacts');
+        setStatus('已添加 '+additions.length+' 位 NPC 联系人');
+    } catch(e){setStatus(recordError('保存扫描人物',e),'error');}
+}
+function populateNpcWorldSelect() {
+    if(!nodes?.npcWorldSelect)return;
+    const ctx=context();
+    const names=ctx?.getWorldInfoNames?.()||[];
+    const selected=nodes.npcWorldSelect.value;
+    nodes.npcWorldSelect.replaceChildren();
+    const empty=document.createElement('option');empty.value='';empty.textContent='只扫描当前角色关联的世界书';nodes.npcWorldSelect.append(empty);
+    for(const name of names){
+        const op=document.createElement('option');
+        op.value=String(name);op.textContent=String(name);
+        nodes.npcWorldSelect.append(op);
+    }
+    if(names.includes(selected))nodes.npcWorldSelect.value=selected;
+}
+
 async function addNpcContact() {
     if (busy) return;
     const ctx=context();
@@ -1475,7 +1703,8 @@ function makeUI() {
         <section class="lp-screen lp-chatlist" data-lp-screen="contacts" aria-label="通讯录" hidden>
           <div class="lp-list-body">
             <button type="button" class="lp-list-action" data-lp-open="requests"><span>✉</span><span>新的朋友</span><span data-lp="requestBadge"></span></button>
-            <button type="button" class="lp-list-action" data-lp-open="addNpc"><span>＋</span><span>添加故事人物</span></button>
+            <button type="button" class="lp-list-action" data-lp-open="addNpc"><span>＋</span><span>手动添加故事人物</span></button>
+            <button type="button" class="lp-list-action" data-lp-open="discoverNpc"><span>⌕</span><span>从设定中发现人物</span></button>
             <div class="lp-list-heading">联系人</div>
             <div data-lp="contactsList"></div>
           </div>
@@ -1488,6 +1717,19 @@ function makeUI() {
           <div class="lp-list-body">
             <div class="lp-list-heading">好友申请</div>
             <div data-lp="requestsList"></div>
+          </div>
+        </section>
+        <section class="lp-screen lp-chatlist" data-lp-screen="discoverNpc" aria-label="从设定中发现人物" hidden>
+          <div class="lp-list-body lp-npc-discovery">
+            <h2>从角色设定与世界书中发现人物</h2>
+            <p>本地扫描，不会调用 API。仅从明确的人物资料与关系描述中提取候选；勾选并确认后才加入通讯录。</p>
+            <label>额外指定一本世界书（可选）
+              <select data-lp="npcWorldSelect"></select>
+            </label>
+            <button type="button" data-lp="npcScanButton">扫描人物设定</button>
+            <div class="lp-npc-scan-state" data-lp="npcScanState" role="status" aria-live="polite"></div>
+            <div class="lp-npc-candidates" data-lp="npcCandidates"></div>
+            <button type="button" data-lp="npcSaveCandidates">添加勾选的 NPC</button>
           </div>
         </section>
         <section class="lp-screen lp-chatlist" data-lp-screen="addNpc" aria-label="添加 NPC" hidden>
@@ -1645,7 +1887,7 @@ function mount() {
     document.body.append(floating);
     nodes = Object.fromEntries(['title', 'subtitle', 'back', 'close', 'time',
         'homeTime', 'homeCharacter', 'homeMessageCount', 'homeLogCount',
-        'friendLabel', 'friendActions','profileAvatar','profileName','profileDescription','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
+        'friendLabel', 'friendActions','profileAvatar','profileName','profileDescription','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcScanState','npcCandidates','npcSaveCandidates','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','avatarUserFile','resetCharAvatar','resetUserAvatar',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
         'presetSource','presetEntries','worldSource','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themeIcons',
@@ -1665,7 +1907,7 @@ function mount() {
     });
     nodes.chatMenu.addEventListener('click',()=>setScreen('chatOptions'));
     nodes.back.addEventListener('click', () => setScreen({
-        chat: 'chatList', contacts: 'chatList', profile: 'contacts', requests:'contacts', addNpc:'contacts', chatOptions:'chat', presetPicker:'settings', worldPicker:'settings'
+        chat: 'chatList', contacts: 'chatList', profile: 'contacts', requests:'contacts', addNpc:'contacts', discoverNpc:'contacts', chatOptions:'chat', presetPicker:'settings', worldPicker:'settings'
     }[activeScreen] || 'home'));
     root.addEventListener('click', event => {
         const button = event.target.closest('button[data-lp-open]');
@@ -1698,6 +1940,8 @@ function mount() {
     nodes.retry.addEventListener('click', retryLastReply);
     nodes.friendSave.addEventListener('click', saveManualFriendship);
     nodes.addNpcSave.addEventListener('click',()=>void addNpcContact());
+    nodes.npcScanButton.addEventListener('click',()=>void scanNpcUI());
+    nodes.npcSaveCandidates.addEventListener('click',()=>void saveSelectedNpcCandidates());
     nodes.saveContactRemark.addEventListener('click',()=>void saveContactRemark());
     nodes.deleteNpc.addEventListener('click',()=>void removeNpcContact());
     nodes.friendActions.addEventListener('click', event => {
@@ -1750,6 +1994,7 @@ function mount() {
         listeningEvent = ctx.event_types.CHAT_CHANGED;
         chatChangedHandler = () => {
             activeContactId=PRIMARY_CONTACT_ID;
+            npcCandidates=[];npcScanSession=null;
             statusText = '';
             statusKind = 'info';
             render();
@@ -1791,6 +2036,7 @@ function unmount() {
     root = null;
     nodes = null;
     activeContactId = PRIMARY_CONTACT_ID;
+    npcCandidates=[];npcScanSession=null;
     statusText = '';
     statusKind = 'info';
     activeScreen = 'home';
