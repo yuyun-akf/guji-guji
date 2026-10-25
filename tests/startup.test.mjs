@@ -6,7 +6,7 @@ import vm from 'node:vm';
 const main = readFileSync(new URL('../index.js', import.meta.url), 'utf8').replaceAll('export function ', 'function ');
 const boot = readFileSync(new URL('../bootstrap.js', import.meta.url), 'utf8')
     .replaceAll('export function ', 'function ')
-    .replace("import('./index.js?v=0.8.9')", 'mockImport()');
+    .replace("import('./index.js?v=0.8.10')", 'mockImport()');
 
 function dom() {
     const observers = new Set();
@@ -160,6 +160,31 @@ test('extension settings drawer is unique, opens phone, and toggles the real flo
     const css=readFileSync(new URL('../style.css',import.meta.url),'utf8');
     assert.match(css,/#gujiguji-floating-launcher\s*\{[\s\S]*?position:\s*fixed/);
     assert.match(css,/#gujiguji-floating-launcher\[hidden\]/);
+});
+
+test('launcher diagnostics distinguish missing, hidden, offscreen, and covered controls', () => {
+    const host=dom(),ctx={extensionSettings:{gujiguji:{floatingLauncher:true}}};
+    const runtime={...host,console,Date,structuredClone,
+        window:{SillyTavern:{getContext:()=>ctx},innerWidth:360,innerHeight:720,
+            getComputedStyle:button=>({display:button.style.display||'grid',visibility:'visible'})}};
+    vm.createContext(runtime);
+    vm.runInContext(main+'\nmounted=true;nodes={launcher:null};globalThis.probe=inspectLauncher;globalThis.logs=diagnostics;',runtime);
+    assert.equal(runtime.probe('测试').state,'按钮未挂载');
+    const button=host.document.createElement('button');button.id='gujiguji-floating-launcher';
+    host.document.body.append(button);
+    vm.runInContext('nodes.launcher=document.getElementById("gujiguji-floating-launcher")',runtime);
+    button.hidden=true;button.style.display='none';
+    assert.equal(runtime.probe('测试').state,'样式隐藏');
+    button.hidden=false;button.style.display='grid';
+    button.getBoundingClientRect=()=>({left:500,top:900,right:550,bottom:950,width:50,height:50});
+    assert.equal(runtime.probe('测试').state,'尺寸为零或位置在屏幕外');
+    button.getBoundingClientRect=()=>({left:280,top:570,right:330,bottom:620,width:50,height:50});
+    const overlay=host.document.createElement('div');overlay.id='cover';
+    host.document.elementFromPoint=()=>overlay;button.contains=target=>target===button;
+    assert.equal(runtime.probe('测试').state,'按钮位置被其他元素占用');
+    host.document.elementFromPoint=()=>button;
+    assert.equal(runtime.probe('测试').state,'几何位置正常');
+    assert.equal(runtime.logs[0].stage,'悬浮按钮诊断');
 });
 
 function bootRuntime(mockImport) {
