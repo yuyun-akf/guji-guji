@@ -463,7 +463,7 @@ async function syncStoryRelationships(ctx=context(),force=false) {
         // Only write once; never mutate saved messages or existing explicit statuses.
         if(modified||force||first||starting!==messages.length) {
             if(ctx.chatMetadata===meta&&ctx.characterId===charId&&ctx.chatId===chatId) {
-                await writeData(ctx,{...work,__contactId:PRIMARY_CONTACT_ID});
+                if(!manualChannel)await writeData(ctx,{...work,__contactId:PRIMARY_CONTACT_ID});
                 if(mounted&&ctx.chatMetadata===meta)render();
             }
         }
@@ -1172,8 +1172,8 @@ function loadAutonomyUI(ctx=context()) {
     nodes.phoneInPast.checked=cfg.phoneInPast;
     nodes.characterRequests.checked=cfg.characterRequests;
     const next=readRootData(ctx).socialSchedule||{};
-    const due=key=>Number(next[key]?.nextDue)>0?new Date(next[key].nextDue).toLocaleString():'未启用';
-    nodes.autonomyStatus.textContent='下次私聊：'+due('messages')+'；下次朋友圈：'+due('moments');
+    const due=key=>cfg[key].mode==='off'?'未启用':Number(next[key]?.nextDue)>0?new Date(next[key].nextDue).toLocaleString():'未设定';
+    nodes.autonomyStatus.textContent='下次私聊：'+due('messages')+'；下次朋友圈：'+due('moments')+'。计时使用现实时间，只有酒馆页面运行并可见时才会触发。';
 }
 async function saveAutonomySettings() {
     if(busy)return;
@@ -1198,27 +1198,39 @@ async function saveAutonomySettings() {
     try {await writeData(ctx,{...next,__contactId:PRIMARY_CONTACT_ID});loadAutonomyUI(ctx);setStatus('角色活动间隔已保存');}
     catch(e){setStatus(recordError('保存自主活动设置',e),'error');}
 }
+async function testAutonomousMessage() {
+    if(busy||autonomousWorking)return;
+    if(!window.confirm('现在测试一次角色主动发私聊？将立即调用模型，可能消耗 API；不会重置已设置的一天发送间隔。'))return;
+    await tickAutonomousActivity('messages');
+}
 function autonomyContacts(ctx) {
     const root=readRootData(ctx);
     return [PRIMARY_CONTACT_ID,...root.contacts.map(c=>c.id)].filter(id=>friendshipState(readData(ctx,id))==='friends');
 }
-async function tickAutonomousActivity() {
+async function tickAutonomousActivity(manualChannel='') {
     if(autonomousWorking||relationSyncWorking||busy||!extensionEnabled||document.visibilityState==='hidden')return;
     const ctx=context();
     if(!selectedCharacter(ctx)||!ctx?.chatMetadata)return;
     const base=readRootData(ctx),cfg=socialConfig(base);
     const now=Date.now();
-    const channel=['messages','moments'].find(kind=>cfg[kind].mode!=='off'&&
-        Number(base.socialSchedule?.[kind]?.nextDue)>0&&base.socialSchedule[kind].nextDue<=now);
+    const channel=manualChannel==='messages'||manualChannel==='moments'?manualChannel:
+        ['messages','moments'].find(kind=>cfg[kind].mode!=='off'&&
+            Number(base.socialSchedule?.[kind]?.nextDue)>0&&base.socialSchedule[kind].nextDue<=now);
     if(!channel)return;
     const friends=autonomyContacts(ctx);
-    if(!friends.length)return;
+    if(!friends.length){
+        const msg='没有已添加的好友，无法主动发消息；请先根据剧情建立好友关系';
+        recordActivity('角色自主活动',msg,'info');
+        if(manualChannel&&nodes?.autonomyStatus)nodes.autonomyStatus.textContent=msg;
+        return;
+    }
     autonomousWorking=true;
     const job=startBusy('autonomy');
     const origMetadata=ctx.chatMetadata,origChar=ctx.characterId,origChat=ctx.chatId;
     const schedule={...(base.socialSchedule||{})},current=schedule[channel]||{};
     const id=friends[(current.cursor||0)%friends.length];
-    schedule[channel]={nextDue:nextActivityTime(cfg[channel],now),cursor:(current.cursor||0)+1,lastAttempt:now};
+    if(!manualChannel)schedule[channel]={nextDue:nextActivityTime(cfg[channel],now),cursor:(current.cursor||0)+1,lastAttempt:now};
+    else schedule[channel]={...current,lastAttempt:now};
     // Persist the next due *before* requesting model output, so refreshes never replay missed occurrences.
     const work=structuredClone(base);work.socialSchedule=schedule;
     try {
@@ -1239,7 +1251,12 @@ async function tickAutonomousActivity() {
                 prompt:[{role:'user',content:'【系统触发：朋友圈发布时机】请按角色性格自行决定。'}]
             },data);
         }
-        if(!same()||!answer||/^\s*\[SKIP\]\s*$/i.test(answer))return;
+        if(!same())return;
+        if(!answer||/^\s*\[SKIP\]\s*$/i.test(answer)){
+            recordActivity('角色自主活动',contactDisplayName(ctx,id)+' 选择这次不发送','info');
+            if(manualChannel&&nodes?.autonomyStatus)nodes.autonomyStatus.textContent='已连接模型，角色选择本次不发送（SKIP）';
+            return;
+        }
         if(channel==='messages'){
             const messages=splitPhoneReply(String(answer),data).slice(0,4);
             for(const message of messages)data.messages.push(makeMessage('character',message,data.storyTime));
@@ -1253,8 +1270,13 @@ async function tickAutonomousActivity() {
             await writeData(ctx,{...fresh,__contactId:PRIMARY_CONTACT_ID});
         }
         if(mounted&&same()){render();loadAutonomyUI(ctx);}
-        recordActivity('自主活动',contactDisplayName(ctx,id)+' '+(channel==='messages'?'发来私聊':'发布了朋友圈'),'success');
-    }catch(e){recordError('角色自主活动',e);}
+        const success=contactDisplayName(ctx,id)+' '+(channel==='messages'?'发来私聊':'发布了朋友圈');
+        recordActivity('自主活动',success,'success');
+        if(manualChannel&&nodes?.autonomyStatus)nodes.autonomyStatus.textContent='测试成功：'+success;
+    }catch(e){
+        const msg=recordError('角色自主活动',e);
+        if(manualChannel&&nodes?.autonomyStatus)nodes.autonomyStatus.textContent=msg;
+    }
     finally{autonomousWorking=false;finishBusy(job);}
 }
 
@@ -1383,7 +1405,7 @@ function renderChatLists(ctx,char,data) {
         const label=info.remark || info.name;
         const {last,state}=contactSummary(ctx,id);
         const summary=last?.text?.slice(0,64) || (state==='friends'?'点击开始聊天':FRIEND_LABELS[state]);
-        if (!view.chatDeleted && (state==='friends' || (view.messages.length>0 && ['friends','outgoing','incoming'].includes(state)))) {
+        if (!view.chatDeleted && state==='friends') {
             nodes.recentChats.append(makeListContact(person,view,summary,()=>switchContact(id,'chat'),label));
             conversations++;
         }
@@ -1406,7 +1428,7 @@ function renderChatLists(ctx,char,data) {
                 }
                 group.append(choices);nodes.requestsList.append(group);
             }else{
-                nodes.requestsList.append(makeListContact(person,view,'好友申请处理中',()=>switchContact(id,'profile'),label));
+                nodes.requestsList.append(makeListContact(person,view,'旧版：我向对方发送申请（可在资料页改为对方申请）',()=>switchContact(id,'profile'),label));
             }
             requests++;
         }
@@ -2526,6 +2548,8 @@ function makeUI() {
       <div class="lp-autonomy-buttons">
         <button data-lp="saveAutonomy" type="button">保存活动设置</button>
         <button data-lp="rescanRelations" type="button">重新检查主线关系</button>
+        <button data-lp="testAutonomy" type="button">立即测试主动私聊</button>
+        <button data-lp-open="diagnostics" type="button">查看运行日志</button>
       </div>
     </details>
     <details class="lp-me-section">
@@ -2745,7 +2769,7 @@ function mount() {
     document.body.append(floating);
     nodes = Object.fromEntries(['title', 'subtitle', 'back', 'close', 'time',
         'homeTime', 'homeCharacter', 'homeMessageCount', 'homeLogCount',
-        'momentsPost', 'momentsText', 'momentsFeed', 'momentsPreview','momentImageUpload','momentRemovePhoto','myAvatarUpload','myAvatarFallback','myAvatarStatus','myIdentity', 'myAvatar', 'myPersona', 'autoMessagesMode','autoMessagesDays','autoMomentsMode','autoMomentsDays','relationAutoSync','phoneInPast','characterRequests','autonomyStatus','saveAutonomy','rescanRelations', 'stickerUpload', 'stickerStatus', 'stickerLibrary',
+        'momentsPost', 'momentsText', 'momentsFeed', 'momentsPreview','momentImageUpload','momentRemovePhoto','myAvatarUpload','myAvatarFallback','myAvatarStatus','myIdentity', 'myAvatar', 'myPersona', 'autoMessagesMode','autoMessagesDays','autoMomentsMode','autoMomentsDays','relationAutoSync','phoneInPast','characterRequests','autonomyStatus','saveAutonomy','rescanRelations','testAutonomy', 'stickerUpload', 'stickerStatus', 'stickerLibrary',
         'friendLabel', 'friendActions','profileAvatar','profileName','profileDescription','contactEvidence','contactExchange','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcScanState','npcCandidates','npcSaveCandidates','storyPeopleList','viewPrimaryContact','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','avatarUserFile','resetCharAvatar','resetUserAvatar',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
@@ -2787,6 +2811,7 @@ function mount() {
     });
     nodes.saveAutonomy.addEventListener('click',()=>void saveAutonomySettings());
     nodes.rescanRelations.addEventListener('click',()=>void syncStoryRelationships(context(),true));
+    nodes.testAutonomy.addEventListener('click',()=>void testAutonomousMessage());
 
     nodes.back.addEventListener('click', () => setScreen({
         chat: 'chatList', contacts: 'chatList', discover:'chatList', me:'chatList', profile: 'contacts', requests:'contacts', addNpc:'contacts', discoverNpc:'addNpc', chatOptions:'chat', presetPicker:'settings', worldPicker:'settings'
