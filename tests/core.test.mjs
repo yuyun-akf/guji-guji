@@ -11,8 +11,8 @@ const raw = readFileSync(resolve(testRoot, '../index.js'), 'utf8');
 const source = raw.replaceAll('export function ', 'function ').replace(/\bbindReady\(\);\s*$/, '');
 const sandbox = { console, Date, structuredClone, window: {} };
 vm.createContext(sandbox);
-vm.runInContext(`${source}\nglobalThis.helpers = {newData, readData, writeData, friendshipState, rememberFriendship, buildPrompt, createSystemPrompt, redactDiagnostic, makeUI, composePhonePrompt, availablePresetEntries, worldEntryTriggered, readExternalMemory, mainlineHistory, syncMainlinePrompt};`, sandbox);
-const { newData, readData, writeData, friendshipState, rememberFriendship, buildPrompt, createSystemPrompt, redactDiagnostic, makeUI, composePhonePrompt, availablePresetEntries, worldEntryTriggered, readExternalMemory, mainlineHistory, syncMainlinePrompt } = sandbox.helpers;
+vm.runInContext(`${source}\nglobalThis.helpers = {newData, readData, writeData, friendshipState, rememberFriendship, buildPrompt, createSystemPrompt, redactDiagnostic, makeUI, composePhonePrompt, availablePresetEntries, worldEntryTriggered, readExternalMemory, mainlineHistory, syncMainlinePrompt,selectedWorldBookNames,nextMessageStoryTime,appendPhoneMessage,storyHourLabel,resolvePhonePlaceholders,totalUnread};`, sandbox);
+const { newData, readData, writeData, friendshipState, rememberFriendship, buildPrompt, createSystemPrompt, redactDiagnostic, makeUI, composePhonePrompt, availablePresetEntries, worldEntryTriggered, readExternalMemory, mainlineHistory, syncMainlinePrompt,selectedWorldBookNames,nextMessageStoryTime,appendPhoneMessage,storyHourLabel,resolvePhonePlaceholders,totalUnread } = sandbox.helpers;
 
 test('new story starts without contact details or a friendship', () => {
     const data = newData();
@@ -371,10 +371,10 @@ test('modal entirely outside the viewport produces a visible diagnostic error', 
 test('diagnostic bootstrap is the manifest entry and exposes lifecycle hooks', () => {
     const manifest = JSON.parse(readFileSync(resolve(testRoot, '../manifest.json'), 'utf8'));
     const bootstrap = readFileSync(resolve(testRoot, '../bootstrap.js'), 'utf8');
-    assert.equal(manifest.version, '0.8.3');
+    assert.equal(manifest.version, '0.8.4');
     assert.equal(manifest.minimum_client_version, '1.18.0');
     assert.equal(manifest.js, 'bootstrap.js');
-    assert.match(bootstrap, /import\('\.\/index\.js\?v=0\.8\.3'\)/);
+    assert.match(bootstrap, /import\('\.\/index\.js\?v=0\.8\.4'\)/);
     assert.match(bootstrap, /export function onActivate\(/);
     assert.match(bootstrap, /export function onEnable\(/);
     assert.match(bootstrap, /export function onDisable\(/);
@@ -432,6 +432,103 @@ test('multi-worldbook selection injects only triggered entries and respects cons
     for(const ignored of ['海盗设定','清晨下雨','禁止插入'])assert.ok(!result.includes(ignored));
     assert.equal(bookA.entries[1].content,'雨天设定');
     assert.ok(worldEntryTriggered({key:['/(?:雨|雪)/i'],content:'x'},'下雪啦'));
+});
+test('multi-book UI requires selecting books first, keeps old entry choices, and disables unselected books',async()=>{
+    const data=newData();
+    data.messages=[{from:'user',text:'雨'}];
+    data.config={worldEntries:[{book:'天气书',id:'1'},{book:'人物书',id:'2'}]};
+    assert.equal(selectedWorldBookNames(data).length,2,'legacy world entries remain active');
+    data.config.worldBooks=['天气书'];
+    const ctx={loadWorldInfo:async()=>({entries:{1:{uid:1,key:['雨'],content:'雨天设定'},2:{uid:2,constant:true,content:'未选书的秘密'}}})};
+    const content=await composePhonePrompt(ctx,{name:'角色'},data);
+    assert.ok(content.includes('雨天设定'));
+    assert.ok(!content.includes('未选书的秘密'));
+    assert.equal(data.config.worldEntries.length,2,'switching the book should not erase saved entry ticks');
+    const html=makeUI().innerHTML;
+    assert.ok(html.includes('data-lp="worldBookList"'));
+    assert.ok(html.includes('data-lp="worldSelectionSummary"'));
+    assert.ok(!html.includes('data-lp="worldSource"'),'no misleading single-book dropdown');
+});
+test('worldbook checkboxes render multiple choices and persist selections together',async()=>{
+    const previousDocument=sandbox.document,previousWindow=sandbox.window;
+    const element=tag=>({tag,children:[],dataset:{},textContent:'',checked:false,
+        append(...children){this.children.push(...children);},replaceChildren(){this.children=[];}});
+    const ctx={characterId:0,characters:[{name:'角色甲'}],chatMetadata:{st_little_phone_v1:{...newData(),config:{worldBooks:['天气书'],worldEntries:[{book:'天气书',id:'a'}]}}},
+        getWorldInfoNames:()=>['天气书','人物书'],saveMetadata:async()=>{}};
+    const fixture={worldBookList:element('div'),openWorldPicker:element('button'),worldSelectionSummary:element('div'),diagnosticState:element('div')};
+    try {
+        sandbox.document={createElement:element};
+        sandbox.window={SillyTavern:{getContext:()=>ctx}};
+        sandbox.fixtureNodes=fixture;
+        vm.runInContext('nodes=fixtureNodes',sandbox);
+        vm.runInContext('renderWorldBookSelector',sandbox)(ctx);
+        assert.equal(fixture.worldBookList.children.length,2);
+        assert.equal(fixture.worldBookList.children[0].children[0].checked,true);
+        assert.equal(fixture.worldBookList.children[1].children[0].checked,false);
+        const second=fixture.worldBookList.children[1].children[0];second.checked=true;
+        vm.runInContext('onWorldBookChange',sandbox)(second);
+        await vm.runInContext('configWriteQueue',sandbox);
+        assert.equal(JSON.stringify(ctx.chatMetadata.st_little_phone_v1.config.worldBooks),JSON.stringify(['天气书','人物书']));
+        assert.equal(ctx.chatMetadata.st_little_phone_v1.config.worldEntries[0].id,'a');
+        assert.match(fixture.openWorldPicker.textContent,/2 本/);
+    }finally{sandbox.document=previousDocument;sandbox.window=previousWindow;vm.runInContext('nodes=null',sandbox);}
+});
+test('story clock advances for replies, respects manual calendar jumps and evening-vs-late-night',()=>{
+    const data={...newData(),storyTime:'2026-01-18T17:41',messages:[]};
+    appendPhoneMessage(data,'user','你好');
+    appendPhoneMessage(data,'character','晚上好');
+    assert.equal(data.messages[0].storyTime,'2026-01-18T17:41');
+    assert.equal(data.messages[1].storyTime,'2026-01-18T17:42');
+    assert.equal(storyHourLabel(data.storyTime),'傍晚');
+    data.storyTime='2026-01-18T22:30';
+    assert.equal(nextMessageStoryTime(data),'2026-01-18T22:30');
+    appendPhoneMessage(data,'user','吃夜宵了');
+    assert.equal(data.messages[2].storyTime,'2026-01-18T22:30');
+    assert.equal(storyHourLabel(data.storyTime),'深夜');
+});
+test('placeholders resolve active user mask and selected contact without replacing stored card text',async()=>{
+    const ctx={name1:'梨子',powerUserSettings:{persona_description:'和{{char}}是网友'}};
+    const char={name:'宁肆锦',data:{description:'{{char}}认识{{user}}，但{{user}}不知道他是演员'}};
+    const data=newData();
+    const prompt=await composePhonePrompt(ctx,char,data);
+    assert.ok(prompt.includes('宁肆锦认识梨子'));
+    assert.ok(prompt.includes('梨子不知道他是演员'));
+    assert.ok(!prompt.includes('{{user}}')&&!prompt.includes('{{char}}'));
+    assert.ok(prompt.includes('真实身份')&&prompt.includes('不得主动自曝'));
+    assert.ok(prompt.includes('（'+storyHourLabel(data.storyTime)+'）'));
+    assert.equal(char.data.description,'{{char}}认识{{user}}，但{{user}}不知道他是演员');
+    const history=buildPrompt({messages:[{from:'user',text:'{{char}} 在吗？'}]},ctx,char);
+    assert.equal(history[0].content,'宁肆锦 在吗？');
+    assert.equal(resolvePhonePlaceholders('{{user}}和{{char}}',ctx,char),'梨子和宁肆锦');
+});
+test('message indicators count per contact; quote cancellation and activity feedback have controls',()=>{
+    const data={contacts:[{id:'npc:a'},{id:'npc:b'}],unreadCounts:{primary:2,'npc:a':3,'npc:b':0}};
+    assert.equal(totalUnread(data),5);
+    const html=makeUI().innerHTML;
+    for(const key of ['homeUnreadCount','notification','inlineNotification','quotedText','cancelQuote','autonomyFeedback'])
+        assert.ok(html.includes('data-lp="'+key+'"'));
+    assert.ok(html.includes('取消引用'));
+});
+test('NPC autonomous unread counts persist independently of existing phone messages',async()=>{
+    const old={...newData(),messages:[{id:'primary',from:'user',text:'老消息'}],
+        contacts:[{id:'npc:a',name:'人物甲'}],
+        conversations:{'npc:a':{messages:[{id:'oldnpc',from:'character',text:'NPC旧消息'}],friendship:{state:'friends'}}},
+        unreadCounts:{primary:1,'npc:a':0}};
+    const ctx={chatMetadata:{st_little_phone_v1:old},saveMetadata:async()=>{}};
+    const changed=structuredClone(readData(ctx,'npc:a'));
+    changed.messages.push({id:'new',from:'character',text:'新主动消息'});
+    changed.unreadCounts['npc:a']=2;
+    await writeData(ctx,changed);
+    const now=ctx.chatMetadata.st_little_phone_v1;
+    assert.equal(now.unreadCounts['npc:a'],2);
+    assert.equal(now.unreadCounts.primary,1);
+    assert.equal(now.messages[0].text,'老消息');
+    assert.equal(now.conversations['npc:a'].messages[0].text,'NPC旧消息');
+});
+test('avatar change uses the same photo encoder as Me and no 350KB hard gate',()=>{
+    const fn=raw.match(/async function updateAvatar\([\s\S]*?(?=async function resetAvatar)/)?.[0]||'';
+    assert.ok(fn.includes('await encodeAvatarPhoto(file)'));
+    assert.ok(!fn.includes('350*1024'));
 });
 test('current persona joins the phone character prompt and does not become an NPC action', async () => {
     const ctx={name1:'阿梨',powerUserSettings:{persona_description:'喜欢紫色的成年人'}};
