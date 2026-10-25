@@ -355,14 +355,14 @@ function selectedCharacter(ctx) {
 }
 
 function newData() {
-    return {version:1,storyTime:localDateTime(),messages:[],friendship:{state:'friends'},contacts:[],conversations:{}};
+    return {version:1,storyTime:localDateTime(),messages:[],friendship:{state:'stranger'},contacts:[],conversations:{}};
 }
 function readRootData(ctx) {
     const value=ctx?.chatMetadata?.[DATA_KEY];
     const base=(!value||value.version!==1||!Array.isArray(value.messages))?newData():value;
     return {
         ...base,
-        friendship:FRIEND_STATES.has(base.friendship?.state)?base.friendship:{state:'friends'},
+        friendship:FRIEND_STATES.has(base.friendship?.state)?base.friendship:{state:'stranger'},
         contacts:Array.isArray(base.contacts)?base.contacts.filter(c=>c&&typeof c.id==='string'&&c.id.startsWith('npc:')):[],
         conversations:base.conversations&&typeof base.conversations==='object'&&!Array.isArray(base.conversations)?base.conversations:{}
     };
@@ -380,6 +380,7 @@ function readData(ctx,contactId=activeContactId) {
         friendship:FRIEND_STATES.has(conversation.friendship?.state)?conversation.friendship:{state:'stranger'},
         friendEvents:Array.isArray(conversation.friendEvents)?conversation.friendEvents:[],
         chatDeleted:conversation.chatDeleted===true,
+        contactAccess:conversation.contactAccess||'',
         avatars:{...root.avatars,...conversation.avatars}
     };
 }
@@ -405,7 +406,7 @@ function contactDisplayName(ctx,id=activeContactId) {
     return info.remark || info.name;
 }
 function friendshipState(data) {
-    return FRIEND_STATES.has(data?.friendship?.state) ? data.friendship.state : 'friends';
+    return FRIEND_STATES.has(data?.friendship?.state) ? data.friendship.state : 'stranger';
 }
 
 async function writeData(ctx,data) {
@@ -428,6 +429,7 @@ async function writeData(ctx,data) {
                 friendship:data.friendship,
                 friendEvents:data.friendEvents || [],
                 chatDeleted:data.chatDeleted===true,
+                contactAccess:data.contactAccess||thread.contactAccess||'',
                 avatars:{...(thread.avatars||{}),character:data.avatars?.character||''}
             }
         };
@@ -791,6 +793,56 @@ function contactSummary(ctx,id) {
     const last=[...data.messages].reverse().find(m=>m.from!=='system');
     return {data,last,state:friendshipState(data)};
 }
+
+function messageText(message) {
+    return typeof message?.mes==='string' ? message.mes : typeof message?.text==='string' ? message.text : '';
+}
+function storyExchangeEvidence(ctx,id=activeContactId) {
+    const person=getContactInfo(ctx,id);
+    const main=getCharacterName(selectedCharacter(ctx));
+    const messages=Array.isArray(ctx?.chat)?ctx.chat:[];
+    const positive=/(?:交换(?:了|过)?(?:微信|联系(?:方式|号码)?|手机号|电话号|号码)|互加(?:了|过)?(?:微信|好友|联系方式)|加(?:了|上|过)?(?:微信|好友)|扫码(?:加|通过)|通过了好友申请|添加了.*?好友|把(?:微信|联系方式|号码)给(?:了)?(?:我|你|他|她)|留下了(?:微信|联系方式|电话))/;
+    const negation=/(?:没有|没|未|不曾|尚未|还没|不能|不会|拒绝|想要|打算|准备|如果|假如|能否|要不要|可以|希望|问(?:他|她)?(?:要|拿)).{0,16}(?:加微信|交换|联系方式|号码|加好友)/;
+    const identity=id===PRIMARY_CONTACT_ID ? '' : String(person.name||'');
+    for (const msg of messages.slice(-500)) {
+        const body=messageText(msg);
+        if(!body||body.length>12000)continue;
+        const clauses=body.split(/[。！？!?\n]/).filter(Boolean);
+        for(const clause of clauses){
+            if(!positive.test(clause)||negation.test(clause))continue;
+            if(identity&&!clause.includes(identity)&&!clause.includes(person.remark||'\u0000'))continue;
+            return clause.slice(0,180);
+        }
+    }
+    return '';
+}
+function contactAccess(ctx,id=activeContactId) {
+    const info=getContactInfo(ctx,id);
+    const data=readData(ctx,id);
+    const state=friendshipState(data);
+    if(['friends','incoming','outgoing'].includes(state)) return {allowed:true,source:'已建立联系'};
+    if(id!==PRIMARY_CONTACT_ID && info.source==='manual') return {allowed:true,source:'玩家手动添加'};
+    if(info.contactAccess==='manual'||data.contactAccess==='manual')return {allowed:true,source:'手动确认拥有联系方式'};
+    const scene=storyExchangeEvidence(ctx,id);
+    return scene?{allowed:true,source:'正文中已交换联系方式',evidence:scene}:{allowed:false,source:'尚无交换联系方式的剧情证据'};
+}
+async function markContactExchanged() {
+    if(busy)return;
+    if(!window.confirm('确认剧情中已经认识并交换了联系方式？这不是自动加好友，只是允许发送申请。'))return;
+    const ctx=context(),data=structuredClone(readData(ctx));
+    data.contactAccess='manual';
+    try {
+        if(activeContactId!==PRIMARY_CONTACT_ID){
+            const root=structuredClone(readRootData(ctx));
+            const info=root.contacts.find(x=>x.id===activeContactId);
+            if(info)info.contactAccess='manual';
+            data.contacts=root.contacts;
+        }
+        await writeData(ctx,data);
+        render();
+    }catch(e){setStatus(recordError('保存联系方式',e),'error');}
+}
+
 function renderChatLists(ctx,char,data) {
     for (const key of ['recentChats','contactsList','requestsList']) nodes[key]?.replaceChildren();
     if (!char||!data) return;
@@ -804,18 +856,18 @@ function renderChatLists(ctx,char,data) {
         const label=info.remark || info.name;
         const {last,state}=contactSummary(ctx,id);
         const summary=last?.text?.slice(0,64) || (state==='friends'?'点击开始聊天':FRIEND_LABELS[state]);
-        if (!view.chatDeleted && (id===PRIMARY_CONTACT_ID || view.messages.length>0 || state==='friends')) {
+        if (!view.chatDeleted && (state==='friends' || (view.messages.length>0 && ['friends','outgoing','incoming'].includes(state)))) {
             nodes.recentChats.append(makeListContact(person,view,summary,()=>switchContact(id,'chat'),label));
             conversations++;
         }
-        nodes.contactsList.append(makeListContact(person,view,FRIEND_LABELS[state],()=>switchContact(id,'profile'),label));
-        if (state==='incoming' || state==='outgoing') {
-            nodes.requestsList.append(makeListContact(person,view,state==='incoming'?'请求添加你为好友':'好友申请处理中',()=>switchContact(id,'profile'),label));
-            requests++;
+        if(state==='friends')nodes.contactsList.append(makeListContact(person,view,FRIEND_LABELS[state],()=>switchContact(id,'profile'),label));
+        if (state==='incoming' || state==='outgoing' || (state==='stranger' && contactAccess(ctx,id).allowed)) {
+            nodes.requestsList.append(makeListContact(person,view,state==='incoming'?'请求添加你为好友':state==='outgoing'?'好友申请处理中':'可发送好友申请',()=>switchContact(id,'profile'),label));
+            if(state!=='stranger') requests++;
         }
     }
     nodes.requestBadge.textContent=requests ? requests+' 条' : '';
-    if (!requests) {
+    if (!nodes.requestsList.children.length) {
         const empty=document.createElement('p');
         empty.className='lp-list-empty';
         empty.textContent='暂无好友申请';
@@ -834,7 +886,7 @@ const NPC_COMMON_WORDS = new Set(['人物','角色','背景','故事','正文','
 function cleanNpcName(name) {
     const value=String(name||'').replace(/[“”"'「」『』【】<>()（）]/g,'').trim().replace(/^(?:名叫|名为|叫)/,'');
     if (!/^[\u3400-\u9fff·]{2,8}$/.test(value)||NPC_COMMON_WORDS.has(value)) return '';
-    if (/^(?:这位|那位|一个|两个|他的|她的|我的|你的|他们|她们|自己|没有|任何|所有|其它)/.test(value)) return '';
+    if (/^(?:这位|那位|一个|两个|他的|她的|我的|你的|他们|她们|自己|没有|任何|所有|其它|与|和|跟|对|在|于|将|已|有|被|是|由|把|范畴|范围|目前|现在)/.test(value)) return '';
     return value;
 }
 function extractNpcCandidatesFromText(sourceText,source,mainName) {
@@ -1292,7 +1344,8 @@ function renderFriendship(data) {
     if (!nodes?.friendActions) return;
     nodes.friendActions.replaceChildren();
     const state = data ? friendshipState(data) : null;
-    nodes.friendLabel.textContent = state ? FRIEND_LABELS[state] : '暂无联系人';
+    const access=contactAccess(context());
+    nodes.friendLabel.textContent = state ? FRIEND_LABELS[state] + (state==='stranger'?' · '+access.source:'') : '暂无联系人';
     nodes.friendLabel.dataset.state = state || '';
     nodes.friendSetup.disabled = !state || busy;
     if (state) nodes.friendSetup.value = state;
@@ -1309,7 +1362,7 @@ function renderFriendship(data) {
         button.type = 'button';
         button.dataset.friendAction = action;
         button.textContent = label;
-        button.disabled = busy;
+        button.disabled = busy || (action==='add'&&!access.allowed);
         nodes.friendActions.append(button);
     }
 }
@@ -1328,6 +1381,7 @@ function render() {
         ? '当前酒馆角色卡'
         : [getContactInfo(ctx).relationship,getContactInfo(ctx).description].filter(Boolean).join(' · ').slice(0,500);
     nodes.deleteNpc.hidden = activeContactId===PRIMARY_CONTACT_ID;
+    nodes.contactEvidence.textContent=contactAccess(ctx).evidence||contactAccess(ctx).source;
     nodes.profileAvatar.src = avatarSources(ctx,data).character;
     renderChatLists(ctx,char,data);
     nodes.subtitle.textContent = char ? '故事中的小手机 · 独立聊天' : '请先选择单人角色存档';
@@ -1553,6 +1607,7 @@ async function handleFriendAction(action) {
     } else if (action === 'unblock' && state === 'blocked') {
         await changeFriendship('stranger', '你已解除拉黑，可以重新添加好友。');
     } else if (action === 'add' && state === 'stranger') {
+        if(!contactAccess(ctx).allowed)return setStatus('正文尚无交换联系方式的证据，可在人物资料中手动确认','error');
         if (await changeFriendship('outgoing', '你向对方发送了好友申请。')) await reviewOutgoingRequest();
     } else if (action === 'review' && state === 'outgoing') {
         await reviewOutgoingRequest();
@@ -1772,6 +1827,8 @@ function makeUI() {
             <button type="button" data-lp="saveContactRemark">保存备注</button>
           </div>
           <div class="lp-profile-actions" data-lp="friendActions"></div>
+          <div class="lp-contact-evidence" data-lp="contactEvidence"></div>
+          <button type="button" class="lp-contact-exchange" data-lp="contactExchange">剧情中已交换联系方式（手动确认）</button>
           <button type="button" class="lp-profile-chat" data-lp-open="chat">进入聊天</button>
           <details class="lp-profile-setup">
             <summary>按照已有剧情设定关系</summary>
@@ -1906,7 +1963,7 @@ function mount() {
     document.body.append(floating);
     nodes = Object.fromEntries(['title', 'subtitle', 'back', 'close', 'time',
         'homeTime', 'homeCharacter', 'homeMessageCount', 'homeLogCount',
-        'friendLabel', 'friendActions','profileAvatar','profileName','profileDescription','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcScanState','npcCandidates','npcSaveCandidates','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
+        'friendLabel', 'friendActions','profileAvatar','profileName','profileDescription','contactEvidence','contactExchange','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcScanState','npcCandidates','npcSaveCandidates','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','avatarUserFile','resetCharAvatar','resetUserAvatar',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
         'presetSource','presetEntries','worldSource','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themeIcons',
@@ -1963,6 +2020,7 @@ function mount() {
     nodes.npcSaveCandidates.addEventListener('click',()=>void saveSelectedNpcCandidates());
     nodes.saveContactRemark.addEventListener('click',()=>void saveContactRemark());
     nodes.deleteNpc.addEventListener('click',()=>void removeNpcContact());
+    nodes.contactExchange.addEventListener('click',()=>void markContactExchanged());
     nodes.friendActions.addEventListener('click', event => {
         const button = event.target.closest('button[data-friend-action]');
         if (button) handleFriendAction(button.dataset.friendAction);
