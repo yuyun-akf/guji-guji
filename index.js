@@ -196,9 +196,12 @@ function onConfigChange(input) {
     const field = kind === 'preset' ? 'presetEntries' : 'worldEntries';
     const key = kind === 'preset' ? 'preset' : 'book';
     const checked = input.checked;
+    const snapshot = context();
+    const metadata = snapshot?.chatMetadata;
+    const characterId = snapshot?.characterId;
     configWriteQueue = configWriteQueue.then(async () => {
         const ctx = context();
-        if (!selectedCharacter(ctx)) return;
+        if (!selectedCharacter(ctx) || ctx.chatMetadata !== metadata || ctx.characterId !== characterId) return;
         const data = structuredClone(readData(ctx));
         data.config ||= {};
         const selected = Array.isArray(data.config[field]) ? data.config[field] : [];
