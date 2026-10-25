@@ -369,7 +369,7 @@ test('modal entirely outside the viewport produces a visible diagnostic error', 
 test('diagnostic bootstrap is the manifest entry and exposes lifecycle hooks', () => {
     const manifest = JSON.parse(readFileSync(resolve(testRoot, '../manifest.json'), 'utf8'));
     const bootstrap = readFileSync(resolve(testRoot, '../bootstrap.js'), 'utf8');
-    assert.equal(manifest.version, '0.4.1');
+    assert.equal(manifest.version, '0.4.2');
     assert.equal(manifest.js, 'bootstrap.js');
     assert.match(bootstrap, /import\('\.\/index\.js'\)/);
     assert.match(bootstrap, /export function onActivate\(/);
@@ -426,6 +426,8 @@ test('mobile settings use dedicated full-screen searchable item pickers', () => 
     assert.match(html, /data-lp="apiUrl"/);
     assert.match(html, /data-lp="apiModel"/);
     assert.match(html, /data-lp="apiKey"/);
+    assert.doesNotMatch(html, /data-lp="testApi"/);
+    assert.match(html, /data-lp="saveApi"/);
 });
 test('split phone messages preserve content even above five bubbles', () => {
     const runtime = { console, Date, structuredClone, window:{} };
