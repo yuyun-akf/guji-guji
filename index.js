@@ -1528,10 +1528,10 @@ async function saveSelectedNpcCandidates() {
         additions.push({id,kind:'npc',name,remark:'',relationship:relation,description,source:candidate.source,createdAt:new Date().toISOString()});
     }
     if(!additions.length)return setStatus('这些人物已存在，或联系人数量已达上限','error');
-    if(!window.confirm('将选中的 '+additions.length+' 位人物加入当前存档通讯录？默认不是好友。'))return;
+    if(!window.confirm('将选中的 '+additions.length+' 位人物加入当前存档？设定明确为长期好友的将直接加入好友，其余人物保持未添加。'))return;
     for(const person of additions){
         root.contacts.push(person);
-        root.conversations[person.id]={messages:[],friendship:{state:'stranger'},friendEvents:[],chatDeleted:false};
+        root.conversations[person.id]={messages:[],friendship:{state:knownOldFriend(person.relationship+'\n'+person.description)?'friends':'stranger'},friendEvents:[],chatDeleted:false};
     }
     try {
         await writeData(ctx,{...root,__contactId:PRIMARY_CONTACT_ID});
@@ -1570,7 +1570,7 @@ async function addNpcContact() {
     if (root.contacts.length>=60) return setStatus('当前存档最多添加 60 位 NPC','error');
     const id='npc:'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
     root.contacts.push({id,kind:'npc',name,remark:'',relationship,description,source:'manual',createdAt:new Date().toISOString()});
-    root.conversations[id]={messages:[],friendship:{state:'stranger'},friendEvents:[],chatDeleted:false};
+    root.conversations[id]={messages:[],friendship:{state:knownOldFriend(relationship+'\n'+description)?'friends':'stranger'},friendEvents:[],chatDeleted:false};
     try {
         await writeData(ctx,{...root,__contactId:PRIMARY_CONTACT_ID});
         nodes.npcName.value='';nodes.npcRelation.value='';nodes.npcDescription.value='';
