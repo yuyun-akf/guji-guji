@@ -369,7 +369,7 @@ test('modal entirely outside the viewport produces a visible diagnostic error', 
 test('diagnostic bootstrap is the manifest entry and exposes lifecycle hooks', () => {
     const manifest = JSON.parse(readFileSync(resolve(testRoot, '../manifest.json'), 'utf8'));
     const bootstrap = readFileSync(resolve(testRoot, '../bootstrap.js'), 'utf8');
-    assert.equal(manifest.version, '0.4.0');
+    assert.equal(manifest.version, '0.4.1');
     assert.equal(manifest.js, 'bootstrap.js');
     assert.match(bootstrap, /import\('\.\/index\.js'\)/);
     assert.match(bootstrap, /export function onActivate\(/);
@@ -414,4 +414,46 @@ test('unavailable selected entry is a visible failure not silently ignored', asy
     const data = newData();
     data.config = {worldEntries:[{book:'missing',id:'9'}]};
     await assert.rejects(composePhonePrompt({loadWorldInfo:async()=>({entries:{}})}, {name:'C'},data), /不可用/);
+});
+
+test('mobile settings use dedicated full-screen searchable item pickers', () => {
+    const html = makeUI().innerHTML;
+    assert.match(html, /data-lp-screen="presetPicker"/);
+    assert.match(html, /data-lp-screen="worldPicker"/);
+    assert.match(html, /data-lp="presetSearch"/);
+    assert.match(html, /data-lp="worldSearch"/);
+    assert.match(html, /data-lp="apiMode"/);
+    assert.match(html, /data-lp="apiUrl"/);
+    assert.match(html, /data-lp="apiModel"/);
+    assert.match(html, /data-lp="apiKey"/);
+});
+test('split phone messages preserve content even above five bubbles', () => {
+    const runtime = { console, Date, structuredClone, window:{} };
+    vm.createContext(runtime);
+    vm.runInContext(source + '\\nglobalThis.split = splitPhoneReply;', runtime);
+    const original = Array.from({length:7}, (_,i)=>'msg'+i).join('[PHONE_NEXT]');
+    const actual = runtime.split(original, {});
+    assert.equal(actual.length,5);
+    assert.equal(actual.join('\\n').replace(/\\n/g,''),original.replaceAll('[PHONE_NEXT]',''));
+    assert.deepEqual(runtime.split(original,{config:{messageStyle:'unrestricted'}}),[original]);
+});
+test('independent API uses a separate model and ephemeral key without changing host settings', async () => {
+    const runtime = {console,Date,structuredClone,URL,window:{}};
+    vm.createContext(runtime);
+    vm.runInContext(source + '\\nglobalThis.api = {phoneGenerate, apiSessionId, transientApiKeys};',runtime);
+    let outbound;
+    const settings = {theme:'unchanged'};
+    const ctx = {
+        characterId:0,chatId:'storyA',extensionSettings:settings,
+        generateRaw:async()=> 'host answer',
+        ChatCompletionService:{sendRequest:async request => {outbound = request;return {content:'independent answer'};}}
+    };
+    runtime.api.transientApiKeys.set(runtime.api.apiSessionId(ctx),'TEST_SECRET');
+    const data={config:{api:{mode:'custom',url:'https://api.example/v1',model:'another-model'}}};
+    const answer=await runtime.api.phoneGenerate(ctx,{systemPrompt:'s',prompt:'u'},data);
+    assert.equal(answer,'independent answer');
+    assert.equal(outbound.model,'another-model');
+    assert.equal(outbound.chat_completion_source,'custom');
+    assert.equal(JSON.parse(outbound.custom_include_headers).Authorization,'Bearer TEST_SECRET');
+    assert.deepEqual(settings,{theme:'unchanged'});
 });
