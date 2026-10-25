@@ -46,7 +46,7 @@ let configWriteQueue = Promise.resolve();
 let viewportListener = null;
 const transientApiKeys = new Map();
 const APP_ICONS = {chat:'💬',diagnostics:'🛠️',settings:'⚙️',calendar:'📅',theme:'🎨',album:'🖼️',shopping:'🛍️',takeout:'🥡'};
-const SCREENS = new Set(['home', 'chat', 'chatList', 'contacts', 'requests', 'profile', 'addNpc', 'discoverNpc', 'chatOptions', 'settings', 'diagnostics', 'calendar', 'theme', 'presetPicker', 'worldPicker']);
+const SCREENS = new Set(['home', 'chat', 'chatList', 'contacts', 'requests', 'profile', 'addNpc', 'discoverNpc', 'discover', 'me', 'chatOptions', 'settings', 'diagnostics', 'calendar', 'theme', 'presetPicker', 'worldPicker']);
 
 function context() {
     try {
@@ -652,10 +652,13 @@ function setScreen(screen) {
         section.hidden = section.dataset.lpScreen !== screen;
     }
     nodes.back.hidden = screen === 'home';
-    const titles = { home:'咕叽咕机',chat:'',chatList:'咕叽聊',contacts:'通讯录',requests:'新的朋友',profile:'联系人资料',addNpc:'添加 NPC',discoverNpc:'发现故事人物',chatOptions:'聊天设置',settings:'设置',diagnostics:'运行日志',calendar:'日历',theme:'主题',presetPicker:'选择预设条目',worldPicker:'选择世界书条目' };
+    const titles = { home:'咕叽咕机',chat:'',chatList:'咕叽聊',contacts:'通讯录',discover:'发现',me:'我',requests:'新的朋友',profile:'联系人资料',addNpc:'添加 NPC',discoverNpc:'发现故事人物',chatOptions:'聊天设置',settings:'设置',diagnostics:'运行日志',calendar:'日历',theme:'主题',presetPicker:'选择预设条目',worldPicker:'选择世界书条目' };
     nodes.title.textContent = screen === 'chat' ? contactDisplayName(context()) : titles[screen];
     nodes.chatMenu.hidden = screen !== 'chat';
     if (screen === 'diagnostics') renderDiagnostics();
+    if (['chatList','contacts','discover','me'].includes(screen)) {
+        root.querySelectorAll('.lp-tabbar button[data-lp-open]').forEach(button=>button.classList.toggle('lp-tab-active',button.dataset.lpOpen===screen));
+    }
     if (screen === 'settings' && screen !== previous) { loadPhoneApiUI(); loadPhoneMessageStyle(); void populateConfigLists(); }
     if (screen === 'theme') applyTheme();
     if (screen === 'discoverNpc' && screen !== previous) {populateNpcWorldSelect();renderNpcCandidates();}
@@ -843,8 +846,40 @@ async function markContactExchanged() {
     }catch(e){setStatus(recordError('保存联系方式',e),'error');}
 }
 
+
+function renderMoments(ctx) {
+    if (!nodes?.momentsFeed) return;
+    nodes.momentsFeed.replaceChildren();
+    const posts=readRootData(ctx).moments||[];
+    nodes.myIdentity.textContent='用户：'+(ctx?.name1||'user')+' · 当前故事存档';
+    for(const post of [...posts].reverse()){
+        const item=document.createElement('div');item.className='lp-moment';
+        const author=document.createElement('strong');author.textContent=post.author||ctx?.name1||'user';
+        const body=document.createElement('p');body.textContent=post.text;
+        const date=document.createElement('small');date.textContent=String(post.createdAt||'').replace('T',' ').slice(0,16);
+        item.append(author,body,date);nodes.momentsFeed.append(item);
+    }
+    if(!posts.length) nodes.momentsFeed.textContent='还没有动态';
+}
+async function postMoment() {
+    if(busy)return;
+    const ctx=context();
+    if(!selectedCharacter(ctx))return setStatus('请先打开剧情存档','error');
+    const value=nodes.momentsText.value.trim();
+    if(!value)return;
+    const data=structuredClone(readRootData(ctx));
+    data.moments=Array.isArray(data.moments)?data.moments:[];
+    data.moments.push({id:'moment-'+Date.now(),author:ctx?.name1||'user',text:value.slice(0,1000),createdAt:new Date().toISOString()});
+    data.moments=data.moments.slice(-100);
+    try {
+        await writeData(ctx,{...data,__contactId:PRIMARY_CONTACT_ID});
+        nodes.momentsText.value='';
+        renderMoments(ctx);
+    }catch(e){setStatus(recordError('发布动态',e),'error');}
+}
+
 function renderChatLists(ctx,char,data) {
-    for (const key of ['recentChats','contactsList','requestsList']) nodes[key]?.replaceChildren();
+    for (const key of ['momentsFeed','momentsText','momentsPost','momentsToggle','myIdentity','recentChats','contactsList','requestsList']) nodes[key]?.replaceChildren();
     if (!char||!data) return;
     const root=readRootData(ctx);
     const ids=[PRIMARY_CONTACT_ID,...root.contacts.map(c=>c.id)];
@@ -1391,6 +1426,7 @@ function render() {
     nodes.contactEvidence.textContent=contactAccess(ctx).evidence||contactAccess(ctx).source;
     nodes.profileAvatar.src = avatarSources(ctx,data).character;
     renderChatLists(ctx,char,data);
+    renderMoments(ctx);
     nodes.subtitle.textContent = char ? '故事中的小手机 · 独立聊天' : '请先选择单人角色存档';
     nodes.homeCharacter.textContent = primary ? `与 ${getCharacterName(primary)} 的故事` : '等待进入角色存档';
     nodes.homeTime.textContent = (data?.storyTime || localDateTime()).replace('T', ' ');
@@ -1777,8 +1813,10 @@ function makeUI() {
             <div data-lp="recentChats"></div>
           </div>
           <nav class="lp-tabbar" aria-label="咕叽聊导航">
-            <button data-lp-open="chatList" class="lp-tab-active" type="button">消息</button>
+            <button data-lp-open="chatList" type="button">消息</button>
             <button data-lp-open="contacts" type="button">通讯录</button>
+            <button data-lp-open="discover" type="button">发现</button>
+            <button data-lp-open="me" type="button">我</button>
           </nav>
         </section>
         <section class="lp-screen lp-chatlist" data-lp-screen="contacts" aria-label="通讯录" hidden>
@@ -1790,7 +1828,40 @@ function makeUI() {
           </div>
           <nav class="lp-tabbar" aria-label="咕叽聊导航">
             <button data-lp-open="chatList" type="button">消息</button>
-            <button data-lp-open="contacts" class="lp-tab-active" type="button">通讯录</button>
+            <button data-lp-open="contacts" type="button">通讯录</button>
+            <button data-lp-open="discover" type="button">发现</button>
+            <button data-lp-open="me" type="button">我</button>
+          </nav>
+        </section>
+        <section class="lp-screen lp-chatlist" data-lp-screen="discover" aria-label="发现" hidden>
+          <div class="lp-list-body lp-discover">
+            <button type="button" class="lp-list-action lp-discovery-action" data-lp="momentsToggle"><span>◎</span><span>朋友圈 · 当前故事</span></button>
+            <div class="lp-moments-panel">
+              <label class="lp-field">发表动态<textarea data-lp="momentsText" rows="3" maxlength="1000" placeholder="这一刻想说什么？"></textarea></label>
+              <button data-lp="momentsPost" type="button">发表动态</button>
+              <div data-lp="momentsFeed" class="lp-moments-feed"></div>
+            </div>
+          </div>
+                    <nav class="lp-tabbar" aria-label="咕叽聊导航">
+            <button data-lp-open="chatList" type="button">消息</button>
+            <button data-lp-open="contacts" type="button">通讯录</button>
+            <button data-lp-open="discover" type="button">发现</button>
+            <button data-lp-open="me" type="button">我</button>
+          </nav>
+        </section>
+        <section class="lp-screen lp-chatlist" data-lp-screen="me" aria-label="我" hidden>
+          <div class="lp-list-body lp-me-page">
+            <div class="lp-me-title">我的小手机</div>
+            <div data-lp="myIdentity" class="lp-me-identity"></div>
+            <button type="button" class="lp-list-action" data-lp-open="settings"><span>⚙</span><span>聊天与 API 设置</span></button>
+            <button type="button" class="lp-list-action" data-lp-open="theme"><span>🎨</span><span>主题与壁纸</span></button>
+            <p class="lp-npc-note">当前人物、朋友、朋友圈均属于正在进行的剧情存档。</p>
+          </div>
+                    <nav class="lp-tabbar" aria-label="咕叽聊导航">
+            <button data-lp-open="chatList" type="button">消息</button>
+            <button data-lp-open="contacts" type="button">通讯录</button>
+            <button data-lp-open="discover" type="button">发现</button>
+            <button data-lp-open="me" type="button">我</button>
           </nav>
         </section>
         <section class="lp-screen lp-chatlist" data-lp-screen="requests" aria-label="新的朋友" hidden>
@@ -1991,8 +2062,10 @@ function mount() {
         closePhone();
     });
     nodes.chatMenu.addEventListener('click',()=>setScreen('chatOptions'));
+    nodes.momentsPost.addEventListener('click',()=>void postMoment());
+    nodes.momentsToggle.addEventListener('click',()=>{nodes.momentsText.focus();});
     nodes.back.addEventListener('click', () => setScreen({
-        chat: 'chatList', contacts: 'chatList', profile: 'contacts', requests:'contacts', addNpc:'contacts', discoverNpc:'addNpc', chatOptions:'chat', presetPicker:'settings', worldPicker:'settings'
+        chat: 'chatList', contacts: 'chatList', discover:'chatList', me:'chatList', profile: 'contacts', requests:'contacts', addNpc:'contacts', discoverNpc:'addNpc', chatOptions:'chat', presetPicker:'settings', worldPicker:'settings'
     }[activeScreen] || 'home'));
     root.addEventListener('click', event => {
         const button = event.target.closest('button[data-lp-open]');
