@@ -371,7 +371,7 @@ test('modal entirely outside the viewport produces a visible diagnostic error', 
 test('diagnostic bootstrap is the manifest entry and exposes lifecycle hooks', () => {
     const manifest = JSON.parse(readFileSync(resolve(testRoot, '../manifest.json'), 'utf8'));
     const bootstrap = readFileSync(resolve(testRoot, '../bootstrap.js'), 'utf8');
-    assert.equal(manifest.version, '0.5.1');
+    assert.equal(manifest.version, '0.6.0');
     assert.equal(manifest.minimum_client_version, '1.18.0');
     assert.equal(manifest.js, 'bootstrap.js');
     assert.match(bootstrap, /import\('\.\/index\.js'\)/);
@@ -491,4 +491,69 @@ test('contact data keeps the original v1 chat messages unchanged', () => {
     assert.equal(next.messages[0].text,'以前的消息');
     assert.equal(next.messages[0].id,'m1');
     assert.equal(next.friendship.state,'friends');
+});
+
+test('old primary chat and NPC conversations persist independently in same story', async () => {
+    const runtime={console,Date,structuredClone,window:{}};
+    vm.createContext(runtime);
+    vm.runInContext(source + `
+        globalThis.storage={readRootData,readData,writeData,contactCharacter,
+            select:(id)=>{activeContactId=id;}};
+    `,runtime);
+    const ctx={characterId:0,characters:[{name:'主角'}],
+        chatMetadata:{st_little_phone_v1:{version:1,storyTime:'2026-01-01T12:00',
+            messages:[{from:'user',text:'旧主角消息'}],friendship:{state:'friends'}}},
+        async saveMetadata(){}};
+    const root=runtime.storage.readRootData(ctx);
+    root.contacts=[{id:'npc:a',name:'A',description:'老师A'},{id:'npc:b',name:'B',description:'同学B'}];
+    root.conversations={'npc:a':{messages:[],friendship:{state:'stranger'}},
+                        'npc:b':{messages:[],friendship:{state:'stranger'}}};
+    await runtime.storage.writeData(ctx,{...root,__contactId:'primary'});
+    runtime.storage.select('npc:a');
+    const a=structuredClone(runtime.storage.readData(ctx));
+    assert.equal(a.friendship.state,'stranger');
+    a.messages.push({from:'user',text:'给A的消息'});
+    a.friendship={state:'friends'};
+    await runtime.storage.writeData(ctx,a);
+    runtime.storage.select('npc:b');
+    const b=structuredClone(runtime.storage.readData(ctx));
+    b.messages.push({from:'user',text:'给B的消息'});
+    await runtime.storage.writeData(ctx,b);
+    runtime.storage.select('primary');
+    assert.equal(runtime.storage.readData(ctx).messages[0].text,'旧主角消息');
+    assert.equal(ctx.chatMetadata.st_little_phone_v1.conversations['npc:a'].messages[0].text,'给A的消息');
+    assert.equal(ctx.chatMetadata.st_little_phone_v1.conversations['npc:b'].messages[0].text,'给B的消息');
+    assert.equal(ctx.chatMetadata.st_little_phone_v1.conversations['npc:a'].friendship.state,'friends');
+});
+test('NPC generations use only the selected contact persona', () => {
+    const runtime={console,Date,structuredClone,window:{}};
+    vm.createContext(runtime);
+    vm.runInContext(source + `
+        globalThis.storage={contactCharacter,readData,createSystemPrompt,select:(id)=>{activeContactId=id;}};
+    `,runtime);
+    const ctx={characterId:0,characters:[{name:'宁肆锦',description:'演员'}],chatMetadata:{
+        st_little_phone_v1:{version:1,storyTime:'2026-01-01T12:00',messages:[],friendship:{state:'friends'},
+        contacts:[{id:'npc:mom',name:'苏晚意',description:'画家'}],
+        conversations:{'npc:mom':{messages:[],friendship:{state:'friends'}}}}}};
+    runtime.storage.select('npc:mom');
+    const prompt=runtime.storage.createSystemPrompt(runtime.storage.contactCharacter(ctx),runtime.storage.readData(ctx));
+    assert.ok(prompt.includes('角色「苏晚意」'));
+    assert.ok(prompt.includes('画家'));
+    assert.equal(prompt.includes('角色「宁肆锦」'),false);
+});
+test('NPC data is scoped to current roleplay chat metadata, not an imported character directory', () => {
+    const runtime={console,Date,structuredClone,window:{}};
+    vm.createContext(runtime);
+    vm.runInContext(source + `globalThis.readRoot=readRootData;`,runtime);
+    const a={chatMetadata:{st_little_phone_v1:{version:1,messages:[],contacts:[{id:'npc:a',name:'A'}]}}};
+    const b={chatMetadata:{st_little_phone_v1:{version:1,messages:[]}}};
+    assert.equal(runtime.readRoot(a).contacts.length,1);
+    assert.equal(runtime.readRoot(b).contacts.length,0);
+});
+test('NPC creation and remarks have dedicated mobile UI', () => {
+    const html=makeUI().innerHTML;
+    for(const name of ['addNpc','npcName','npcRelation','npcDescription','addNpcSave',
+      'contactRemark','saveContactRemark','deleteNpc']) {
+      assert.ok(html.includes('data-lp="' + name + '"') || html.includes('data-lp-screen="' + name + '"'));
+    }
 });
