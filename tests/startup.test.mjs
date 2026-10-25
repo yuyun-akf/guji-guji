@@ -6,7 +6,7 @@ import vm from 'node:vm';
 const main = readFileSync(new URL('../index.js', import.meta.url), 'utf8').replaceAll('export function ', 'function ');
 const boot = readFileSync(new URL('../bootstrap.js', import.meta.url), 'utf8')
     .replaceAll('export function ', 'function ')
-    .replace("import('./index.js?v=0.8.2')", 'mockImport()');
+    .replace("import('./index.js?v=0.8.3')", 'mockImport()');
 
 function dom() {
     const observers = new Set();
@@ -57,7 +57,7 @@ test('full mount binds actual template controls including moments; disable prese
     const ctx = { chatMetadata: metadata };
     const runtime = { ...host, console, Date, structuredClone,
         window: { SillyTavern: { getContext: () => ctx }, addEventListener() {}, removeEventListener() {} },
-        setTimeout() { return 1; }, clearTimeout() {}, clearInterval() {} };
+        setTimeout() { return 1; }, clearTimeout() {}, setInterval() {return 1;}, clearInterval() {} };
     vm.createContext(runtime);
     // Keep the real mount and all event wiring; rendering is covered separately.
     vm.runInContext(main + '\nrender = () => {}; renderDiagnostics = () => {}; globalThis.api = { onActivate, onDisable, controls: () => nodes };', runtime);

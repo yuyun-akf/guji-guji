@@ -16,6 +16,9 @@ const SETTINGS_KEY = 'gujiguji';
 const WAND_ENTRY_ID = 'gujiguji-wand-entry';
 const CONTEXT_MESSAGE_LIMIT = 24;
 const CHARACTER_TEXT_LIMIT = 9000;
+const PHONE_LORE_BUDGET = 12000;
+const PHONE_MEMORY_BUDGET = 4800;
+const MAINLINE_PROMPT_ID = 'gujiguji:phone-history';
 const DIAGNOSTIC_LIMIT = 24;
 const GENERATION_TIMEOUT_MS = 120000;
 const FRIEND_STATES = new Set(['friends', 'stranger', 'outgoing', 'incoming', 'blocked']);
@@ -44,6 +47,7 @@ let busyKind = '';
 let activeScreen = 'home';
 let lifecycleToken = 0;
 const diagnostics = [];
+let lastMainlinePreview = '';
 let configWriteQueue = Promise.resolve();
 let viewportListener = null;
 let autonomousTicker = null;
@@ -420,7 +424,7 @@ function classifyStoryFriendEvent(text,name,primary=false) {
     for(const clause of chunks){
         if(!clause.includes(name)&&!(primary&&clause.includes('{{char}}')))continue;
         if(/(?:没有|没|尚未|还没|拒绝|假如|如果|打算|准备|想要|可能|也许|未曾|不会|不能)/.test(clause.slice(0,22)))continue;
-        if(/(?:互加(?:了)?(?:微信|好友)|成为(?:了)?(?:微信|手机)好友|通过(?:了)?(?:对方|他|她)?(?:的)?好友申请|已添加.*好友|扫码后互相通过)/.test(clause))return {state:'friends',evidence:clause};
+        if(/(?:互(?:相)?加(?:了)?(?:微信|好友)|成为(?:了)?(?:微信|手机)好友|通过(?:了)?(?:对方|他|她)?(?:的)?好友申请|已添加.*好友|扫码后互相通过)/.test(clause))return {state:'friends',evidence:clause};
         if(/(?:发来(?:了)?好友申请|向(?:你|我|user|玩家)发送(?:了)?好友申请|申请添加(?:你|我|user|玩家)为好友|请求添加(?:你|我|user|玩家)为好友)/.test(clause))return {state:'incoming',evidence:clause};
     }
     return null;
@@ -463,7 +467,7 @@ async function syncStoryRelationships(ctx=context(),force=false) {
         // Only write once; never mutate saved messages or existing explicit statuses.
         if(modified||force||first||starting!==messages.length) {
             if(ctx.chatMetadata===meta&&ctx.characterId===charId&&ctx.chatId===chatId) {
-                if(!manualChannel)await writeData(ctx,{...work,__contactId:PRIMARY_CONTACT_ID});
+                await writeData(ctx,{...work,__contactId:PRIMARY_CONTACT_ID});
                 if(mounted&&ctx.chatMetadata===meta)render();
             }
         }
@@ -554,6 +558,7 @@ async function writeData(ctx,data) {
         }
         throw error;
     }
+    syncMainlinePrompt(ctx);
 }
 
 function captureSession(ctx) {
@@ -575,8 +580,174 @@ function shortText(value, maxLength = CHARACTER_TEXT_LIMIT) {
     return value.slice(0, maxLength).trim();
 }
 
+function contextSettings(data) {
+    return {
+        readMainlineMemory:data?.config?.readMainlineMemory !== false,
+        memorySource:['auto','gaga','baibai','trace','off'].includes(data?.config?.memorySource) ? data.config.memorySource : 'auto',
+        phoneToMainline:data?.config?.phoneToMainline === true,
+    };
+}
+
+function mainlineHistory(rootData) {
+    const threads=[{name:'主角色',messages:rootData.messages || []},
+        ...(rootData.contacts || []).map(contact=>({name:contact.remark || contact.name || 'NPC',
+            messages:rootData.conversations?.[contact.id]?.messages || []}))];
+    const messages=threads.flatMap(thread=>thread.messages
+        .filter(message=>['user','character'].includes(message.from) && typeof message.text==='string')
+        .map(message=>({name:thread.name,...message})))
+        .sort((a,b)=>String(a.createdAt || '').localeCompare(String(b.createdAt || '')))
+        .slice(-18);
+    if(!messages.length)return '';
+    const lines=messages.map(message=>`${message.storyTime || '未知时间'} · ${message.name} · ${message.from==='user'?'user':'角色'}：${message.text.slice(0,250)}`);
+    // Kept short and factual; never inject mobile messages into the actual host chat array.
+    return clipContext('【咕叽咕机手机经历（独立于正文消息）】\n以下仅为玩家选择同步的手机聊天记录。请根据正文时间线与已知关系判断是否适用；不可改写 user 的正文行为，也不能把手机事件当作正文里已经表演过的情节。\n'+lines.join('\n'),4200);
+}
+
+function syncMainlinePrompt(ctx) {
+    if(typeof ctx?.setExtensionPrompt!=='function')return false;
+    const data=readRootData(ctx);
+    const enabled=extensionEnabled && Boolean(selectedCharacter(ctx)) && contextSettings(data).phoneToMainline;
+    const prompt=enabled ? mainlineHistory(data) : '';
+    try {
+        ctx.setExtensionPrompt(MAINLINE_PROMPT_ID,prompt,ctx.extension_prompt_types?.IN_CHAT ?? 1,0,false,0);
+        if(prompt!==lastMainlinePreview){
+            lastMainlinePreview=prompt;
+            recordActivity('正文注入预览',prompt
+                ? `手机记录已同步到正文独立提示槽：${prompt.length} 字，约 ${Math.ceil(prompt.length/2.5)} tokens（粗估）；不会修改正文消息。`
+                : '手机经历正文注入已清除。');
+        }
+        return true;
+    } catch(error) { recordError('同步手机记录到正文',error);return false; }
+}
+
+function clearMainlinePrompt(ctx) {
+    if(typeof ctx?.setExtensionPrompt!=='function')return;
+    try {ctx.setExtensionPrompt(MAINLINE_PROMPT_ID,'',ctx.extension_prompt_types?.IN_CHAT ?? 1,0,false,0);lastMainlinePreview='';}
+    catch(error) {recordError('清理正文注入',error);}
+}
+
+function loadContextSettings(ctx=context()) {
+    if(!nodes?.readMainlineMemory)return;
+    const cfg=contextSettings(readRootData(ctx));
+    nodes.readMainlineMemory.checked=cfg.readMainlineMemory;
+    nodes.memorySource.value=cfg.memorySource;
+    nodes.phoneToMainline.checked=cfg.phoneToMainline;
+}
+
+async function saveContextSettings() {
+    const ctx=context();
+    if(!selectedCharacter(ctx) || busy)return;
+    const data=structuredClone(readRootData(ctx));
+    data.config={...(data.config||{}),readMainlineMemory:nodes.readMainlineMemory.checked,
+        memorySource:nodes.memorySource.value,phoneToMainline:nodes.phoneToMainline.checked};
+    try {
+        await writeData(ctx,{...data,__contactId:PRIMARY_CONTACT_ID});
+        loadContextSettings(ctx);
+        recordActivity('上下文设置','正文记忆读取：'+(data.config.readMainlineMemory?data.config.memorySource:'关闭')+'；手机记录注入正文：'+(data.config.phoneToMainline?'开启':'关闭'));
+        setStatus(data.config.phoneToMainline && typeof ctx.setExtensionPrompt!=='function'
+            ? '设置已保存，但酒馆未提供扩展提示词接口；当前无法向正文注入。'
+            : '已保存；手机记录注入正文的开关对当前聊天存档生效。',
+            data.config.phoneToMainline && typeof ctx.setExtensionPrompt!=='function'?'error':'info');
+    } catch(error) {setStatus(recordError('保存上下文设置',error),'error');}
+}
+
+function worldKeyMatches(key, text, caseSensitive = false, wholeWord = false) {
+    if (typeof key !== 'string' || !key.trim()) return false;
+    const needle = key.trim();
+    if (needle.startsWith('/') && needle.lastIndexOf('/') > 0) {
+        const split = needle.lastIndexOf('/');
+        try {
+            const flags = needle.slice(split + 1).replace(/[gy]/g, '');
+            return new RegExp(needle.slice(1,split),flags).test(text);
+        } catch { return false; }
+    }
+    const haystack = caseSensitive ? text : text.toLocaleLowerCase();
+    const target = caseSensitive ? needle : needle.toLocaleLowerCase();
+    if (!wholeWord) return haystack.includes(target);
+    // CJK phrases do not have conventional whitespace word boundaries.
+    if (/[^\x00-\x7F]/.test(target)) return haystack.includes(target);
+    const escaped = target.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+    return new RegExp(`(^|[^\\p{L}\\p{N}_])${escaped}(?=$|[^\\p{L}\\p{N}_])`,'u').test(haystack);
+}
+
+function worldEntryTriggered(entry, scanText) {
+    if (entry?.disable === true || entry?.enabled === false || !entry?.content?.trim()) return false;
+    if (entry.constant === true) return true;
+    const primary = Array.isArray(entry.key) ? entry.key : [];
+    const secondary = Array.isArray(entry.keysecondary) ? entry.keysecondary : [];
+    const match = key => worldKeyMatches(key,scanText,entry.caseSensitive === true,entry.matchWholeWords === true);
+    if (!primary.some(match)) return false;
+    if (entry.selective === true && secondary.length) {
+        const matched = secondary.map(match);
+        const logic = Number(entry.selectiveLogic) || 0;
+        if (logic === 0 && !matched.some(Boolean)) return false;
+        if (logic === 1 && !matched.every(Boolean)) return false;
+        if (logic === 2 && matched.some(Boolean)) return false;
+        if (logic === 3 && matched.every(Boolean)) return false;
+    }
+    return !(entry.useProbability && Number(entry.probability) < 100 && Math.random()*100 >= Math.max(0,Number(entry.probability)||0));
+}
+
+function phoneScanText(char, data) {
+    const recent = (data?.messages || []).filter(m => ['user','character'].includes(m.from)).slice(-12);
+    return recent.map(m => `${m.from === 'user' ? 'user' : getCharacterName(char)}: ${m.text || ''}`).join('\n').slice(-16000);
+}
+
+function clipContext(text, budget) {
+    const value = String(text || '').trim();
+    return value.length <= budget ? value : value.slice(0,budget) + '\n[后续内容因手机上下文预算被截断]';
+}
+
+function traceMemoryText(metadata) {
+    const trace=metadata?.trace_memory_v1;
+    if (!trace || typeof trace !== 'object') return '';
+    // Known named memory fields only; never serialize arbitrary plugin metadata.
+    const fields=[trace.longTermMemory,trace.long_term_memory,trace.longTerm,trace.memory?.longTerm,
+        trace.memory?.long_term,trace.currentLongTermMemory,trace.memoryText];
+    return fields.find(v => typeof v === 'string' && v.trim()) || '';
+}
+
+function readExternalMemory(ctx,data) {
+    const settings=contextSettings(data);
+    if (socialConfig(readRootData(ctx)).phoneInPast) return {source:'时间线隔离',text:'',status:'手机设定在主线过去，已屏蔽全部正文记忆'};
+    if (!settings.readMainlineMemory || settings.memorySource === 'off') return {source:'关闭',text:'',status:'已关闭正文记忆读取'};
+    const source=settings.memorySource;
+    // Gaga writes a dedicated memory extension prompt. Other Gaga injection slots
+    // (director, output rules, etc.) are deliberately excluded.
+    if (source==='auto' || source==='gaga') {
+        const prompts=ctx?.extensionPrompts || {};
+        const rows=Object.entries(prompts).filter(([id])=>/^gaga-dog-summary(?::\d+)?:memory$/.test(id));
+        const memory=rows.map(([,value])=>typeof value==='string' ? value : value?.value || '').filter(v=>typeof v==='string' && v.trim()).join('\n');
+        if (memory) return {source:'嘎嘎小狗 · 当前正文记忆',text:clipContext(memory,PHONE_MEMORY_BUDGET)};
+    }
+    if (source==='auto' || source==='baibai') {
+        try {
+            const api=window.STBaiBaiBook;
+            if (api?.apiVersion===1 && typeof api.getSnapshot==='function') {
+                const snapshot=api.getSnapshot();
+                if (snapshot?.chat?.characterName && snapshot.chat.characterName!==getCharacterName(selectedCharacter(ctx)))
+                    return {source:'柏宝书',text:'',status:'存档角色不一致，已跳过'};
+                const history=api.getInjectedHistory?.();
+                const portions=[history?.text || '',
+                    snapshot?.state ? '当前剧情状态：'+JSON.stringify(snapshot.state) : '',
+                    snapshot?.lifeDetails?.length ? '人物生活细节（不代表角色已经知情）：'+JSON.stringify(snapshot.lifeDetails) : ''];
+                const memory=portions.filter(Boolean).join('\n');
+                if (memory) return {source:'柏宝书 · 只读公开接口',text:clipContext(memory,PHONE_MEMORY_BUDGET),
+                    status:snapshot?.coverage?.complete===false?'摘要覆盖不完整':''};
+            }
+        } catch (error) { recordError('读取柏宝书记忆',error); }
+    }
+    if (source==='auto' || source==='trace') {
+        const memory=traceMemoryText(ctx?.chatMetadata);
+        if (memory) return {source:'留痕记忆 · 已知字段',text:clipContext(memory,PHONE_MEMORY_BUDGET)};
+    }
+    return {source:'未找到',text:'',status:'没有发现可读取的已注入正文记忆'};
+}
+
 async function composePhonePrompt(ctx, char, data) {
-    const parts = [createSystemPrompt(char, data)];
+    const persona=currentPersona(ctx);
+    const parts = [createSystemPrompt(char, data, persona)];
+    const summary={preset:0,selected:0,world:0,skipped:0,characters:0};
     const selectedPresets = Array.isArray(data?.config?.presetEntries) ? data.config.presetEntries : [];
     if (selectedPresets.length) {
         const manager = ctx?.getPresetManager?.('openai');
@@ -585,9 +756,12 @@ async function composePhonePrompt(ctx, char, data) {
             const entry = preset?.prompts?.find(p => String(p.identifier || p.name) === item.id);
             if (!entry || !entry.content) throw new Error('选中的预设条目不可用：' + item.preset + '/' + item.id);
             parts.push('[手机预设 · ' + (entry.name || item.id) + ']\n' + entry.content);
+            summary.preset++;
         }
     }
     const selectedBooks = Array.isArray(data?.config?.worldEntries) ? data.config.worldEntries : [];
+    const scan=phoneScanText(char,data);
+    const triggered=[];
     for (const bookName of [...new Set(selectedBooks.map(x => x.book))]) {
         if (typeof ctx?.loadWorldInfo !== 'function') throw new Error('酒馆世界书接口不可用');
         const book = await ctx.loadWorldInfo(bookName);
@@ -595,18 +769,34 @@ async function composePhonePrompt(ctx, char, data) {
         for (const selected of selectedBooks.filter(x => x.book === bookName)) {
             const entry = entries[selected.id] ?? Object.values(entries).find(e => String(e.uid) === selected.id);
             if (!entry || !entry.content) throw new Error('选中的世界书条目不可用：' + bookName + '/' + selected.id);
-            parts.push('[手机世界书 · ' + (entry.comment || selected.id) + ']\n' + entry.content);
+            summary.selected++;
+            if (worldEntryTriggered(entry,scan)) triggered.push({bookName,id:selected.id,entry});
+            else summary.skipped++;
         }
     }
-    return parts.join('\n\n');
+    let loreUsed=0;
+    for(const {bookName,id,entry} of triggered.sort((a,b)=>(Number(a.entry.order)||0)-(Number(b.entry.order)||0))) {
+        const content='[手机世界书 · '+bookName+' / '+(entry.comment || id)+']\n'+entry.content;
+        if(loreUsed+content.length>PHONE_LORE_BUDGET){summary.skipped++;continue;}
+        parts.push(content);loreUsed+=content.length;summary.world++;
+    }
+    const memory=readExternalMemory(ctx,data);
+    if(memory.text)parts.push('[从已安装插件只读获取的正文既有记忆；不代表手机聊天已发生]\n'+memory.text);
+    const prompt=parts.join('\n\n');
+    summary.characters=prompt.length;
+    recordActivity('注入预览',`人设：${getCharacterName(char)} / ${persona.name}；预设 ${summary.preset} 条；世界书选中 ${summary.selected} 条、触发 ${summary.world} 条、未注入 ${summary.skipped} 条；正文记忆：${memory.source}${memory.status?'（'+memory.status+'）':''}；约 ${Math.ceil(prompt.length/2.5)} tokens（粗估）。`);
+    return prompt;
 }
 
-function createSystemPrompt(char, data) {
+function createSystemPrompt(char, data, persona = {name:'user',description:''}) {
     const info = char.data || char;
     const profile = [
         ['角色描述', info.description],
         ['角色性格', info.personality],
         ['角色场景设定', info.scenario],
+        ['角色说话示例（仅模仿风格，不视为手机上已发生的对话）',info.mes_example],
+        ['角色卡附加指令',info.system_prompt],
+        ['角色卡历史后指令',info.post_history_instructions],
     ].map(([label, value]) => `${label}:\n${shortText(value, 3500)}`)
         .filter(line => !line.endsWith(':\n'))
         .join('\n\n')
@@ -619,11 +809,14 @@ function createSystemPrompt(char, data) {
     return [
         `你正在扮演角色「${getCharacterName(char)}」，与 user 通过一部虚构的手机进行私聊。`,
         '只回复这一角色实际发出的手机消息。不要写旁白、动作描写、镜头说明、心理活动、双方对话或 user 的行为。',
-        '不要替 user 发言，也不要强行推进关系。角色只知道设定和这段手机聊天中已提供的事实。',
+        '不要替 user 发言，也不要强行推进关系。角色的人格、边界与关系阶段以角色卡和实际已经发生的事为准；正文记忆仅用于识别既有事实，不得把未发生的未来当作经历。',
+        '角色能够看到 user 的公开人设，但不能凭人设臆断 user 的内心、秘密、意愿或行动；手机聊天中 user 未说的话不能视作说过。',
         '手机聊天时间由玩家设置，与正文时间可能不同。不得假定角色已经经历了这个日期之后的事件。',
-        `当前手机故事时间：${data.storyTime.replace('T', ' ')}`,
+        `当前手机故事时间：${String(data.storyTime || localDateTime()).replace('T', ' ')}`,
         `当前好友关系：${FRIEND_LABELS[friendshipState(data)]}`,
         relationEvents ? `当前存档已发生的好友关系变化：${relationEvents}` : '',
+        `当前 user 身份：${shortText(persona.name,100)}`,
+        persona.description ? `当前 user 人设（事实背景，不等于角色知情）：\n${shortText(persona.description,3500)}` : '',
         profile,
     ].filter(Boolean).join('\n\n');
 }
@@ -769,7 +962,7 @@ function setScreen(screen) {
     if (['chatList','contacts','discover','me'].includes(screen)) {
         root.querySelectorAll('.lp-tabbar button[data-lp-open]').forEach(button=>button.classList.toggle('lp-tab-active',button.dataset.lpOpen===screen));
     }
-    if (screen === 'settings' && screen !== previous) { loadPhoneApiUI(); loadPhoneMessageStyle(); void populateConfigLists(); }
+    if (screen === 'settings' && screen !== previous) { loadPhoneApiUI(); loadPhoneMessageStyle(); loadContextSettings(); void populateConfigLists(); }
     if (screen === 'theme') applyTheme();
     if (screen === 'discoverNpc' && screen !== previous) {populateNpcWorldSelect();renderNpcCandidates();}
     if (screen === 'presetPicker') {nodes.presetSearch.value=''; showPresetEntries();}
@@ -923,7 +1116,11 @@ function storyExchangeEvidence(ctx,id=activeContactId) {
         const clauses=body.split(/[。！？!?\n]/).filter(Boolean);
         for(const clause of clauses){
             if(!positive.test(clause)||negation.test(clause))continue;
-            if(identity&&!clause.includes(identity)&&!clause.includes(person.remark||'\u0000'))continue;
+            if(identity&&!clause.includes(identity)&&!clause.includes(person.remark||'\u0000')){
+                // "我们交换了联系方式" can safely refer to the primary pair,
+                // but not to an arbitrary NPC with the same mainline history.
+                if(id!==PRIMARY_CONTACT_ID || !/(?:我们|我和你|你和我|彼此)/.test(clause))continue;
+            }
             return clause.slice(0,180);
         }
     }
@@ -1402,8 +1599,8 @@ async function uploadMyAvatar(file) {
 function renderChatLists(ctx,char,data) {
     for (const key of ['recentChats','contactsList','requestsList','storyPeopleList']) nodes[key]?.replaceChildren();
     if (!char||!data) return;
-    const root=readRootData(ctx);
-    const ids=[PRIMARY_CONTACT_ID,...root.contacts.map(c=>c.id)];
+    const story=readRootData(ctx);
+    const ids=[PRIMARY_CONTACT_ID,...story.contacts.map(c=>c.id)];
     let requests=0, conversations=0;
     for (const id of ids) {
         const person=contactCharacter(ctx,id);
@@ -1418,7 +1615,7 @@ function renderChatLists(ctx,char,data) {
         }
         if(state==='friends')nodes.contactsList.append(makeListContact(person,view,FRIEND_LABELS[state],()=>switchContact(id,'profile'),label));
         else nodes.storyPeopleList.append(makeListContact(person,view,'',()=>switchContact(id,'profile'),label));
-        if (state==='incoming') {
+        if (state==='incoming' || state==='outgoing') {
             if(state==='incoming'){
                 const group=document.createElement('div');group.className='lp-request-entry';
                 group.append(makeListContact(person,view,'对方向你发送了好友申请',()=>switchContact(id,'profile'),label));
@@ -2449,7 +2646,7 @@ function makeUI() {
         </header>
         <section class="lp-screen lp-home" data-lp-screen="home" aria-label="手机桌面">
           <div class="lp-home-hero">
-            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.8.2</div>
+            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.8.3</div>
             <div class="lp-home-time" data-lp="homeTime">故事时间</div>
             <div class="lp-home-character" data-lp="homeCharacter">等待进入角色存档</div>
           </div>
@@ -2549,14 +2746,13 @@ function makeUI() {
       </div>
       <div class="lp-autonomy-divider"></div>
       <label class="lp-checkline"><input data-lp="relationAutoSync" type="checkbox" checked /> 根据正文同步好友关系和申请</label>
-      <label class="lp-checkline"><input data-lp="phoneInPast" type="checkbox" /> 小手机时间早于主线：暂停关系同步</label>
+      <label class="lp-checkline"><input data-lp="phoneInPast" type="checkbox" /> 小手机时间早于主线：暂停关系同步及正文记忆读取</label>
       <label class="lp-checkline"><input data-lp="characterRequests" type="checkbox" /> 交换联系方式后，允许角色自主决定是否申请好友（额外消耗一次模型请求）</label>
       <div class="lp-autonomy-status" data-lp="autonomyStatus"></div>
       <div class="lp-autonomy-buttons">
         <button data-lp="saveAutonomy" type="button">保存活动设置</button>
         <button data-lp="rescanRelations" type="button">重新检查主线关系</button>
         <button data-lp="testAutonomy" type="button">立即测试主动私聊</button>
-        <button data-lp-open="diagnostics" type="button">查看运行日志</button>
       </div>
     </details>
     <details class="lp-me-section">
@@ -2679,7 +2875,6 @@ function makeUI() {
             <label class="lp-option-file">导入聊天记录 JSON<input type="file" accept="application/json,.json" data-lp="importChat" /></label>
             <button type="button" data-lp="clearChat">清空聊天记录</button>
             <button type="button" data-lp="deleteChat" class="lp-danger-action">删除会话</button>
-            <button type="button" data-lp-open="diagnostics">运行日志</button>
             <div class="lp-settings-status" data-lp="status" role="status" aria-live="polite"></div>
           </div>
         </section>
@@ -2706,6 +2901,19 @@ function makeUI() {
           <h2>世界书条目</h2>
           <select data-lp="worldSource" aria-label="选择世界书"></select>
           <button type="button" class="lp-settings-link" data-lp="openWorldPicker">打开条目列表 · 搜索与勾选</button>
+          <p class="lp-settings-hint">可从多本世界书分别勾选条目。选中代表允许触发，不等于每次注入；按手机聊天的关键词与常驻规则匹配，最多约 12,000 字符。</p>
+          <h2>正文记忆与互通</h2>
+          <label class="lp-entry-option"><input type="checkbox" data-lp="readMainlineMemory" checked /> 只读获取已安装插件的正文记忆</label>
+          <label class="lp-field">记忆来源<select data-lp="memorySource">
+            <option value="auto">自动识别（嘎嘎小狗 → 柏宝书 → 留痕记忆）</option>
+            <option value="gaga">仅嘎嘎小狗已注入记忆</option>
+            <option value="baibai">仅柏宝书公开接口</option>
+            <option value="trace">仅留痕记忆已知字段</option>
+            <option value="off">不读取</option>
+          </select></label>
+          <label class="lp-entry-option"><input type="checkbox" data-lp="phoneToMainline" /> 将手机聊天记录作为独立经历注入正文（默认关闭）</label>
+          <p class="lp-settings-hint">正文记忆不会写回其他插件；主线过去模式会屏蔽记忆。手机记录影响正文可随时关闭，不会修改正文消息。实际每次注入数量见首页「运行日志」。</p>
+          <button type="button" class="lp-settings-link" data-lp="saveContextSettings">保存记忆与互通设置</button>
           <h2>打开方式</h2>
           <label class="lp-entry-option"><input type="checkbox" data-lp="floatingLauncher" /> 显示悬浮按钮</label>
           <div class="lp-settings-status" data-lp="settingsStatus" role="status" aria-live="polite"></div>
@@ -2780,7 +2988,7 @@ function mount() {
         'friendLabel', 'friendActions','profileAvatar','profileName','profileDescription','contactEvidence','contactExchange','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcScanState','npcCandidates','npcSaveCandidates','storyPeopleList','viewPrimaryContact','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','avatarUserFile','resetCharAvatar','resetUserAvatar',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
-        'presetSource','presetEntries','worldSource','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themeIcons',
+        'presetSource','presetEntries','worldSource','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','readMainlineMemory','memorySource','phoneToMainline','saveContextSettings','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themeIcons',
         'diagnostics', 'diagnosticState', 'copyDiagnostics', 'clearDiagnostics',
         'messages','messageActions','quotedPreview','emojiPanel','morePanel','chatImageInput','input', 'retry', 'send', 'launcher']
         .map(key => [key, key === 'launcher' ? floating : root.querySelector(`[data-lp="${key}"]`)]));
@@ -2838,6 +3046,7 @@ function mount() {
     nodes.apiMode.addEventListener('change', () => { nodes.customApiFields.hidden = nodes.apiMode.value !== 'custom'; });
     nodes.saveApi.addEventListener('click', () => void savePhoneApi());
     nodes.saveMessageStyle.addEventListener('click', () => void savePhoneMessageStyle());
+    nodes.saveContextSettings.addEventListener('click',()=>void saveContextSettings());
     nodes.presetEntries.addEventListener('change', event => { if (event.target?.dataset?.configKind) onConfigChange(event.target); });
     nodes.worldEntries.addEventListener('change', event => { if (event.target?.dataset?.configKind) onConfigChange(event.target); });
     nodes.themeFont.addEventListener('change', () => changeTheme({font:nodes.themeFont.value}));
@@ -2928,16 +3137,19 @@ function mount() {
             momentImageDraft='';nodes?.momentsPreview?.replaceChildren();
             statusText = '';
             statusKind = 'info';
+            syncMainlinePrompt(context());
             render();
             void syncStoryRelationships(context());
             void tickAutonomousActivity();
         };
         listeningSource.on(listeningEvent, chatChangedHandler);
     }
+    syncMainlinePrompt(ctx);
     render();
 }
 
 function unmount() {
+    clearMainlinePrompt(context());
     if(pickerFocusListener)window.removeEventListener('focus',pickerFocusListener);
     pickerFocusListener=null;
     if(pickerReturnTimer)clearTimeout(pickerReturnTimer);

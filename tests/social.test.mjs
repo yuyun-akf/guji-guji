@@ -153,14 +153,14 @@ test('cancelled file picker preserves chat, draft and scroll with a short return
     assert.equal(box.api.filePickerReturning(),false);
 });
 
-test('Me owns composer and sticker upload, Discover owns feed, contacts has no explanatory group',()=>{
+test('Discover owns moment composer, Me owns sticker upload and persona, contacts has no explanatory group',()=>{
     const box=runtime();box.document.createElement=()=>({innerHTML:''});
     const html=box.api.makeUI().innerHTML;
     const section=name=>html.split('data-lp-screen="'+name+'"')[1].split('</section>')[0];
     const me=section('me'),discover=section('discover'),contacts=section('contacts');
-    assert.ok(me.includes('data-lp="momentsPost"'));assert.ok(me.includes('data-lp="stickerUpload"'));assert.ok(me.includes('data-lp="myPersona"'));
-    assert.ok(!me.includes('data-lp-open="settings"'));assert.ok(!me.includes('data-lp-open="theme"'));
-    assert.ok(discover.includes('data-lp="momentsFeed"'));assert.ok(!discover.includes('data-lp="momentsText"'));
+    assert.ok(!me.includes('data-lp="momentsPost"'));assert.ok(me.includes('data-lp="stickerUpload"'));assert.ok(me.includes('data-lp="myPersona"'));
+    assert.ok(me.includes('data-lp-open="settings"'));assert.ok(me.includes('data-lp-open="theme"'));
+    assert.ok(discover.includes('data-lp="momentsFeed"'));assert.ok(discover.includes('data-lp="momentsText"'));
     assert.ok(!contacts.includes('storyPeopleList'));assert.ok(!html.includes('不代表已经拥有联系方式'));assert.ok(!html.includes('data-emoji='));assert.ok(!html.includes('npcScanAllWorlds'));
 });
 
