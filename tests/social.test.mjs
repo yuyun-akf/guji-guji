@@ -138,6 +138,129 @@ test('posting from Me uses shared per-story moments and keeps old primary/NPC me
     assert.equal(data.conversations['npc:a'].moments,undefined);
 });
 
+function socialStory() {
+    const data={version:1,storyTime:'2026-01-18T17:41',messages:[{text:'主角旧消息'}],friendship:{state:'friends'},
+        contacts:[{id:'npc:b',name:'室友B'},{id:'npc:c',name:'网友C'}],
+        conversations:{'npc:b':{messages:[{text:'室友旧消息'}],friendship:{state:'friends'}},
+            'npc:c':{messages:[{text:'网友旧消息'}],friendship:{state:'friends'}}},
+        moments:[{id:'m-user',authorId:'user',author:'梨子',text:'我的动态'},
+            {id:'m-c',authorId:'npc:c',author:'网友C',text:'C的动态'}]};
+    const ctx={name1:'梨子',characterId:0,chatId:'A',characters:[{name:'主角A',data:{description:'不透露演员职业'}}],
+        chatMetadata:{st_little_phone_v1:data},saveMetadata:async()=>{}};
+    return {ctx,data};
+}
+
+test('moments require explicit mutual contact links between characters, not just shared user friendship',()=>{
+    const {ctx,data}=socialStory(),box=runtime(ctx);
+    const api=vm.runInContext('({momentCandidates,charactersHaveContact,visibleMomentComments,contactLinkKey})',box);
+    const cPost=data.moments[1],uPost=data.moments[0];
+    assert.deepEqual(Array.from(api.momentCandidates(ctx,cPost)),[],'A and roommate B cannot view C merely because both friended the user');
+    assert.deepEqual(Array.from(api.momentCandidates(ctx,uPost)),['primary','npc:b','npc:c']);
+    data.contactLinks={[api.contactLinkKey('primary','npc:c')]:true};
+    assert.equal(api.charactersHaveContact(ctx,'primary','npc:c'),true);
+    assert.equal(api.charactersHaveContact(ctx,'npc:b','npc:c'),false);
+    assert.deepEqual(Array.from(api.momentCandidates(ctx,cPost)),['primary']);
+    cPost.comments=[{id:'x1',actorId:'npc:b',author:'室友B',text:'不知道对方是谁'},
+        {id:'x2',actorId:'user',author:'梨子',text:'你好'}];
+    assert.deepEqual(Array.from(api.visibleMomentComments(ctx,cPost,'primary'),c=>c.id),['x2']);
+    data.conversations['npc:c'].friendship={state:'blocked'};
+    assert.equal(api.charactersHaveContact(ctx,'primary','npc:c'),false,'link is inactive if either person is no longer a friend');
+});
+
+test('manually confirming and removing character contact links persists without touching chats',async()=>{
+    const {ctx}=socialStory(),box=runtime(ctx);
+    const change=vm.runInContext('changeContactLink',box);
+    await change('npc:b',true);
+    let root=ctx.chatMetadata.st_little_phone_v1;
+    assert.equal(root.contactLinks['npc:b|primary'],true);
+    assert.equal(root.contactLinks['npc:c|primary'],undefined);
+    assert.equal(root.messages[0].text,'主角旧消息');
+    await change('npc:b',false);
+    root=ctx.chatMetadata.st_little_phone_v1;
+    assert.equal(root.contactLinks['npc:b|primary'],undefined);
+});
+
+test('user likes, unlikes, comments, replies and reposts without affecting old private chats',async()=>{
+    const {ctx}=socialStory(),box=runtime(ctx);
+    box.window.prompt=()=> '转发给朋友们看看';
+    const ops=vm.runInContext('({toggleMomentLike,addMomentComment,repostMoment,clearMomentsUnread})',box);
+    await ops.toggleMomentLike('m-c');
+    assert.equal(ctx.chatMetadata.st_little_phone_v1.moments[1].likes[0].actorId,'user');
+    await ops.toggleMomentLike('m-c');
+    assert.equal(ctx.chatMetadata.st_little_phone_v1.moments[1].likes.length,0);
+    await Promise.all([ops.toggleMomentLike('m-c'),ops.toggleMomentLike('m-c')]);
+    assert.equal(ctx.chatMetadata.st_little_phone_v1.moments[1].likes.length,0,'rapid like/unlike operations must serialize');
+    await ops.addMomentComment('m-c','你好呀');
+    const first=ctx.chatMetadata.st_little_phone_v1.moments[1].comments[0];
+    await ops.addMomentComment('m-c','补充回复',first.id);
+    assert.equal(ctx.chatMetadata.st_little_phone_v1.moments[1].comments[1].replyTo,first.id);
+    await ops.repostMoment('m-c');
+    const state=ctx.chatMetadata.st_little_phone_v1;
+    assert.equal(state.moments.length,3);
+    assert.equal(state.moments[2].repostOf.id,'m-c');
+    assert.equal(state.moments[2].authorId,'user');
+    assert.equal(state.messages[0].text,'主角旧消息');
+    assert.equal(state.conversations['npc:b'].messages[0].text,'室友旧消息');
+    state.unreadMoments=4;
+    await ops.clearMomentsUnread(ctx);
+    assert.equal(ctx.chatMetadata.st_little_phone_v1.unreadMoments,0);
+});
+
+test('character moment parser allows only declared reply IDs and never invents interactions',()=>{
+    const api=vm.runInContext('({parseMomentDecision})',runtime());
+    assert.equal(api.parseMomentDecision('LIKE').kind,'like');
+    assert.equal(api.parseMomentDecision('COMMENT:太好了').text,'太好了');
+    assert.equal(api.parseMomentDecision('REPLY:x2:真的',['x2']).replyTo,'x2');
+    assert.equal(api.parseMomentDecision('REPLY:x1:不认识',['x2']).kind,'skip');
+    assert.equal(api.parseMomentDecision('替别人点了赞').kind,'skip');
+});
+
+test('character AI interaction is blocked across unlinked contacts and saved with notifications once linked',async()=>{
+    const {ctx,data}=socialStory();let calls=0;
+    ctx.generateRaw=async()=>{calls++;return 'COMMENT:这是什么好东西？';};
+    const box=runtime(ctx);
+    vm.runInContext(`mounted=true;root={classList:{contains:()=>false}};nodes={momentFeedback:{textContent:''}};
+        render=()=>{};startBusy=()=>{busy=true;return 1};finishBusy=()=>{busy=false};`,box);
+    const run=vm.runInContext('runMomentInteraction',box);
+    await run('m-c','primary',false);
+    assert.equal(calls,0,'two characters lacking contact cannot receive a model call about the other');
+    data.contactLinks={'npc:c|primary':true};
+    await run('m-c','primary',false);
+    assert.equal(calls,1);
+    const saved=ctx.chatMetadata.st_little_phone_v1;
+    assert.ok(saved.moments[1].comments,vm.runInContext('nodes.momentFeedback.textContent',box)||'no response comment');
+    assert.equal(saved.moments[1].comments[0].actorId,'primary');
+    assert.equal(saved.unreadMoments,1);
+    assert.equal(saved.momentInteractionSeen.includes('m-c'),true);
+    assert.equal(saved.messages[0].text,'主角旧消息');
+});
+
+test('new moment notifications and mutual-link settings appear in the rendered template',()=>{
+    const box=runtime();box.document.createElement=()=>({innerHTML:''});
+    const html=box.api.makeUI().innerHTML;
+    assert.ok(!html.includes('data-lp="homeMessageCount"'));
+    for(const name of ['homeMomentCount','momentFeedback','momentInteractions','contactLinks'])
+        assert.ok(html.includes('data-lp="'+name+'"'));
+    assert.ok(html.includes('data-lp-icon="discover"'));
+    const cfg=vm.runInContext('socialConfig({})',box);
+    assert.equal(cfg.momentInteractions,false,'automatic paid interaction must default off');
+});
+
+test('autonomous character moments create unread Discover notifications without changing private messages',async()=>{
+    const {ctx}=socialStory();
+    ctx.generateRaw=async()=> '今天阳光真好';
+    const box=runtime(ctx);
+    const tick=vm.runInContext('tickAutonomousActivity',box);
+    const before=ctx.chatMetadata.st_little_phone_v1.moments.length;
+    await tick('moments');
+    const now=ctx.chatMetadata.st_little_phone_v1;
+    assert.equal(now.moments.length,before+1);
+    assert.equal(now.moments.at(-1).authorId,'primary');
+    assert.equal(now.unreadMoments,1);
+    assert.equal(now.messages[0].text,'主角旧消息');
+    assert.equal(now.conversations['npc:c'].messages[0].text,'网友旧消息');
+});
+
 test('cancelled file picker preserves chat, draft and scroll with a short return guard',()=>{
     const box=runtime();
     vm.runInContext(`mounted=true;activeScreen='chat';nodes={input:{value:'未发送草稿'},messages:{scrollTop:123}};

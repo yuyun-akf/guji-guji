@@ -1567,6 +1567,21 @@
 #st-little-phone-root .lp-moment-photo{display:block;max-width:min(100%,280px);max-height:330px;object-fit:contain;border-radius:10px;background:#f4eff7;}
 #st-little-phone-root .lp-moment p{font-size:14px;line-height:1.55;margin:0;white-space:pre-wrap;overflow-wrap:anywhere;}
 #st-little-phone-root .lp-moment small{font-size:10px;color:#a89bac;}
+#st-little-phone-root .lp-moment-repost{padding:11px;background:#f6f1f9;border-radius:10px;color:#756280;font-size:12px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;}
+#st-little-phone-root .lp-moment-likes{padding:7px 9px;border-radius:9px;background:#f7f2fa;color:#9573b1;font-size:12px;overflow-wrap:anywhere;}
+#st-little-phone-root .lp-moment-comments{display:grid;gap:7px;padding:9px;border-radius:10px;background:#faf7fc;}
+#st-little-phone-root .lp-moment-comment{display:flex;align-items:flex-start;justify-content:space-between;gap:5px;font-size:12px;line-height:1.5;overflow-wrap:anywhere;}
+#st-little-phone-root .lp-moment-comment span{min-width:0;flex:1;}
+#st-little-phone-root .lp-moment-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px;}
+#st-little-phone-root .lp-moment-actions button,#st-little-phone-root .lp-moment-comment button,#st-little-phone-root .lp-moment-editor button{
+ min-height:31px;padding:5px 8px;border:1px solid #e8dced;background:#f9f5fc;color:#8767a3;border-radius:9px;font:inherit;font-size:11px;cursor:pointer;
+}
+#st-little-phone-root .lp-moment-actions select{min-width:0;max-width:115px;padding:5px 4px;border:1px solid #e8dced;border-radius:9px;background:white;color:#695777;font-size:11px;}
+#st-little-phone-root .lp-moment-editor{display:flex;gap:8px;align-items:flex-end;}
+#st-little-phone-root .lp-moment-editor[hidden]{display:none!important;}
+#st-little-phone-root .lp-moment-editor textarea{flex:1;min-width:0;min-height:54px;resize:vertical;padding:8px;border:1px solid #e8dced;border-radius:9px;font:inherit;font-size:12px;}
+#st-little-phone-root .lp-contact-links p{color:#81718b;font-size:12px;line-height:1.5;margin:6px 0;}
+#st-little-phone-root .lp-contact-links [data-lp="contactLinks"]{display:grid;gap:8px;margin-top:10px;font-size:12px;color:#63546e;}
 
 #st-little-phone-root .lp-request-entry{display:flex;flex-direction:column;margin:0;background:#fff;border-bottom:1px solid #ede7f2;}
 #st-little-phone-root .lp-request-entry .lp-conversation-row{border-bottom:none;}
