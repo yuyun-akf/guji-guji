@@ -371,10 +371,10 @@ test('modal entirely outside the viewport produces a visible diagnostic error', 
 test('diagnostic bootstrap is the manifest entry and exposes lifecycle hooks', () => {
     const manifest = JSON.parse(readFileSync(resolve(testRoot, '../manifest.json'), 'utf8'));
     const bootstrap = readFileSync(resolve(testRoot, '../bootstrap.js'), 'utf8');
-    assert.equal(manifest.version, '0.7.0');
+    assert.equal(manifest.version, '0.7.1');
     assert.equal(manifest.minimum_client_version, '1.18.0');
     assert.equal(manifest.js, 'bootstrap.js');
-    assert.match(bootstrap, /import\('\.\/index\.js\?v=0\.7\.0'\)/);
+    assert.match(bootstrap, /import\('\.\/index\.js\?v=0\.7\.1'\)/);
     assert.match(bootstrap, /export function onActivate\(/);
     assert.match(bootstrap, /export function onEnable\(/);
     assert.match(bootstrap, /export function onDisable\(/);
@@ -636,13 +636,14 @@ test('legacy chat without friendship object remains a friend', () => {
     const ctx={chatMetadata:{st_little_phone_v1:{version:1,messages:[{from:'user',text:'hi'}]}}};
     assert.equal(friendshipState(readData(ctx)),'friends');
 });
-test('user lorebook friends are discovered when extra worldbook scan is enabled', async () => {
+test('user lorebook friends are discovered from the current persona binding', async () => {
     const runtime={console,Date,structuredClone,window:{}};
     vm.createContext(runtime);
     vm.runInContext(source+'\nglobalThis.scan=scanNpcSources;',runtime);
     const ctx={characters:[{name:'宁肆锦',data:{description:'宁肆锦在上课。'}}],characterId:0,chatMetadata:{},
-        getWorldInfoNames:()=>['user-设定'],loadWorldInfo:async()=>({entries:{1:{comment:'宝儿',content:'宝儿是user的朋友，认识很多年。'}}})};
-    const scan=await runtime.scan(ctx,'',true);
+        powerUserSettings:{persona_description_lorebook:'user-设定'},
+        getWorldInfoNames:()=>{throw new Error('must not enumerate all books');},loadWorldInfo:async()=>({entries:{1:{comment:'宝儿',content:'宝儿是user的朋友，认识很多年。'}}})};
+    const scan=await runtime.scan(ctx);
     assert.ok(scan.candidates.some(x=>x.name==='宝儿'));
     assert.equal(scan.worlds,1);
 });
