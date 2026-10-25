@@ -1545,3 +1545,9 @@
 #st-little-phone-root .lp-moment-photo{display:block;max-width:min(100%,280px);max-height:330px;object-fit:contain;border-radius:10px;background:#f4eff7;}
 #st-little-phone-root .lp-moment p{font-size:14px;line-height:1.55;margin:0;white-space:pre-wrap;overflow-wrap:anywhere;}
 #st-little-phone-root .lp-moment small{font-size:10px;color:#a89bac;}
+
+#st-little-phone-root .lp-request-entry{display:flex;flex-direction:column;margin:0;background:#fff;border-bottom:1px solid #ede7f2;}
+#st-little-phone-root .lp-request-entry .lp-conversation-row{border-bottom:none;}
+#st-little-phone-root .lp-request-actions{display:flex;justify-content:flex-end;gap:10px;padding:0 16px 12px;}
+#st-little-phone-root .lp-request-actions button{min-width:66px;min-height:33px;border:1px solid #d9cae5;border-radius:9px;background:#fff;color:#86699e;font:inherit;font-size:12px;padding:5px 10px;}
+#st-little-phone-root .lp-request-actions button:first-child{background:#987cb8;color:#fff;border-color:#987cb8;}
