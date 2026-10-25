@@ -416,7 +416,7 @@ function initialFriendState(ctx,id=PRIMARY_CONTACT_ID) {
 function classifyStoryFriendEvent(text,name,primary=false) {
     const chunks=String(text||'').slice(0,14000).split(/[。！？!?\n]/).map(v=>v.trim()).filter(Boolean);
     for(const clause of chunks){
-        if(!primary&&!clause.includes(name))continue;
+        if(!clause.includes(name)&&!(primary&&clause.includes('{{char}}')))continue;
         if(/(?:没有|没|尚未|还没|拒绝|假如|如果|打算|准备|想要|可能|也许|未曾|不会|不能)/.test(clause.slice(0,22)))continue;
         if(/(?:互加(?:了)?(?:微信|好友)|成为(?:了)?(?:微信|手机)好友|通过(?:了)?(?:对方|他|她)?(?:的)?好友申请|已添加.*好友|扫码后互相通过)/.test(clause))return {state:'friends',evidence:clause};
         if(/(?:发来(?:了)?好友申请|向(?:你|我|user|玩家)发送(?:了)?好友申请|申请添加(?:你|我|user|玩家)为好友|请求添加(?:你|我|user|玩家)为好友)/.test(clause))return {state:'incoming',evidence:clause};
@@ -1098,7 +1098,12 @@ function renderPersona(ctx) {
     const persona = currentPersona(ctx);
     nodes.myIdentity.textContent = persona.name;
     nodes.myPersona.textContent = persona.description || '尚未填写人设';
-    nodes.myAvatar.onerror=()=>{nodes.myAvatar.onerror=null;nodes.myAvatar.src='/img/user-default.png';};
+    nodes.myAvatar.onerror=()=>{
+        nodes.myAvatar.onerror=null;
+        const display=persona.name.slice(0,1).replace(/[<>&"']/g,'');
+        const svg='<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96"><rect width="96" height="96" rx="20" fill="#d4bee9"/><circle cx="48" cy="36" r="17" fill="#fff" opacity=".85"/><path d="M16 91c2-23 19-35 32-35s30 12 32 35" fill="#fff" opacity=".85"/></svg>';
+        nodes.myAvatar.src='data:image/svg+xml,'+encodeURIComponent(svg);
+    };
     nodes.myAvatar.src=readRootData(ctx).avatars?.user||persona.avatar;
 }
 
