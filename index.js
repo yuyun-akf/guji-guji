@@ -1096,6 +1096,102 @@ function renderPersona(ctx) {
     nodes.myAvatar.onerror=()=>{nodes.myAvatar.onerror=null;nodes.myAvatar.src='/img/user-default.png';};
     nodes.myAvatar.src=readRootData(ctx).avatars?.user||persona.avatar;
 }
+
+function loadAutonomyUI(ctx=context()) {
+    if(!nodes?.autoMessagesMode)return;
+    const cfg=socialConfig(readRootData(ctx));
+    nodes.autoMessagesMode.value=cfg.messages.mode;
+    nodes.autoMessagesDays.value=String(cfg.messages.days);
+    nodes.autoMomentsMode.value=cfg.moments.mode;
+    nodes.autoMomentsDays.value=String(cfg.moments.days);
+    nodes.relationAutoSync.checked=cfg.relationSync;
+    nodes.phoneInPast.checked=cfg.phoneInPast;
+    const next=readRootData(ctx).socialSchedule||{};
+    const due=key=>Number(next[key]?.nextDue)>0?new Date(next[key].nextDue).toLocaleString():'未启用';
+    nodes.autonomyStatus.textContent='下次私聊：'+due('messages')+'；下次朋友圈：'+due('moments');
+}
+async function saveAutonomySettings() {
+    if(busy)return;
+    const ctx=context();
+    if(!selectedCharacter(ctx))return;
+    const old=readRootData(ctx),previous=socialConfig(old);
+    const cfg={
+        messages:{mode:nodes.autoMessagesMode.value,days:Number(nodes.autoMessagesDays.value)},
+        moments:{mode:nodes.autoMomentsMode.value,days:Number(nodes.autoMomentsDays.value)},
+        relationSync:nodes.relationAutoSync.checked,phoneInPast:nodes.phoneInPast.checked
+    };
+    const verified=socialConfig({socialConfig:cfg});
+    const next=structuredClone(old);
+    next.socialConfig=verified;
+    next.socialSchedule={...(old.socialSchedule||{})};
+    for(const kind of ['messages','moments']){
+        const before=previous[kind],after=verified[kind];
+        if(before.mode!==after.mode||before.days!==after.days||!next.socialSchedule[kind]?.nextDue){
+            next.socialSchedule[kind]={nextDue:nextActivityTime(after),cursor:0};
+        }
+    }
+    try {await writeData(ctx,{...next,__contactId:PRIMARY_CONTACT_ID});loadAutonomyUI(ctx);setStatus('角色活动间隔已保存');}
+    catch(e){setStatus(recordError('保存自主活动设置',e),'error');}
+}
+function autonomyContacts(ctx) {
+    const root=readRootData(ctx);
+    return [PRIMARY_CONTACT_ID,...root.contacts.map(c=>c.id)].filter(id=>friendshipState(readData(ctx,id))==='friends');
+}
+async function tickAutonomousActivity() {
+    if(autonomousWorking||relationSyncWorking||busy||!extensionEnabled||document.visibilityState==='hidden')return;
+    const ctx=context();
+    if(!selectedCharacter(ctx)||!ctx?.chatMetadata)return;
+    const base=readRootData(ctx),cfg=socialConfig(base);
+    const now=Date.now();
+    const channel=['messages','moments'].find(kind=>cfg[kind].mode!=='off'&&
+        Number(base.socialSchedule?.[kind]?.nextDue)>0&&base.socialSchedule[kind].nextDue<=now);
+    if(!channel)return;
+    const friends=autonomyContacts(ctx);
+    if(!friends.length)return;
+    autonomousWorking=true;
+    const origMetadata=ctx.chatMetadata,origChar=ctx.characterId,origChat=ctx.chatId;
+    const schedule={...(base.socialSchedule||{})},current=schedule[channel]||{};
+    const id=friends[(current.cursor||0)%friends.length];
+    schedule[channel]={nextDue:nextActivityTime(cfg[channel],now),cursor:(current.cursor||0)+1,lastAttempt:now};
+    // Persist the next due *before* requesting model output, so refreshes never replay missed occurrences.
+    const work=structuredClone(base);work.socialSchedule=schedule;
+    try {
+        await writeData(ctx,{...work,__contactId:PRIMARY_CONTACT_ID});
+        const same=()=>ctx.chatMetadata===origMetadata&&ctx.characterId===origChar&&ctx.chatId===origChat;
+        if(!same())return;
+        const contact=contactCharacter(ctx,id),data=structuredClone(readData(ctx,id));
+        const system=await composePhonePrompt(ctx,contact,data);
+        let answer;
+        if(channel==='messages'){
+            answer=await generateWithTimeout(ctx,{
+                systemPrompt:[system,messageStylePrompt(data),'【主动发消息】请你作为当前联系人，结合关系、角色性格、现有私聊和最近生活，自然地给 user 发一条主动消息。不是回复正在等待的提问。可以决定不打扰，此时只输出 [SKIP]。不得替 user 说话，也不要虚构已经发生的事件。'].join('\n\n'),
+                prompt:[...buildPrompt(data).slice(-10),{role:'user',content:'【系统触发：主动发消息时机】可以自主决定是否联系 user。'}]
+            },data);
+        }else{
+            answer=await generateWithTimeout(ctx,{
+                systemPrompt:system+'\n\n【角色朋友圈】写一条此角色愿意公开的朋友圈动态，不超过120字。不代替 user 发言，不虚构重大事件；不想发布只输出 [SKIP]。',
+                prompt:[{role:'user',content:'【系统触发：朋友圈发布时机】请按角色性格自行决定。'}]
+            },data);
+        }
+        if(!same()||!answer||/^\s*\[SKIP\]\s*$/i.test(answer))return;
+        if(channel==='messages'){
+            const messages=splitPhoneReply(String(answer),data).slice(0,4);
+            for(const message of messages)data.messages.push(makeMessage('character',message,data.storyTime));
+            await writeData(ctx,{...data,__contactId:id});
+        }else{
+            const fresh=structuredClone(readRootData(ctx));
+            fresh.moments=Array.isArray(fresh.moments)?fresh.moments:[];
+            fresh.moments.push({id:'moment-'+Date.now(),author:contactDisplayName(ctx,id),
+                contactId:id,text:String(answer).slice(0,450),storyTime:fresh.storyTime,createdAt:new Date().toISOString()});
+            fresh.moments=fresh.moments.slice(-100);
+            await writeData(ctx,{...fresh,__contactId:PRIMARY_CONTACT_ID});
+        }
+        if(mounted&&same()){render();loadAutonomyUI(ctx);}
+        recordActivity('自主活动',contactDisplayName(ctx,id)+' '+(channel==='messages'?'发来私聊':'发布了朋友圈'),'success');
+    }catch(e){recordError('角色自主活动',e);}
+    finally{autonomousWorking=false;}
+}
+
 function renderMoments(ctx) {
     if (!nodes?.momentsFeed) return;
     nodes.momentsFeed.replaceChildren();
