@@ -6,7 +6,7 @@ import vm from 'node:vm';
 const main = readFileSync(new URL('../index.js', import.meta.url), 'utf8').replaceAll('export function ', 'function ');
 const boot = readFileSync(new URL('../bootstrap.js', import.meta.url), 'utf8')
     .replaceAll('export function ', 'function ')
-    .replace("import('./index.js?v=0.8.8')", 'mockImport()');
+    .replace("import('./index.js?v=0.8.9')", 'mockImport()');
 
 function dom() {
     const observers = new Set();
@@ -119,31 +119,47 @@ test('mount failure keeps wand entry and permits a clean retry', () => {
 test('extension settings drawer is unique, opens phone, and toggles the real floating launcher', () => {
     const host=dom(),settings=host.document.createElement('div');
     settings.id='extensions_settings';host.document.body.append(settings);
+    const stale=host.document.createElement('details');stale.id='gujiguji-extension-settings';settings.append(stale);
     const ctx={extensionSettings:{gujiguji:{}},chatMetadata:{},saveSettingsDebounced(){this.saved=(this.saved||0)+1;}};
     const runtime={...host,console,Date,structuredClone,
         window:{SillyTavern:{getContext:()=>ctx},addEventListener(){},removeEventListener(){}},
         setTimeout(){return 1;},clearTimeout(){},setInterval(){return 1;},clearInterval(){}};
     vm.createContext(runtime);
-    vm.runInContext(main+'\nrender=()=>{};renderDiagnostics=()=>{};globalThis.api={onActivate,onDisable,controls:()=>nodes};',runtime);
+    vm.runInContext(main+'\nrender=()=>{};renderDiagnostics=()=>{};globalThis.api={onActivate,onDisable,updateLauncherVisibility,controls:()=>nodes};',runtime);
     runtime.api.onActivate();
     assert.equal(settings.children.length,1);
-    assert.equal(host.document.getElementById('gujiguji-extension-settings').tagName,'details');
+    const panel=host.document.getElementById('gujiguji-extension-settings');
+    assert.notEqual(panel,stale,'replace a stale unthemed drawer after hot reload');
+    assert.equal(panel.tagName,'div');
+    assert.match(panel.querySelector('.inline-drawer-header').className,/inline-drawer-toggle/);
+    assert.ok(panel.querySelector('.inline-drawer-icon'),'native SillyTavern theme chevron must be used');
+    assert.ok(panel.querySelector('.inline-drawer-content'),'native extension body must inherit theme');
+    assert.equal(typeof panel.querySelector('.menu_button').listeners.click,'function');
     const checkbox=host.document.getElementById('gujiguji-host-floating');
     assert.equal(checkbox.checked,false);
+    const launcher=host.document.getElementById('gujiguji-floating-launcher');
+    const importantWrites=[];
+    launcher.style.setProperty=(name,value,priority)=>{importantWrites.push([name,value,priority]);
+        launcher.style[({ 'z-index':'zIndex', 'pointer-events':'pointerEvents' })[name]||name]=value;};
     checkbox.checked=true;checkbox.listeners.change();
     assert.equal(ctx.extensionSettings.gujiguji.floatingLauncher,true);
     assert.equal(ctx.saved,1);
-    const launcher=host.document.getElementById('gujiguji-floating-launcher');
     assert.equal(launcher.hidden,false);
     assert.equal(launcher.style.display,'grid');
+    assert.ok(importantWrites.some(([name,value,priority])=>name==='display'&&value==='grid'&&priority==='important'));
+    assert.equal(launcher.style.position,'fixed');
+    assert.ok(launcher.querySelector('.fa-mobile-screen-button'),'launcher should have a smartphone icon');
+    assert.match(host.document.getElementById('gujiguji-host-floating-status').textContent,/已开启/);
+    launcher.remove();runtime.api.updateLauncherVisibility();
+    assert.equal(host.document.getElementById('gujiguji-floating-launcher'),launcher,'reattach launcher if host/theme removes it');
     host.mutate();assert.equal(settings.children.length,1);
     checkbox.checked=false;checkbox.listeners.change();
     assert.equal(launcher.hidden,true);
     assert.equal(launcher.style.display,'none');
     runtime.api.onDisable();assert.equal(settings.children.length,0);
     const css=readFileSync(new URL('../style.css',import.meta.url),'utf8');
-    assert.match(css,/#gujiguji-floating-launcher\.lp-launcher\s*\{[\s\S]*?position:\s*fixed/);
-    assert.match(css,/#gujiguji-floating-launcher\.lp-launcher\[hidden\]/);
+    assert.match(css,/#gujiguji-floating-launcher\s*\{[\s\S]*?position:\s*fixed/);
+    assert.match(css,/#gujiguji-floating-launcher\[hidden\]/);
 });
 
 function bootRuntime(mockImport) {

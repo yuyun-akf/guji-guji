@@ -1,5 +1,12 @@
 # 回归记录
 
+## v0.8.9 — 2026-10-26
+
+- `node --test tests/core.test.mjs tests/startup.test.mjs tests/social.test.mjs`：**92/92 通过**；静态语法与 Git diff 空白检查通过。
+- 受控 DOM 回归确认：旧 `<details>` 面板可替换；设置页仅有单个原生 `inline-drawer-header`、`inline-drawer-content` 和酒馆按钮；玩家切换悬浮状态会调用 `saveSettingsDebounced`、改变真实按钮可见性、更新状态文字；按钮被宿主移除后能重新挂载；内联样式优先级 `important` 保持定位。
+- 静态核对 SillyTavern 1.18.0 官方 `index.html` 的扩展设置容器和 `script.js` 的 `.inline-drawer-toggle` 委托事件，样式引用宿主主题变量。不等于真实页面可点、可见测试。
+- **待安卓实测**：第三方酒馆美化是否对扩展入口应用主题、悬浮图标在不同 WebView 是否可见及可点击、实际保存后刷新能否保留悬浮状态。没有安装到玩家的酒馆实例。
+
 ## v0.8.8 — 2026-10-26
 
 - `node --test tests/core.test.mjs tests/startup.test.mjs tests/social.test.mjs`：**92/92 通过**；`node --check index.js`、`node --check bootstrap.js`、`git diff --check` 通过。
