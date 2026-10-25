@@ -38,6 +38,7 @@ let activeScreen = 'home';
 let lifecycleToken = 0;
 const diagnostics = [];
 let configWriteQueue = Promise.resolve();
+const transientApiKeys = new Map();
 const APP_ICONS = {chat:'💬',diagnostics:'🛠️',settings:'⚙️',calendar:'📅',theme:'🎨',album:'🖼️',shopping:'🛍️',takeout:'🥡'};
 const SCREENS = new Set(['home', 'chat', 'settings', 'diagnostics', 'calendar', 'theme']);
 
@@ -111,6 +112,81 @@ function loadWallpaper(file) {
     reader.onload = () => { if (typeof reader.result === 'string') changeTheme({wallpaper:reader.result}); };
     reader.onerror = () => setStatus('读取图片失败', 'error');
     reader.readAsDataURL(file);
+}
+function apiSessionId(ctx) {
+    return String(ctx?.characterId ?? 'none') + '::' + String(ctx?.chatId ?? ctx?.getCurrentChatId?.() ?? 'default');
+}
+function readApiOptions(data) {
+    const cfg = data?.config?.api || {};
+    return {mode:cfg.mode === 'custom' ? 'custom' : 'inherit',
+        url:typeof cfg.url === 'string' ? cfg.url : '',
+        model:typeof cfg.model === 'string' ? cfg.model : '',
+        maxTokens:Number.isFinite(Number(cfg.maxTokens)) ? Math.max(32,Math.min(4096,Number(cfg.maxTokens))) : 320};
+}
+function normalizeApiUrl(value) {
+    let url;
+    try { url = new URL(String(value || '').trim()); } catch { throw new Error('API 地址无效'); }
+    if (!['https:','http:'].includes(url.protocol)) throw new Error('API 地址须以 HTTPS 开头');
+    if (url.protocol === 'http:' && !['localhost','127.0.0.1','[::1]'].includes(url.hostname)) throw new Error('远程 API 请使用 HTTPS');
+    if (url.search || url.hash) throw new Error('请填写不含查询参数的 API 地址');
+    url.pathname = url.pathname.replace(/\/+$/,'').replace(/\/chat\/completions$/,'') || '/';
+    return url.toString().replace(/\/$/,'');
+}
+async function phoneGenerate(ctx, options, data) {
+    const cfg = readApiOptions(data);
+    if (cfg.mode !== 'custom') {
+        if (typeof ctx?.generateRaw !== 'function') throw new Error('酒馆生成接口不可用');
+        return ctx.generateRaw(options);
+    }
+    if (!ctx?.ChatCompletionService?.sendRequest) throw new Error('酒馆独立 API 接口不可用');
+    const key = transientApiKeys.get(apiSessionId(ctx));
+    if (!key) throw new Error('独立 API 密钥未设置，请在「设置」中填写');
+    const url = normalizeApiUrl(cfg.url);
+    if (!cfg.model.trim()) throw new Error('请填写独立 API 模型名称');
+    const prompts = Array.isArray(options.prompt) ? options.prompt : [{role:'user',content:String(options.prompt || '')}];
+    const messages = [{role:'system',content:String(options.systemPrompt || '')},
+        ...prompts.map(m=>({role:m.role==='assistant'?'assistant':'user',content:String(m.content || '')}))];
+    const result = await ctx.ChatCompletionService.sendRequest({
+        chat_completion_source:'custom',custom_url:url,
+        custom_include_headers:{Authorization:'Bearer ' + key},
+        model:cfg.model.trim(),messages,stream:false,max_tokens:cfg.maxTokens,temperature:0.85
+    });
+    return typeof result === 'string' ? result : result?.content || '';
+}
+async function savePhoneApi() {
+    const ctx = context();
+    if (!selectedCharacter(ctx) || !nodes) return;
+    const mode = nodes.apiMode.value;
+    const url = nodes.apiUrl.value.trim();
+    const model = nodes.apiModel.value.trim();
+    const key = nodes.apiKey.value.trim();
+    if (mode === 'custom') {
+        try { normalizeApiUrl(url); } catch(e) { return setStatus(e.message,'error'); }
+        if (!model) return setStatus('请填写模型名称','error');
+        if (!key && !transientApiKeys.has(apiSessionId(ctx))) return setStatus('请填写 API 密钥','error');
+    }
+    const data = structuredClone(readData(ctx));
+    data.config ||= {};
+    data.config.api = {mode,url,model,maxTokens:320};
+    try {
+        await writeData(ctx,data);
+        if (key) transientApiKeys.set(apiSessionId(ctx),key);
+        nodes.apiKey.value = '';
+        setStatus('连接配置已保存');
+        loadPhoneApiUI();
+    } catch(e) { setStatus(recordError('保存 API 配置',e),'error'); }
+}
+function loadPhoneApiUI() {
+    if (!nodes?.apiMode) return;
+    const ctx = context();
+    const cfg = readApiOptions(readData(ctx));
+    nodes.apiMode.value = cfg.mode;
+    nodes.apiUrl.value = cfg.url;
+    nodes.apiModel.value = cfg.model;
+    nodes.apiKey.value = '';
+    nodes.customApiFields.hidden = cfg.mode !== 'custom';
+    nodes.apiKeyState.textContent = transientApiKeys.has(apiSessionId(ctx)) ? '密钥已在本次页面中设置' : '未设置密钥';
+    updateApiInfo();
 }
 function updateApiInfo() {
     if (!nodes?.apiInfo) return;
@@ -415,11 +491,11 @@ function renderDiagnostics() {
 async function testPhoneApi() {
     const ctx = context();
     if (busy) return;
-    if (typeof ctx?.generateRaw !== 'function') return setStatus('生成接口不可用','error');
+    if (typeof ctx?.generateRaw !== 'function' && !ctx?.ChatCompletionService?.sendRequest) return setStatus('生成接口不可用','error');
     const job = startBusy('reply');
     recordActivity('连接测试', '测试原始生成请求，不写入聊天记录');
     try {
-        const answer = await generateWithTimeout(ctx, {systemPrompt:'仅回复 OK',prompt:'请回复 OK'});
+        const answer = await generateWithTimeout(ctx, {systemPrompt:'仅回复 OK',prompt:'请回复 OK'}, readData(ctx));
         if (typeof answer !== 'string' || !answer.trim()) throw new Error('API 返回空内容');
         recordActivity('连接测试成功', '收到模型响应','success');
         setStatus('连接测试成功');
@@ -429,6 +505,7 @@ async function testPhoneApi() {
 
 function setScreen(screen) {
     if (!SCREENS.has(screen) || !nodes) return;
+    const previous = activeScreen;
     activeScreen = screen;
     for (const section of root.querySelectorAll('[data-lp-screen]')) {
         section.hidden = section.dataset.lpScreen !== screen;
@@ -437,7 +514,7 @@ function setScreen(screen) {
     const titles = { home: '咕叽咕机', chat: '咕叽聊', settings: '设置', diagnostics: '运行日志', calendar: '日历', theme: '主题' };
     nodes.title.textContent = titles[screen];
     if (screen === 'diagnostics') renderDiagnostics();
-    if (screen === 'settings') void populateConfigLists();
+    if (screen === 'settings' && screen !== previous) { loadPhoneApiUI(); void populateConfigLists(); }
     if (screen === 'theme') applyTheme();
     if (screen === 'chat') nodes.messages.scrollTop = nodes.messages.scrollHeight;
 }
@@ -484,11 +561,11 @@ function finishBusy(jobId) {
     updateBusy();
 }
 
-async function generateWithTimeout(ctx, options) {
+async function generateWithTimeout(ctx, options, data) {
     let timer = null;
     try {
         return await Promise.race([
-            ctx.generateRaw(options),
+            phoneGenerate(ctx, options, data),
             new Promise((_, reject) => {
                 timer = setTimeout(() => reject(new Error('生成超过 120 秒仍未返回，可能是 API 超时或连接中断。')), GENERATION_TIMEOUT_MS);
             }),
@@ -630,7 +707,7 @@ async function runReply(ctx, char, data, session, existingJob = null) {
         const result = await generateWithTimeout(ctx, {
             systemPrompt,
             prompt: buildPrompt(data),
-        });
+        }, data);
         if (!sameSession(session)) return;
         const reply = typeof result === 'string' ? result.trim() : '';
         if (!reply) throw new Error('模型返回了空消息或不支持的回复类型。');
@@ -654,8 +731,8 @@ async function retryLastReply() {
     if (!char) return;
     const data = structuredClone(readData(ctx));
     if (friendshipState(data) !== 'friends' || data.messages.at(-1)?.from !== 'user') return;
-    if (typeof ctx.generateRaw !== 'function') {
-        setStatus(recordError('重试生成', new Error('当前酒馆未提供独立生成接口。')), 'error');
+    if (typeof ctx.generateRaw !== 'function' && !ctx.ChatCompletionService?.sendRequest) {
+        setStatus(recordError('重试生成', new Error('当前酒馆未提供生成接口。')), 'error');
         return;
     }
     await runReply(ctx, char, data, captureSession(ctx));
@@ -667,8 +744,8 @@ async function send() {
     const char = selectedCharacter(ctx);
     const content = nodes.input.value.trim();
     if (!char || !content || friendshipState(readData(ctx)) !== 'friends') return;
-    if (typeof ctx.generateRaw !== 'function') {
-        setStatus(recordError('生成前检查', new Error('当前酒馆未提供独立生成接口。')), 'error');
+    if (typeof ctx.generateRaw !== 'function' && !ctx.ChatCompletionService?.sendRequest) {
+        setStatus(recordError('生成前检查', new Error('当前酒馆未提供生成接口。')), 'error');
         return;
     }
 
@@ -733,8 +810,8 @@ async function reviewOutgoingRequest() {
     const char = selectedCharacter(ctx);
     const data = structuredClone(readData(ctx));
     if (!char || friendshipState(data) !== 'outgoing') return;
-    if (typeof ctx.generateRaw !== 'function') {
-        setStatus(recordError('处理好友申请', new Error('酒馆未提供独立生成接口，申请将保持待处理。')), 'error');
+    if (typeof ctx.generateRaw !== 'function' && !ctx.ChatCompletionService?.sendRequest) {
+        setStatus(recordError('处理好友申请', new Error('酒馆未提供生成接口，申请将保持待处理。')), 'error');
         return;
     }
     const session = captureSession(ctx);
@@ -751,7 +828,7 @@ async function reviewOutgoingRequest() {
                 ...buildPrompt(data).slice(-8),
                 { role: 'user', content: '【好友申请事件】user 请求添加你为手机好友。只输出 ACCEPT 或 REJECT。' },
             ],
-        });
+        }, data);
         if (!sameSession(session)) return;
         const response = typeof result === 'string' ? result.trim().replace(/^`+|`+$/g, '').trim() : '';
         const verdict = /^(ACCEPT|REJECT)$/i.test(response) ? response.toUpperCase() : '';
@@ -957,8 +1034,18 @@ function makeUI() {
         <section class="lp-screen lp-settings" data-lp-screen="settings" aria-label="设置" hidden>
           <h2>API</h2>
           <div class="lp-settings-card" data-lp="apiInfo">当前酒馆连接</div>
+          <label class="lp-field">连接方式<select data-lp="apiMode">
+            <option value="inherit">跟随酒馆当前连接</option>
+            <option value="custom">独立 OpenAI 兼容 API</option>
+          </select></label>
+          <div class="lp-api-custom" data-lp="customApiFields" hidden>
+            <label class="lp-field">API 地址（以 /v1 结尾）<input data-lp="apiUrl" type="url" placeholder="https://example.com/v1" autocomplete="off"/></label>
+            <label class="lp-field">模型名称<input data-lp="apiModel" type="text" placeholder="模型 ID" autocomplete="off"/></label>
+            <label class="lp-field">API 密钥（仅本次页面）<input data-lp="apiKey" type="password" placeholder="输入新密钥" autocomplete="new-password"/></label>
+            <div class="lp-api-key-state" data-lp="apiKeyState"></div>
+          </div>
+          <button type="button" class="lp-settings-link" data-lp="saveApi">保存 API 配置</button>
           <button type="button" class="lp-settings-link" data-lp="testApi">测试生成连接</button>
-          <p>当前版本沿用酒馆连接。独立模型连接尚未开放。</p>
           <h2>预设条目</h2>
           <select data-lp="presetSource" aria-label="选择预设"></select>
           <div class="lp-config-list" data-lp="presetEntries"></div>
@@ -1026,7 +1113,7 @@ function mount() {
         'homeTime', 'homeCharacter', 'homeMessageCount', 'homeLogCount',
         'friendLabel', 'friendActions',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus', 'activity', 'diagnosticToggle',
-        'presetSource','presetEntries','worldSource','worldEntries','apiInfo','testApi','themeFont','themeWallpaper','themeResetWallpaper','themeIcons',
+        'presetSource','presetEntries','worldSource','worldEntries','apiInfo','testApi','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','themeFont','themeWallpaper','themeResetWallpaper','themeIcons',
         'diagnostics', 'diagnosticState', 'copyDiagnostics', 'clearDiagnostics',
         'messages', 'input', 'retry', 'send', 'launcher']
         .map(key => [key, key === 'launcher' ? floating : root.querySelector(`[data-lp="${key}"]`)]));
@@ -1050,6 +1137,8 @@ function mount() {
     nodes.presetSource.addEventListener('change', showPresetEntries);
     nodes.worldSource.addEventListener('change', () => void showWorldEntries());
     nodes.testApi.addEventListener('click', () => void testPhoneApi());
+    nodes.apiMode.addEventListener('change', () => { nodes.customApiFields.hidden = nodes.apiMode.value !== 'custom'; });
+    nodes.saveApi.addEventListener('click', () => void savePhoneApi());
     nodes.presetEntries.addEventListener('change', event => { if (event.target?.dataset?.configKind) onConfigChange(event.target); });
     nodes.worldEntries.addEventListener('change', event => { if (event.target?.dataset?.configKind) onConfigChange(event.target); });
     nodes.themeFont.addEventListener('change', () => changeTheme({font:nodes.themeFont.value}));
