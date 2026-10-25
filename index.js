@@ -40,7 +40,7 @@ const diagnostics = [];
 let configWriteQueue = Promise.resolve();
 const transientApiKeys = new Map();
 const APP_ICONS = {chat:'💬',diagnostics:'🛠️',settings:'⚙️',calendar:'📅',theme:'🎨',album:'🖼️',shopping:'🛍️',takeout:'🥡'};
-const SCREENS = new Set(['home', 'chat', 'settings', 'diagnostics', 'calendar', 'theme']);
+const SCREENS = new Set(['home', 'chat', 'settings', 'diagnostics', 'calendar', 'theme', 'presetPicker', 'worldPicker']);
 
 function context() {
     try {
@@ -198,6 +198,8 @@ function updateApiInfo() {
     nodes.apiInfo.textContent = '连接：' + (ctx?.mainApi || '未连接') + ' · 模型：' + (typeof model === 'string' ? model : '当前所选模型');
 }
 function createCheckRow(entry, kind, checked) {
+    const row = document.createElement('div');
+    row.className = 'lp-picker-row';
     const label = document.createElement('label');
     label.className = 'lp-config-row';
     const input = document.createElement('input');
@@ -206,15 +208,43 @@ function createCheckRow(entry, kind, checked) {
     input.dataset.configId = entry.id;
     input.checked = checked;
     const title = document.createElement('span');
+    title.className = 'lp-picker-title';
     title.textContent = entry.name;
-    label.append(input, title);
-    return label;
+    label.append(input,title);
+    row.append(label);
+    if (entry.content) {
+        const excerpt = document.createElement('div');
+        excerpt.className = 'lp-picker-excerpt';
+        excerpt.textContent = entry.content.slice(0,160);
+        row.append(excerpt);
+        if (entry.content.length > 160) {
+            const detail = document.createElement('details');
+            const summary = document.createElement('summary');
+            summary.textContent = '展开条目全文';
+            const full = document.createElement('div');
+            full.className = 'lp-picker-full';
+            full.textContent = entry.content;
+            detail.append(summary,full);
+            row.append(detail);
+        }
+    }
+    row.dataset.searchText = (entry.name + ' ' + (entry.content || '')).toLocaleLowerCase();
+    return row;
+}
+function filterPicker(kind) {
+    const search = kind === 'preset' ? nodes.presetSearch : nodes.worldSearch;
+    const container = kind === 'preset' ? nodes.presetEntries : nodes.worldEntries;
+    if (!search || !container) return;
+    const term = search.value.trim().toLocaleLowerCase();
+    for (const row of container.querySelectorAll('.lp-picker-row')) {
+        row.hidden = !!term && !row.dataset.searchText.includes(term);
+    }
 }
 function availablePresetEntries(name, ctx) {
     const manager = ctx?.getPresetManager?.('openai');
     const preset = manager?.getCompletionPresetByName?.(name);
     return (preset?.prompts || []).filter(p => typeof p.content === 'string' && p.content.trim())
-        .map(p => ({id:String(p.identifier || p.name),name:p.name || p.identifier || '未命名条目'}));
+        .map(p => ({id:String(p.identifier || p.name),name:p.name || p.identifier || '未命名条目',content:p.content}));
 }
 async function populateConfigLists() {
     if (!nodes?.presetSource || !nodes?.worldSource) return;
@@ -245,7 +275,9 @@ function showPresetEntries() {
     const entries = availablePresetEntries(name, ctx);
     nodes.presetEntries.replaceChildren();
     if (!entries.length) nodes.presetEntries.textContent = '没有可选的文本条目';
+    nodes.presetPickerTitle.textContent = '预设：' + (name || '未选择');
     for (const entry of entries) nodes.presetEntries.append(createCheckRow(entry,'preset',selected.some(x=>x.preset===name && x.id===entry.id)));
+    filterPicker('preset');
 }
 async function showWorldEntries() {
     if (!nodes?.worldEntries) return;
@@ -259,10 +291,12 @@ async function showWorldEntries() {
         const entries = Object.entries(book?.entries || {}).filter(([,value]) => typeof value?.content === 'string' && value.content.trim());
         const selected = readData(ctx)?.config?.worldEntries || [];
         if (!entries.length) nodes.worldEntries.textContent = '没有可选条目';
+        nodes.worldPickerTitle.textContent = '世界书：' + name;
         for (const [key,value] of entries) {
             const id = String(value.uid ?? key);
-            nodes.worldEntries.append(createCheckRow({id,name:value.comment || value.key?.join('、') || id},'world',selected.some(x=>x.book===name && x.id===id)));
+            nodes.worldEntries.append(createCheckRow({id,name:value.comment || value.key?.join('、') || id,content:value.content},'world',selected.some(x=>x.book===name && x.id===id)));
         }
+        filterPicker('world');
     } catch (error) { nodes.worldEntries.textContent = '读取失败：' + redactDiagnostic(error?.message || error); }
 }
 function onConfigChange(input) {
@@ -511,11 +545,13 @@ function setScreen(screen) {
         section.hidden = section.dataset.lpScreen !== screen;
     }
     nodes.back.hidden = screen === 'home';
-    const titles = { home: '咕叽咕机', chat: '咕叽聊', settings: '设置', diagnostics: '运行日志', calendar: '日历', theme: '主题' };
+    const titles = { home: '咕叽咕机', chat: '咕叽聊', settings: '设置', diagnostics: '运行日志', calendar: '日历', theme: '主题', presetPicker:'选择预设条目', worldPicker:'选择世界书条目' };
     nodes.title.textContent = titles[screen];
     if (screen === 'diagnostics') renderDiagnostics();
     if (screen === 'settings' && screen !== previous) { loadPhoneApiUI(); void populateConfigLists(); }
     if (screen === 'theme') applyTheme();
+    if (screen === 'presetPicker') {nodes.presetSearch.value=''; showPresetEntries();}
+    if (screen === 'worldPicker') {nodes.worldSearch.value=''; void showWorldEntries();}
     if (screen === 'chat') nodes.messages.scrollTop = nodes.messages.scrollHeight;
 }
 
@@ -1048,13 +1084,23 @@ function makeUI() {
           <button type="button" class="lp-settings-link" data-lp="testApi">测试生成连接</button>
           <h2>预设条目</h2>
           <select data-lp="presetSource" aria-label="选择预设"></select>
-          <div class="lp-config-list" data-lp="presetEntries"></div>
+          <button type="button" class="lp-settings-link" data-lp="openPresetPicker">打开条目列表 · 搜索与勾选</button>
           <h2>世界书条目</h2>
           <select data-lp="worldSource" aria-label="选择世界书"></select>
-          <div class="lp-config-list" data-lp="worldEntries"></div>
+          <button type="button" class="lp-settings-link" data-lp="openWorldPicker">打开条目列表 · 搜索与勾选</button>
           <h2>打开方式</h2>
           <label class="lp-entry-option"><input type="checkbox" data-lp="floatingLauncher" /> 显示悬浮按钮</label>
           <div class="lp-settings-status" data-lp="settingsStatus" role="status" aria-live="polite"></div>
+        </section>
+        <section class="lp-screen lp-picker" data-lp-screen="presetPicker" hidden>
+          <div class="lp-picker-head" data-lp="presetPickerTitle">预设</div>
+          <input class="lp-picker-search" type="search" data-lp="presetSearch" placeholder="搜索条目名称或内容" aria-label="搜索预设条目" />
+          <div class="lp-picker-rows" data-lp="presetEntries"></div>
+        </section>
+        <section class="lp-screen lp-picker" data-lp-screen="worldPicker" hidden>
+          <div class="lp-picker-head" data-lp="worldPickerTitle">世界书</div>
+          <input class="lp-picker-search" type="search" data-lp="worldSearch" placeholder="搜索条目名称或内容" aria-label="搜索世界书条目" />
+          <div class="lp-picker-rows" data-lp="worldEntries"></div>
         </section>
         <section class="lp-screen lp-settings" data-lp-screen="calendar" aria-label="日历" hidden>
           <h2>当前故事时间</h2>
@@ -1113,7 +1159,7 @@ function mount() {
         'homeTime', 'homeCharacter', 'homeMessageCount', 'homeLogCount',
         'friendLabel', 'friendActions',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus', 'activity', 'diagnosticToggle',
-        'presetSource','presetEntries','worldSource','worldEntries','apiInfo','testApi','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','themeFont','themeWallpaper','themeResetWallpaper','themeIcons',
+        'presetSource','presetEntries','worldSource','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','apiInfo','testApi','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','themeFont','themeWallpaper','themeResetWallpaper','themeIcons',
         'diagnostics', 'diagnosticState', 'copyDiagnostics', 'clearDiagnostics',
         'messages', 'input', 'retry', 'send', 'launcher']
         .map(key => [key, key === 'launcher' ? floating : root.querySelector(`[data-lp="${key}"]`)]));
@@ -1128,7 +1174,7 @@ function mount() {
         event.preventDefault();
         closePhone();
     });
-    nodes.back.addEventListener('click', () => setScreen('home'));
+    nodes.back.addEventListener('click', () => setScreen(['presetPicker','worldPicker'].includes(activeScreen) ? 'settings' : 'home'));
     root.addEventListener('click', event => {
         const button = event.target.closest('button[data-lp-open]');
         if (button && root.contains(button)) setScreen(button.dataset.lpOpen);
@@ -1137,6 +1183,11 @@ function mount() {
     nodes.presetSource.addEventListener('change', showPresetEntries);
     nodes.worldSource.addEventListener('change', () => void showWorldEntries());
     nodes.testApi.addEventListener('click', () => void testPhoneApi());
+    nodes.presetSearch.addEventListener('input',()=>filterPicker('preset'));
+    nodes.worldSearch.addEventListener('input',()=>filterPicker('world'));
+    nodes.openPresetPicker.addEventListener('click',()=>setScreen('presetPicker'));
+    nodes.openWorldPicker.addEventListener('click',()=>setScreen('worldPicker'));
+
     nodes.apiMode.addEventListener('change', () => { nodes.customApiFields.hidden = nodes.apiMode.value !== 'custom'; });
     nodes.saveApi.addEventListener('click', () => void savePhoneApi());
     nodes.presetEntries.addEventListener('change', event => { if (event.target?.dataset?.configKind) onConfigChange(event.target); });
