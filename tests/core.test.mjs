@@ -11,8 +11,8 @@ const raw = readFileSync(resolve(testRoot, '../index.js'), 'utf8');
 const source = raw.replaceAll('export function ', 'function ').replace(/\bbindReady\(\);\s*$/, '');
 const sandbox = { console, Date, structuredClone, window: {} };
 vm.createContext(sandbox);
-vm.runInContext(`${source}\nglobalThis.helpers = {newData, readData, writeData, friendshipState, rememberFriendship, buildPrompt, createSystemPrompt, redactDiagnostic, makeUI};`, sandbox);
-const { newData, readData, writeData, friendshipState, rememberFriendship, buildPrompt, createSystemPrompt, redactDiagnostic, makeUI } = sandbox.helpers;
+vm.runInContext(`${source}\nglobalThis.helpers = {newData, readData, writeData, friendshipState, rememberFriendship, buildPrompt, createSystemPrompt, redactDiagnostic, makeUI, composePhonePrompt, availablePresetEntries};`, sandbox);
+const { newData, readData, writeData, friendshipState, rememberFriendship, buildPrompt, createSystemPrompt, redactDiagnostic, makeUI, composePhonePrompt, availablePresetEntries } = sandbox.helpers;
 
 test('new storage defaults to a friend without breaking v0.1 format', () => {
     const data = newData();
@@ -369,11 +369,49 @@ test('modal entirely outside the viewport produces a visible diagnostic error', 
 test('diagnostic bootstrap is the manifest entry and exposes lifecycle hooks', () => {
     const manifest = JSON.parse(readFileSync(resolve(testRoot, '../manifest.json'), 'utf8'));
     const bootstrap = readFileSync(resolve(testRoot, '../bootstrap.js'), 'utf8');
-    assert.equal(manifest.version, '0.3.6');
+    assert.equal(manifest.version, '0.4.0');
     assert.equal(manifest.js, 'bootstrap.js');
     assert.match(bootstrap, /import\('\.\/index\.js'\)/);
     assert.match(bootstrap, /export function onActivate\(/);
     assert.match(bootstrap, /export function onEnable\(/);
     assert.match(bootstrap, /export function onDisable\(/);
     assert.match(bootstrap, /B-ERR/);
+});
+
+test('theme and calendar are separate apps with per-session time setting', () => {
+    const html = makeUI().innerHTML;
+    for (const screen of ['home','chat','calendar','theme','settings','diagnostics']) {
+        assert.match(html, new RegExp('data-lp-screen="' + screen + '"'));
+    }
+    assert.match(html, /data-lp="themeWallpaper"/);
+    assert.match(html, /data-lp="themeIcons"/);
+    assert.match(html, /data-lp="apiInfo"/);
+    assert.match(html, /data-lp="worldEntries"/);
+    assert.equal((html.match(/data-lp="time"/g) || []).length, 1);
+});
+test('phone preset entry selection only reads requested prompt content', async () => {
+    const data = newData();
+    data.config = {presetEntries:[{preset:'A',id:'intro'}],worldEntries:[]};
+    const ctx = {getPresetManager:()=>({getCompletionPresetByName:()=>({prompts:[
+        {identifier:'intro',content:'ONLY_THIS'},
+        {identifier:'other',content:'NOT_THIS'}
+    ]})})};
+    const prompt = await composePhonePrompt(ctx,{name:'C'},data);
+    assert.ok(prompt.includes('ONLY_THIS'));
+    assert.equal(prompt.includes('NOT_THIS'),false);
+});
+test('phone worldbook selection reads individual entries without changing source data', async () => {
+    const book = {entries:{1:{uid:1,content:'ONE'},2:{uid:2,content:'TWO'}}};
+    const data = newData();
+    data.config = {worldEntries:[{book:'Book',id:'2'}]};
+    const ctx = {loadWorldInfo:async()=>book};
+    const text = await composePhonePrompt(ctx,{name:'C'},data);
+    assert.ok(text.includes('TWO'));
+    assert.equal(text.includes('ONE'),false);
+    assert.equal(book.entries[1].content,'ONE');
+});
+test('unavailable selected entry is a visible failure not silently ignored', async () => {
+    const data = newData();
+    data.config = {worldEntries:[{book:'missing',id:'9'}]};
+    await assert.rejects(composePhonePrompt({loadWorldInfo:async()=>({entries:{}})}, {name:'C'},data), /不可用/);
 });
