@@ -692,3 +692,83 @@
     border-radius: 19px;
   }
 }
+
+/* v0.4.0: global launcher, configuration and visual customization */
+#gujiguji-floating-launcher {
+  position: fixed;
+  z-index: 2147483645;
+  right: max(14px, env(safe-area-inset-right));
+  bottom: max(74px, calc(env(safe-area-inset-bottom) + 72px));
+  display: grid;
+  place-items: center;
+  width: 52px; height: 52px;
+  padding: 0;
+  border: 1px solid #dfd1ec;
+  border-radius: 50%;
+  background: linear-gradient(135deg,#bda6df,#8263b0);
+  box-shadow: 0 5px 20px #35234d4d;
+  color: #fff; font-size: 26px; cursor: pointer;
+  pointer-events: auto;
+}
+#gujiguji-floating-launcher[hidden] { display: none !important; }
+#st-little-phone-root .lp-home {
+  background-image: var(--lp-wallpaper), linear-gradient(160deg,#faf2ff,#f5f2fc 50%,#fffafd);
+  background-position: center;
+  background-size: cover;
+}
+#st-little-phone-root[data-font="serif"] .lp-panel { font-family: Georgia, "Noto Serif SC", serif; }
+#st-little-phone-root[data-font="rounded"] .lp-panel { font-family: "Arial Rounded MT Bold", "PingFang SC", sans-serif; }
+#st-little-phone-root .lp-settings select,
+#st-little-phone-root .lp-theme-icons input,
+#st-little-phone-root .lp-settings input[type="file"] {
+  display:block;
+  max-width:100%;
+  width:100%;
+  min-height:38px;
+  background:#fff;
+  color:var(--lp-ink);
+  padding:7px 9px;
+  border:1px solid var(--lp-border);
+  border-radius:10px;
+  font-size:13px;
+  font-family:inherit;
+}
+#st-little-phone-root .lp-settings-card {
+  border:1px solid var(--lp-border);
+  border-radius:10px; padding:12px;
+  background:#f7f2fb;
+  color:var(--lp-ink);
+  font-size:12px;
+  overflow-wrap:anywhere;
+}
+#st-little-phone-root .lp-config-list {
+  max-height:190px;
+  overflow-y:auto;
+  border:1px solid var(--lp-border);
+  border-radius:10px;
+  padding:6px;
+  background:#fff;
+  font-size:12px;
+}
+#st-little-phone-root .lp-config-row {
+  display:flex; gap:8px;
+  align-items:center;
+  padding:9px 5px;
+  border-bottom:1px solid #f2edf5;
+  overflow-wrap:anywhere;
+  cursor:pointer;
+}
+#st-little-phone-root .lp-config-row:last-child {border-bottom:0}
+#st-little-phone-root .lp-config-row input {width:17px;height:17px;flex-shrink:0;}
+#st-little-phone-root .lp-theme-icons {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+}
+#st-little-phone-root .lp-theme-icons label {
+  color:var(--lp-ink);
+  font-size:12px;
+  min-width:0;
+}
+#st-little-phone-root .lp-theme-icons input { margin-top:5px; text-align:center; }
+#st-little-phone-root .lp-settings h2 { margin-top:13px; }
