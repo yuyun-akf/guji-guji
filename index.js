@@ -432,7 +432,9 @@ async function writeData(ctx,data) {
         payload.friendship=root.friendship;
         payload.friendEvents=root.friendEvents;
         payload.chatDeleted=root.chatDeleted;
-        payload.avatars=root.avatars;
+        payload.avatars={...(root.avatars||{})};
+        if (data.avatars?.user) payload.avatars.user=data.avatars.user;
+        else delete payload.avatars.user;
     }
     ctx.chatMetadata[DATA_KEY]=payload;
     try {await ctx.saveMetadata();}
