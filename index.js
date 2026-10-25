@@ -473,10 +473,11 @@ function splitPhoneReply(text, data) {
     const source = String(text || '').trim();
     if (!source) return [];
     if (data?.config?.messageStyle === 'unrestricted') return [source];
+    const cap = parts => parts.length > 5 ? [...parts.slice(0,4), parts.slice(4).join('\n')] : parts;
     const direct = source.split(/\s*\[PHONE_NEXT\]\s*|\n\s*\n+/).map(x=>x.trim()).filter(Boolean);
-    if (direct.length > 1) return direct.slice(0,5);
+    if (direct.length > 1) return cap(direct);
     const lines = source.split(/\n+/).map(x=>x.trim()).filter(Boolean);
-    if (lines.length > 1 && lines.every(x=>x.length < 130)) return lines.slice(0,5);
+    if (lines.length > 1 && lines.every(x=>x.length < 130)) return cap(lines);
     // Fallback splitting only for unusually long monologues, at sentence boundaries.
     if (source.length < 165) return [source];
     const pieces = source.match(/[^。！？!?；;]+[。！？!?；;]?/g)?.map(x=>x.trim()).filter(Boolean) || [source];
