@@ -830,7 +830,7 @@ function renderChatLists(ctx,char,data) {
 }
 
 const NPC_RELATIONS = '父亲|母亲|爸爸|妈妈|养父|养母|哥哥|姐姐|弟弟|妹妹|兄长|兄弟|妻子|丈夫|老师|导师|教授|同学|室友|朋友|闺蜜|同事|上司|下属|邻居|管家|助理|经纪人|秘书|儿子|女儿|表哥|表姐|舅舅|姑姑|叔叔|阿姨|恋人|未婚夫|未婚妻';
-const NPC_COMMON_WORDS = new Set(['人物','角色','背景','故事','正文','世界','设定','学校','老师','学生','朋友','同学','室友','父亲','母亲','爸爸','妈妈','其他','玩家','用户','主角','姓名','年龄','性格','描述','关系','身份','简介','经历','小说','人物设定','个人资料','角色介绍','个人信息','主要人物','背景资料','角色设定','男主','女主','女主角','男主角']);
+const NPC_COMMON_WORDS = new Set(['人物','角色','背景','故事','正文','世界','设定','学校','老师','学生','朋友','同学','室友','父亲','母亲','爸爸','妈妈','其他','玩家','用户','主角','姓名','年龄','性格','描述','关系','身份','简介','经历','小说','人物设定','个人资料','角色介绍','个人信息','主要人物','背景资料','角色设定','男主','女主','女主角','男主角','职业','特长','喜好','偏好','爱好','兴趣','职业经历','人物身份','教育背景','家庭','父母','性别','身高','体重','外貌','长相','服装','着装','声音','身份信息','家庭关系','成长经历','背景故事','联系方式','备注','老师们','同伴','称呼','职位']);
 function cleanNpcName(name) {
     const value=String(name||'').replace(/[“”"'「」『』【】<>()（）]/g,'').trim();
     if (!/^[\u3400-\u9fff·]{2,8}$/.test(value)||NPC_COMMON_WORDS.has(value)) return '';
@@ -856,8 +856,10 @@ function extractNpcCandidatesFromText(sourceText,source,mainName) {
         const relLabel=new RegExp('(?:^|[，,。；;\\s])('+rel+')[：:\\s]+([\\u3400-\\u9fff·]{2,8})(?=\\s|[，,。；;]|$)','g');
         while((m=relLabel.exec(trimmed))!==null)hits.push({name:m[2],relation:m[1]});
         //  宁肆锦的母亲苏晚意 / 他的老师陈某某
-        const relationWithName=new RegExp('(?:[\\u3400-\\u9fff·]{2,6}|他|她|我|你)的('+rel+')([\\u3400-\\u9fff·]{2,4})(?=[，,。；;\\s（(]|$)','g');
+        const relationWithName=new RegExp('(?:[\\u3400-\\u9fff·]{2,6}|他|她|我|你)的('+rel+')([\\u3400-\\u9fff·]{2,4})(?=[，,。；;\\s（(]|是|为|在|会|曾|现|于|就|还|并|担任)','g');
         while((m=relationWithName.exec(trimmed))!==null)hits.push({name:m[2],relation:m[1]});
+        const namedAs=new RegExp('(?:[\\u3400-\\u9fff·]{2,6}|他|她|我|你)的('+rel+')叫([\\u3400-\\u9fff·]{2,4})(?=[，,。；;\\s]|是|为|在|$)','g');
+        while((m=namedAs.exec(trimmed))!==null)hits.push({name:m[2],relation:m[1]});
         const userRelation=new RegExp('(?:user|玩家|\\{\\{user\\}\\})的('+rel+')([\\u3400-\\u9fff·]{2,4})(?=[，,。；;\\s]|$)','gi');
         while((m=userRelation.exec(trimmed))!==null)hits.push({name:m[2],relation:m[1]});
         // 苏晚意（宁肆锦的母亲） / 宁致远：知名导演，宁肆锦父亲
