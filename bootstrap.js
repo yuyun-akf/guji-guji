@@ -4,7 +4,7 @@
  */
 const DIAG_ID = 'gujiguji-bootstrap-diagnostic';
 const ROOT_ID = 'st-little-phone-root';
-const VERSION = '0.5.0';
+const VERSION = '0.5.1';
 
 let mainPromise = null;
 let mainModule = null;
