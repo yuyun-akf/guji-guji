@@ -1457,3 +1457,91 @@
 #st-little-phone-root .lp-me-page textarea { width: 100%; min-height: 85px; padding: 10px; border: 1px solid var(--lp-border); border-radius: 10px; font: inherit; resize: vertical; }
 #st-little-phone-root .lp-me-page [data-lp="momentsPost"] { padding: 10px 16px; border: 0; border-radius: 9px; background: var(--lp-lilac); color: white; font: inherit; }
 #st-little-phone-root .lp-me-page input[type="file"] { max-width: 100%; margin: 8px 0; font-size: 12px; }
+
+/* v0.8.0 social home / Moments visual overhaul */
+#st-little-phone-root .lp-social-screen .lp-list-body {background:#f6f5f8;}
+#st-little-phone-root .lp-me-page {
+ padding:0 0 22px!important;display:flex;flex-direction:column;gap:12px;
+ overflow-y:auto;-webkit-overflow-scrolling:touch;
+}
+#st-little-phone-root .lp-me-hero {
+ display:flex;align-items:center;gap:17px;
+ padding:24px 19px;margin-bottom:5px;background:linear-gradient(125deg,#f6edff,#fff9ff 60%,#f6f8ff);
+ border-bottom:1px solid #eee5f3;
+}
+#st-little-phone-root .lp-me-avatar-wrap {
+ flex:0 0 79px;position:relative;cursor:pointer;
+}
+#st-little-phone-root .lp-me-avatar {
+ width:79px;height:79px;object-fit:cover;display:block;border-radius:20px;
+ background:linear-gradient(135deg,#bba2d5,#f2d7e8);border:3px solid white;
+ box-shadow:0 3px 12px #7b548d22;
+}
+#st-little-phone-root .lp-me-avatar-wrap span {
+ position:absolute;bottom:-5px;right:-5px;
+ padding:2px 6px;font-size:10px;border-radius:8px;background:#8e70b1;color:#fff;
+}
+#st-little-phone-root .lp-me-profile {flex:1;display:flex;flex-direction:column;gap:9px;min-width:0;}
+#st-little-phone-root .lp-me-profile strong{font-size:22px;color:#302039;word-break:break-word;}
+#st-little-phone-root .lp-me-profile span{font-size:12px;color:#85768e;}
+#st-little-phone-root .lp-me-links{display:flex;flex-direction:column;background:#fff;border-radius:16px;margin:0 13px;overflow:hidden;border:1px solid #eee8f3;}
+#st-little-phone-root .lp-me-links button{
+ display:flex;align-items:center;justify-content:space-between;width:100%;
+ min-height:53px; padding:12px 15px;background:white;color:#493a58;
+ border:0;border-bottom:1px solid #f0eaf3;font:inherit;text-align:left;font-size:14px;
+}
+#st-little-phone-root .lp-me-links button:last-child{border-bottom:0;}
+#st-little-phone-root .lp-me-links span{font-size:11px;color:#968a9e;}
+#st-little-phone-root .lp-me-section{
+ border:1px solid #ece4f2;border-radius:16px;margin:0 13px;
+ background:#fff;padding:14px;display:block;
+}
+#st-little-phone-root .lp-me-section summary{cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-size:15px;color:#4b375a;font-weight:600;min-height:28px;}
+#st-little-phone-root .lp-me-section summary span{font-size:11px;color:#918199;font-weight:400;}
+#st-little-phone-root .lp-me-section[open] summary{margin-bottom:12px;}
+#st-little-phone-root .lp-persona-description{font-size:13px;white-space:pre-wrap;line-height:1.65;color:#696176;overflow-wrap:anywhere;}
+#st-little-phone-root .lp-autonomy p{font-size:12px;color:#84778d;line-height:1.65;margin:0 0 12px;}
+#st-little-phone-root .lp-autonomy-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 9px;}
+#st-little-phone-root .lp-autonomy-grid label{display:flex;flex-direction:column;gap:6px;font-size:12px;color:#70637a;min-width:0;}
+#st-little-phone-root .lp-autonomy-grid input,#st-little-phone-root .lp-autonomy-grid select{
+ display:block;width:100%;min-width:0;box-sizing:border-box;min-height:43px;
+ border:1px solid #e2d8e9;border-radius:10px;background:#fcfbfe;
+ font:inherit;font-size:13px;color:#40344d;padding:7px 8px;
+}
+#st-little-phone-root .lp-autonomy-divider{height:1px;background:#f0eaf5;margin:16px 0 10px;}
+#st-little-phone-root .lp-checkline{
+ display:flex;gap:9px;align-items:flex-start;line-height:1.6;
+ color:#62536c;font-size:12px;margin:10px 0;
+}
+#st-little-phone-root .lp-checkline input{flex:0 0 18px;width:18px;height:18px;accent-color:#8e73b1;}
+#st-little-phone-root .lp-autonomy-status{color:#9a879f;font-size:11px;line-height:1.5;overflow-wrap:anywhere;margin:12px 0;}
+#st-little-phone-root .lp-autonomy-buttons{display:flex;gap:9px;flex-wrap:wrap;}
+#st-little-phone-root .lp-autonomy-buttons button{flex:1 1 45%;min-height:39px;border:1px solid #dacfe4;background:#9679b6;color:white;border-radius:11px;font-size:12px;padding:8px;}
+#st-little-phone-root .lp-autonomy-buttons button:last-child{background:#fff;color:#77628c;}
+#st-little-phone-root .lp-sticker-uploader{font-size:12px;color:#6a5878;}
+#st-little-phone-root .lp-sticker-uploader input{display:block;width:100%;margin-top:7px;max-width:100%;font-size:11px;}
+#st-little-phone-root .lp-discover{padding:14px 13px 18px;display:flex;flex-direction:column;gap:14px;background:#f6f5f8;}
+#st-little-phone-root .lp-discover-heading{display:flex;justify-content:space-between;align-items:baseline;font-size:19px;color:#473651;font-weight:600;padding:3px 4px;}
+#st-little-phone-root .lp-muted{font-size:11px;color:#9f91a6;font-weight:400;}
+#st-little-phone-root .lp-moments-composer{display:flex;flex-direction:column;gap:12px;background:white;padding:16px;border-radius:16px;border:1px solid #eee6f2;}
+#st-little-phone-root .lp-moments-caption{font-size:14px;color:#65506f;font-weight:600;}
+#st-little-phone-root .lp-moments-composer textarea{
+ width:100%;box-sizing:border-box;padding:12px;border:1px solid #eae1ee;border-radius:12px;
+ min-height:82px;resize:vertical;font-size:14px;color:#423750;font-family:inherit;background:#fcfbfd;
+}
+#st-little-phone-root .lp-moments-preview{display:flex;align-items:flex-start;gap:8px;}
+#st-little-phone-root .lp-moments-compose-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+#st-little-phone-root .lp-moments-compose-actions button,
+#st-little-phone-root .lp-moments-compose-actions label{
+ min-height:36px;padding:8px 10px;display:flex;align-items:center;justify-content:center;
+ font-size:12px;color:#745f8b;background:#f5effa;border:1px solid #ece1f2;border-radius:9px;
+ cursor:pointer;box-sizing:border-box;
+}
+#st-little-phone-root .lp-moments-compose-actions button[data-lp="momentsPost"]{margin-left:auto;background:#8f73b0;color:white;border-color:#8f73b0;}
+#st-little-phone-root .lp-moment-remove-photo{background:white!important;}
+#st-little-phone-root .lp-moments-feed{gap:12px;}
+#st-little-phone-root .lp-moment{display:flex;flex-direction:column;gap:9px;padding:15px;border:1px solid #ede6f2;border-radius:16px;background:white;color:#53455e;}
+#st-little-phone-root .lp-moment strong{font-size:14px;color:#6f5587;}
+#st-little-phone-root .lp-moment-photo{display:block;max-width:min(100%,280px);max-height:330px;object-fit:contain;border-radius:10px;background:#f4eff7;}
+#st-little-phone-root .lp-moment p{font-size:14px;line-height:1.55;margin:0;white-space:pre-wrap;overflow-wrap:anywhere;}
+#st-little-phone-root .lp-moment small{font-size:10px;color:#a89bac;}
