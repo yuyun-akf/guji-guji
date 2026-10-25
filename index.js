@@ -116,7 +116,9 @@ function updateApiInfo() {
     if (!nodes?.apiInfo) return;
     const ctx = context();
     const settings = ctx?.chatCompletionSettings || {};
-    const model = ctx?.getChatCompletionModel?.() || settings.custom_model || settings.openai_model || settings.model || '未识别';
+    let detected = '';
+    try { detected = ctx?.getChatCompletionModel?.(settings) || ''; } catch { /* Keep settings visible if model lookup fails */ }
+    const model = detected || settings.custom_model || settings.openai_model || settings.model || '未识别';
     nodes.apiInfo.textContent = '连接：' + (ctx?.mainApi || '未连接') + ' · 模型：' + (typeof model === 'string' ? model : '当前所选模型');
 }
 function createCheckRow(entry, kind, checked) {
@@ -405,6 +407,21 @@ function renderDiagnostics() {
         item.textContent = `[${entry.at}] ${entry.stage}${entry.code ? ` · ${entry.code}` : ''}\n${entry.detail}`;
         nodes.diagnostics.append(item);
     }
+}
+
+async function testPhoneApi() {
+    const ctx = context();
+    if (busy) return;
+    if (typeof ctx?.generateRaw !== 'function') return setStatus('生成接口不可用','error');
+    const job = startBusy('reply');
+    recordActivity('连接测试', '测试原始生成请求，不写入聊天记录');
+    try {
+        const answer = await generateWithTimeout(ctx, {systemPrompt:'仅回复 OK',prompt:'请回复 OK'});
+        if (typeof answer !== 'string' || !answer.trim()) throw new Error('API 返回空内容');
+        recordActivity('连接测试成功', '收到模型响应','success');
+        setStatus('连接测试成功');
+    } catch (error) { setStatus(recordError('连接测试',error),'error'); }
+    finally { finishBusy(job); }
 }
 
 function setScreen(screen) {
@@ -937,6 +954,7 @@ function makeUI() {
         <section class="lp-screen lp-settings" data-lp-screen="settings" aria-label="设置" hidden>
           <h2>API</h2>
           <div class="lp-settings-card" data-lp="apiInfo">当前酒馆连接</div>
+          <button type="button" class="lp-settings-link" data-lp="testApi">测试生成连接</button>
           <p>当前版本沿用酒馆连接。独立模型连接尚未开放。</p>
           <h2>预设条目</h2>
           <select data-lp="presetSource" aria-label="选择预设"></select>
@@ -1005,7 +1023,7 @@ function mount() {
         'homeTime', 'homeCharacter', 'homeMessageCount', 'homeLogCount',
         'friendLabel', 'friendActions',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus', 'activity', 'diagnosticToggle',
-        'presetSource','presetEntries','worldSource','worldEntries','apiInfo','themeFont','themeWallpaper','themeResetWallpaper','themeIcons',
+        'presetSource','presetEntries','worldSource','worldEntries','apiInfo','testApi','themeFont','themeWallpaper','themeResetWallpaper','themeIcons',
         'diagnostics', 'diagnosticState', 'copyDiagnostics', 'clearDiagnostics',
         'messages', 'input', 'retry', 'send', 'launcher']
         .map(key => [key, key === 'launcher' ? floating : root.querySelector(`[data-lp="${key}"]`)]));
@@ -1028,6 +1046,7 @@ function mount() {
     nodes.time.addEventListener('change', saveStoryTime);
     nodes.presetSource.addEventListener('change', showPresetEntries);
     nodes.worldSource.addEventListener('change', () => void showWorldEntries());
+    nodes.testApi.addEventListener('click', () => void testPhoneApi());
     nodes.presetEntries.addEventListener('change', event => { if (event.target?.dataset?.configKind) onConfigChange(event.target); });
     nodes.worldEntries.addEventListener('change', event => { if (event.target?.dataset?.configKind) onConfigChange(event.target); });
     nodes.themeFont.addEventListener('change', () => changeTheme({font:nodes.themeFont.value}));
