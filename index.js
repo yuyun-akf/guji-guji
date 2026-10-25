@@ -884,7 +884,7 @@ async function postMoment() {
 }
 
 function renderChatLists(ctx,char,data) {
-    for (const key of ['momentsFeed','momentsText','momentsPost','momentsToggle','myIdentity','recentChats','contactsList','requestsList']) nodes[key]?.replaceChildren();
+    for (const key of ['recentChats','contactsList','requestsList','storyPeopleList']) nodes[key]?.replaceChildren();
     if (!char||!data) return;
     const root=readRootData(ctx);
     const ids=[PRIMARY_CONTACT_ID,...root.contacts.map(c=>c.id)];
@@ -901,6 +901,7 @@ function renderChatLists(ctx,char,data) {
             conversations++;
         }
         if(state==='friends')nodes.contactsList.append(makeListContact(person,view,FRIEND_LABELS[state],()=>switchContact(id,'profile'),label));
+        else nodes.storyPeopleList.append(makeListContact(person,view,contactAccess(ctx,id).allowed?'可申请添加':'尚未交换联系方式',()=>switchContact(id,'profile'),label));
         if (state==='incoming' || state==='outgoing' || (state==='stranger' && contactAccess(ctx,id).allowed)) {
             nodes.requestsList.append(makeListContact(person,view,state==='incoming'?'请求添加你为好友':state==='outgoing'?'好友申请处理中':'可发送好友申请',()=>switchContact(id,'profile'),label));
             if(state!=='stranger') requests++;
@@ -913,6 +914,7 @@ function renderChatLists(ctx,char,data) {
         empty.textContent='暂无好友申请';
         nodes.requestsList.append(empty);
     }
+    if (!nodes.contactsList.children.length)nodes.contactsList.textContent='暂无好友，需先在故事中交换联系方式';
     if (!conversations) {
         const empty=document.createElement('p');
         empty.className='lp-list-empty';
@@ -1255,7 +1257,10 @@ async function resetAvatar(side) {
 }
 function exportChatPayload(ctx,data) {
     return {format:'gujiguji-chat',version:1,character:getCharacterName(selectedCharacter(ctx)),exportedAt:new Date().toISOString(),
-        messages:data.messages.map(({id,from,text,storyTime,createdAt})=>({id,from,text,storyTime,createdAt}))};
+        messages:data.messages.map(({id,from,text,storyTime,createdAt,image,replyTo,replyQuote})=>({
+            id,from,text,storyTime,createdAt,...(image?{image}:{}),
+            ...(replyTo?{replyTo}:{}),...(replyQuote?{replyQuote}:{})
+        }))};
 }
 function parseChatImport(raw) {
     const obj=JSON.parse(raw);
@@ -1264,9 +1269,14 @@ function parseChatImport(raw) {
     return obj.messages.map((m,i)=>{
         if (!m || !['user','character','system'].includes(m.from) || typeof m.text!=='string'||m.text.length>50000)
             throw new Error('第'+(i+1)+'条消息格式不合法');
+        const image=typeof m.image==='string' && /^data:image\/(?:jpeg|png|webp);base64,/.test(m.image) && m.image.length<950000?m.image:'';
         return {id: typeof m.id==='string'&&m.id.length<100?m.id:'import-'+i+'-'+Date.now(),
             from:m.from,text:m.text,storyTime:typeof m.storyTime==='string'?m.storyTime.slice(0,30):'',
-            createdAt:typeof m.createdAt==='string'?m.createdAt.slice(0,40):new Date().toISOString()};
+            createdAt:typeof m.createdAt==='string'?m.createdAt.slice(0,40):new Date().toISOString(),
+            ...(image?{image}:{}),
+            ...(typeof m.replyQuote==='string'?{replyQuote:m.replyQuote.slice(0,180)}:{}),
+            ...(typeof m.replyTo==='string'?{replyTo:m.replyTo.slice(0,100)}:{})
+        };
     });
 }
 function getChatExport() {
@@ -1910,8 +1920,12 @@ function makeUI() {
           <div class="lp-list-body">
             <button type="button" class="lp-list-action" data-lp-open="requests"><span>✉</span><span>新的朋友</span><span data-lp="requestBadge"></span></button>
             <button type="button" class="lp-list-action" data-lp-open="addNpc"><span>＋</span><span>添加好友／故事人物</span></button>
-            <div class="lp-list-heading">联系人</div>
+            <div class="lp-list-heading">好友</div>
             <div data-lp="contactsList"></div>
+            <details class="lp-story-people-list">
+              <summary>故事人物（不代表已经拥有联系方式）</summary>
+              <div data-lp="storyPeopleList"></div>
+            </details>
           </div>
           <nav class="lp-tabbar" aria-label="咕叽聊导航">
             <button data-lp-open="chatList" type="button">消息</button>
@@ -1974,6 +1988,7 @@ function makeUI() {
         <section class="lp-screen lp-chatlist" data-lp-screen="addNpc" aria-label="添加 NPC" hidden>
           <div class="lp-list-body lp-npc-editor">
             <h2>添加故事中的人物</h2>
+            <button type="button" class="lp-npc-discover-button" data-lp="viewPrimaryContact">查看当前 char 的资料与联系方式</button>
             <button type="button" class="lp-npc-discover-button" data-lp-open="discoverNpc">从角色设定／世界书扫描人物</button>
             <p class="lp-npc-note">也可以在下方手动创建人物；两种方式都会进入当前存档的联系人系统。</p>
             <label>姓名<input data-lp="npcName" type="text" maxlength="60" placeholder="NPC 姓名" /></label>
@@ -2151,7 +2166,7 @@ function mount() {
     document.body.append(floating);
     nodes = Object.fromEntries(['title', 'subtitle', 'back', 'close', 'time',
         'homeTime', 'homeCharacter', 'homeMessageCount', 'homeLogCount',
-        'friendLabel', 'friendActions','profileAvatar','profileName','profileDescription','contactEvidence','contactExchange','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanAllWorlds','npcScanButton','npcScanState','npcCandidates','npcSaveCandidates','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
+        'friendLabel', 'friendActions','profileAvatar','profileName','profileDescription','contactEvidence','contactExchange','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanAllWorlds','npcScanButton','npcScanState','npcCandidates','npcSaveCandidates','storyPeopleList','viewPrimaryContact','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','avatarUserFile','resetCharAvatar','resetUserAvatar',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
         'presetSource','presetEntries','worldSource','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themeIcons',
@@ -2215,6 +2230,7 @@ function mount() {
     nodes.retry.addEventListener('click', retryLastReply);
     nodes.friendSave.addEventListener('click', saveManualFriendship);
     nodes.addNpcSave.addEventListener('click',()=>void addNpcContact());
+    nodes.viewPrimaryContact.addEventListener('click',()=>switchContact(PRIMARY_CONTACT_ID,'profile'));
     nodes.npcScanButton.addEventListener('click',()=>void scanNpcUI());
     nodes.npcSaveCandidates.addEventListener('click',()=>void saveSelectedNpcCandidates());
     nodes.saveContactRemark.addEventListener('click',()=>void saveContactRemark());
