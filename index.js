@@ -761,7 +761,7 @@ function setScreen(screen) {
     nodes.title.textContent = screen === 'chat' ? contactDisplayName(context()) : titles[screen];
     nodes.chatMenu.hidden = screen !== 'chat';
     if (screen === 'diagnostics') renderDiagnostics();
-    if (screen === 'me') { renderPersona(context()); renderStickerLibrary(); }
+    if (screen === 'me') { renderPersona(context()); renderStickerLibrary(); loadAutonomyUI(context()); }
     if (screen === 'discover') renderMoments(context());
     if (screen === 'addNpc') renderChatLists(context(),contactCharacter(context()),readData(context()));
     if (['chatList','contacts','discover','me'].includes(screen)) {
@@ -2209,6 +2209,8 @@ function openPhone() {
         nodes.launcher.setAttribute('aria-label', '隐藏咕叽咕机');
         setScreen('home');
         render();
+        void syncStoryRelationships(context());
+        void tickAutonomousActivity();
         setTimeout(() => {
             if (!root?.classList.contains('lp-open')) return;
             const bounds = panel.getBoundingClientRect();
@@ -2325,43 +2327,83 @@ function makeUI() {
             <button data-lp-open="me" type="button">我</button>
           </nav>
         </section>
-        <section class="lp-screen lp-chatlist" data-lp-screen="discover" aria-label="发现" hidden>
-          <div class="lp-list-body lp-discover">
-            <button type="button" class="lp-list-action lp-discovery-action" data-lp-open="me"><span>＋</span><span>发布朋友圈</span></button>
-            <div class="lp-moments-panel">
-
-              <div data-lp="momentsFeed" class="lp-moments-feed"></div>
-            </div>
-          </div>
-                    <nav class="lp-tabbar" aria-label="咕叽聊导航">
-            <button data-lp-open="chatList" type="button">消息</button>
-            <button data-lp-open="contacts" type="button">通讯录</button>
-            <button data-lp-open="discover" type="button">发现</button>
-            <button data-lp-open="me" type="button">我</button>
-          </nav>
-        </section>
-        <section class="lp-screen lp-chatlist" data-lp-screen="me" aria-label="我" hidden>
-          <div class="lp-list-body lp-me-page">
-            <div class="lp-me-title">我的小手机</div>
-            <img data-lp="myAvatar" class="lp-person-avatar" alt="我的头像" />
-            <div data-lp="myIdentity" class="lp-me-identity"></div>
-            <details><summary>当前人设</summary><div data-lp="myPersona" class="lp-persona-description"></div></details>
-            <h2>发布朋友圈</h2>
-              <label class="lp-field">发表动态<textarea data-lp="momentsText" rows="3" maxlength="1000" placeholder="这一刻想说什么？"></textarea></label>
-              <button data-lp="momentsPost" type="button">发表动态</button>
-            <h2>我的表情包</h2>
-            <label>添加图片<input type="file" data-lp="stickerUpload" accept="image/png,image/jpeg,image/webp,image/gif" multiple /></label>
-            <div data-lp="stickerStatus" role="status"></div>
-            <div data-lp="stickerLibrary" class="lp-sticker-library"></div>
-          </div>
-                    <nav class="lp-tabbar" aria-label="咕叽聊导航">
-            <button data-lp-open="chatList" type="button">消息</button>
-            <button data-lp-open="contacts" type="button">通讯录</button>
-            <button data-lp-open="discover" type="button">发现</button>
-            <button data-lp-open="me" type="button">我</button>
-          </nav>
-        </section>
-        <section class="lp-screen lp-chatlist" data-lp-screen="requests" aria-label="新的朋友" hidden>
+        <section class="lp-screen lp-chatlist lp-social-screen" data-lp-screen="discover" aria-label="发现" hidden>
+  <div class="lp-list-body lp-discover">
+    <div class="lp-discover-heading"><span>朋友动态</span><span class="lp-muted">当前故事 · 朋友圈</span></div>
+    <div class="lp-moments-composer">
+      <div class="lp-moments-caption">分享这一刻</div>
+      <textarea data-lp="momentsText" rows="3" maxlength="1000" placeholder="写点什么，或分享一张照片…"></textarea>
+      <div class="lp-moments-preview" data-lp="momentsPreview"></div>
+      <div class="lp-moments-compose-actions">
+        <label class="lp-moment-addphoto">▣ 添加图片<input data-lp="momentImageUpload" type="file" accept="image/png,image/jpeg,image/webp" hidden /></label>
+        <button data-lp="momentRemovePhoto" type="button" class="lp-moment-remove-photo">移除图片</button>
+        <button data-lp="momentsPost" type="button">发布动态</button>
+      </div>
+    </div>
+    <div class="lp-moments-feed" data-lp="momentsFeed"></div>
+  </div>
+  <nav class="lp-tabbar" aria-label="咕叽聊导航">
+  <button data-lp-open="chatList" type="button">消息</button>
+  <button data-lp-open="contacts" type="button">通讯录</button>
+  <button data-lp-open="discover" type="button">发现</button>
+  <button data-lp-open="me" type="button">我</button>
+</nav>
+</section>
+<section class="lp-screen lp-chatlist lp-social-screen" data-lp-screen="me" aria-label="我" hidden>
+  <div class="lp-list-body lp-me-page">
+    <div class="lp-me-hero">
+      <label class="lp-me-avatar-wrap" title="更换头像">
+        <img data-lp="myAvatar" class="lp-me-avatar" alt="当前用户头像" />
+        <span>更换</span>
+        <input data-lp="myAvatarUpload" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden />
+      </label>
+      <div class="lp-me-profile">
+        <strong data-lp="myIdentity">user</strong>
+        <span>我的故事 · 个人主页</span>
+      </div>
+    </div>
+    <details class="lp-me-section">
+      <summary>个人设定 <span>查看当前 user 人设</span></summary>
+      <div data-lp="myPersona" class="lp-persona-description"></div>
+    </details>
+    <div class="lp-me-links">
+      <button type="button" data-lp-open="discover">◉ 朋友圈 <span>查看我的动态</span></button>
+      <button type="button" data-lp-open="theme">✿ 主题装扮 <span>壁纸、字体与图标</span></button>
+      <button type="button" data-lp-open="settings">⚙ 系统设置 <span>API、世界书与预设</span></button>
+    </div>
+    <details class="lp-me-section lp-autonomy" open>
+      <summary>角色自主活动 <span>消息与朋友圈频率</span></summary>
+      <p>可独立设置角色和 NPC 自主私聊、朋友圈的间隔。默认关闭；仅酒馆页面运行时检查，不会在应用被关闭后后台生成。</p>
+      <div class="lp-autonomy-grid">
+        <label>主动私聊<select data-lp="autoMessagesMode"><option value="off">关闭</option><option value="fixed">固定周期</option><option value="random">指定天数内随机一次</option></select></label>
+        <label>间隔（天）<input data-lp="autoMessagesDays" type="number" min="0.04" max="30" step="0.5" value="3" /></label>
+        <label>朋友圈动态<select data-lp="autoMomentsMode"><option value="off">关闭</option><option value="fixed">固定周期</option><option value="random">指定天数内随机一次</option></select></label>
+        <label>间隔（天）<input data-lp="autoMomentsDays" type="number" min="0.04" max="30" step="0.5" value="3" /></label>
+      </div>
+      <div class="lp-autonomy-divider"></div>
+      <label class="lp-checkline"><input data-lp="relationAutoSync" type="checkbox" checked /> 根据正文同步好友关系和申请</label>
+      <label class="lp-checkline"><input data-lp="phoneInPast" type="checkbox" /> 小手机时间早于主线：暂停关系同步</label>
+      <div class="lp-autonomy-status" data-lp="autonomyStatus"></div>
+      <div class="lp-autonomy-buttons">
+        <button data-lp="saveAutonomy" type="button">保存活动设置</button>
+        <button data-lp="rescanRelations" type="button">重新检查主线关系</button>
+      </div>
+    </details>
+    <details class="lp-me-section">
+      <summary>我的表情包 <span>上传与管理</span></summary>
+      <label class="lp-sticker-uploader">添加图片 <input data-lp="stickerUpload" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple /></label>
+      <div data-lp="stickerStatus" role="status"></div>
+      <div data-lp="stickerLibrary" class="lp-sticker-library"></div>
+    </details>
+  </div>
+  <nav class="lp-tabbar" aria-label="咕叽聊导航">
+  <button data-lp-open="chatList" type="button">消息</button>
+  <button data-lp-open="contacts" type="button">通讯录</button>
+  <button data-lp-open="discover" type="button">发现</button>
+  <button data-lp-open="me" type="button">我</button>
+</nav>
+</section>
+<section class="lp-screen lp-chatlist" data-lp-screen="requests" aria-label="新的朋友" hidden>
           <div class="lp-list-body">
             <div class="lp-list-heading">好友申请</div>
             <div data-lp="requestsList"></div>
@@ -2564,7 +2606,7 @@ function mount() {
     document.body.append(floating);
     nodes = Object.fromEntries(['title', 'subtitle', 'back', 'close', 'time',
         'homeTime', 'homeCharacter', 'homeMessageCount', 'homeLogCount',
-        'momentsPost', 'momentsText', 'momentsFeed', 'myIdentity', 'myAvatar', 'myPersona', 'stickerUpload', 'stickerStatus', 'stickerLibrary',
+        'momentsPost', 'momentsText', 'momentsFeed', 'momentsPreview','momentImageUpload','momentRemovePhoto','myAvatarUpload','myIdentity', 'myAvatar', 'myPersona', 'autoMessagesMode','autoMessagesDays','autoMomentsMode','autoMomentsDays','relationAutoSync','phoneInPast','autonomyStatus','saveAutonomy','rescanRelations', 'stickerUpload', 'stickerStatus', 'stickerLibrary',
         'friendLabel', 'friendActions','profileAvatar','profileName','profileDescription','contactEvidence','contactExchange','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcScanState','npcCandidates','npcSaveCandidates','storyPeopleList','viewPrimaryContact','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','avatarUserFile','resetCharAvatar','resetUserAvatar',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
@@ -2597,6 +2639,11 @@ function mount() {
     window.addEventListener('focus',pickerFocusListener);
     nodes.chatMenu.addEventListener('click',()=>setScreen('chatOptions'));
     nodes.momentsPost.addEventListener('click',()=>void postMoment());
+    nodes.momentImageUpload.addEventListener('change',event=>{void importMomentPhoto(event.target.files?.[0]);event.target.value='';});
+    nodes.momentRemovePhoto.addEventListener('click',()=>{momentImageDraft='';nodes.momentsPreview.replaceChildren();});
+    nodes.myAvatarUpload.addEventListener('change',event=>{void uploadMyAvatar(event.target.files?.[0]);event.target.value='';});
+    nodes.saveAutonomy.addEventListener('click',()=>void saveAutonomySettings());
+    nodes.rescanRelations.addEventListener('click',()=>void syncStoryRelationships(context(),true));
 
     nodes.back.addEventListener('click', () => setScreen({
         chat: 'chatList', contacts: 'chatList', discover:'chatList', me:'chatList', profile: 'contacts', requests:'contacts', addNpc:'contacts', discoverNpc:'addNpc', chatOptions:'chat', presetPicker:'settings', worldPicker:'settings'
@@ -2693,6 +2740,8 @@ function mount() {
     });
 
     mounted = true;
+    if (autonomousTicker)clearInterval(autonomousTicker);
+    autonomousTicker=setInterval(()=>{void syncStoryRelationships(context());void tickAutonomousActivity();},60000);
     renderDiagnostics();
     const ctx = context();
     if (ctx?.eventSource && ctx?.event_types?.CHAT_CHANGED) {
@@ -2704,6 +2753,8 @@ function mount() {
             statusText = '';
             statusKind = 'info';
             render();
+            void syncStoryRelationships(context());
+            void tickAutonomousActivity();
         };
         listeningSource.on(listeningEvent, chatChangedHandler);
     }
@@ -2729,6 +2780,8 @@ function unmount() {
     busyKind = '';
     if (activityTicker) clearInterval(activityTicker);
     activityTicker = null;
+    if (autonomousTicker)clearInterval(autonomousTicker);
+    autonomousTicker=null;
     if (listeningSource && chatChangedHandler) {
         if (typeof listeningSource.removeListener === 'function') {
             listeningSource.removeListener(listeningEvent, chatChangedHandler);
@@ -2746,7 +2799,7 @@ function unmount() {
     root = null;
     nodes = null;
     activeContactId = PRIMARY_CONTACT_ID;
-    npcCandidates=[];npcScanSession=null;
+    npcCandidates=[];npcScanSession=null;momentImageDraft='';
     statusText = '';
     statusKind = 'info';
     activeScreen = 'home';
