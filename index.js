@@ -5,6 +5,8 @@
 
 const ROOT_ID = 'st-little-phone-root';
 const DATA_KEY = 'st_little_phone_v1';
+const PRIMARY_CONTACT_ID = 'primary';
+let activeContactId = PRIMARY_CONTACT_ID;
 const SETTINGS_KEY = 'gujiguji';
 const WAND_ENTRY_ID = 'gujiguji-wand-entry';
 const CONTEXT_MESSAGE_LIMIT = 24;
@@ -350,51 +352,107 @@ function selectedCharacter(ctx) {
 }
 
 function newData() {
-    return { version: 1, storyTime: localDateTime(), messages: [], friendship: { state: 'friends' } };
+    return {version:1,storyTime:localDateTime(),messages:[],friendship:{state:'friends'},contacts:[],conversations:{}};
 }
-
-function readData(ctx) {
-    const value = ctx?.chatMetadata?.[DATA_KEY];
-    if (!value || value.version !== 1 || !Array.isArray(value.messages)) return newData();
-    // Existing v0.1 chats remain friends. Preserve unknown metadata fields.
-    const friendState = value.friendship?.state;
+function readRootData(ctx) {
+    const value=ctx?.chatMetadata?.[DATA_KEY];
+    const base=(!value||value.version!==1||!Array.isArray(value.messages))?newData():value;
     return {
-        ...value,
-        friendship: FRIEND_STATES.has(friendState) ? value.friendship : { state: 'friends' },
+        ...base,
+        friendship:FRIEND_STATES.has(base.friendship?.state)?base.friendship:{state:'friends'},
+        contacts:Array.isArray(base.contacts)?base.contacts.filter(c=>c&&typeof c.id==='string'&&c.id.startsWith('npc:')):[],
+        conversations:base.conversations&&typeof base.conversations==='object'&&!Array.isArray(base.conversations)?base.conversations:{}
     };
 }
-
+function validContactId(root,id) {
+    return id===PRIMARY_CONTACT_ID || root.contacts.some(c=>c.id===id);
+}
+function readData(ctx,contactId=activeContactId) {
+    const root=readRootData(ctx);
+    if (contactId===PRIMARY_CONTACT_ID || !validContactId(root,contactId)) return {...root,__contactId:PRIMARY_CONTACT_ID};
+    const conversation=root.conversations[contactId] || {};
+    return {
+        ...root,__contactId:contactId,
+        messages:Array.isArray(conversation.messages)?conversation.messages:[],
+        friendship:FRIEND_STATES.has(conversation.friendship?.state)?conversation.friendship:{state:'stranger'},
+        friendEvents:Array.isArray(conversation.friendEvents)?conversation.friendEvents:[],
+        chatDeleted:conversation.chatDeleted===true,
+        avatars:{...root.avatars,...conversation.avatars}
+    };
+}
+function getContactInfo(ctx,id=activeContactId) {
+    if (id===PRIMARY_CONTACT_ID) return {id,name:getCharacterName(selectedCharacter(ctx)),remark:'',kind:'character'};
+    const contact=readRootData(ctx).contacts.find(c=>c.id===id);
+    return contact || {id:PRIMARY_CONTACT_ID,name:getCharacterName(selectedCharacter(ctx)),remark:'',kind:'character'};
+}
+function contactCharacter(ctx,id=activeContactId) {
+    const primary=selectedCharacter(ctx);
+    if (id===PRIMARY_CONTACT_ID) return primary;
+    const contact=readRootData(ctx).contacts.find(c=>c.id===id);
+    if (!contact) return primary;
+    return {name:contact.name,data:{
+        name:contact.name,
+        description:contact.description || '',
+        personality:contact.personality || '',
+        scenario:contact.relationship ? '与 user 的关系：'+contact.relationship : ''
+    }};
+}
+function contactDisplayName(ctx,id=activeContactId) {
+    const info=getContactInfo(ctx,id);
+    return info.remark || info.name;
+}
 function friendshipState(data) {
     return FRIEND_STATES.has(data?.friendship?.state) ? data.friendship.state : 'friends';
 }
 
-async function writeData(ctx, data) {
-    if (!ctx?.chatMetadata || typeof ctx.saveMetadata !== 'function') {
+async function writeData(ctx,data) {
+    if (!ctx?.chatMetadata||typeof ctx.saveMetadata!=='function')
         throw new Error('当前酒馆未提供可用的聊天存档接口。');
+    const previous=ctx.chatMetadata[DATA_KEY];
+    const root=readRootData(ctx);
+    const id=data.__contactId || PRIMARY_CONTACT_ID;
+    if (!validContactId(root,id) && id!==PRIMARY_CONTACT_ID)
+        throw new Error('当前联系人不存在，无法保存聊天');
+    const payload={...data};
+    delete payload.__contactId;
+    if (id!==PRIMARY_CONTACT_ID) {
+        const thread=root.conversations[id] || {};
+        payload.conversations={
+            ...root.conversations,...payload.conversations,
+            [id]:{
+                ...thread,
+                messages:data.messages,
+                friendship:data.friendship,
+                friendEvents:data.friendEvents || [],
+                chatDeleted:data.chatDeleted===true,
+                avatars:{...(thread.avatars||{}),character:data.avatars?.character||''}
+            }
+        };
+        payload.messages=root.messages;
+        payload.friendship=root.friendship;
+        payload.friendEvents=root.friendEvents;
+        payload.chatDeleted=root.chatDeleted;
+        payload.avatars=root.avatars;
     }
-    const previous = ctx.chatMetadata[DATA_KEY];
-    ctx.chatMetadata[DATA_KEY] = data;
-    try {
-        await ctx.saveMetadata();
-    } catch (error) {
-        // A rejected persistence call must not leave an unsaved phantom
-        // message that would be duplicated by the user's next send/retry.
-        if (ctx.chatMetadata[DATA_KEY] === data) {
-            if (previous === undefined) delete ctx.chatMetadata[DATA_KEY];
-            else ctx.chatMetadata[DATA_KEY] = previous;
+    ctx.chatMetadata[DATA_KEY]=payload;
+    try {await ctx.saveMetadata();}
+    catch(error){
+        if(ctx.chatMetadata[DATA_KEY]===payload){
+            if(previous===undefined)delete ctx.chatMetadata[DATA_KEY];
+            else ctx.chatMetadata[DATA_KEY]=previous;
         }
         throw error;
     }
 }
 
 function captureSession(ctx) {
-    return { metadata: ctx.chatMetadata, characterId: ctx.characterId, groupId: ctx.groupId, lifecycleToken };
+    return { metadata: ctx.chatMetadata, characterId: ctx.characterId, groupId: ctx.groupId, contactId: activeContactId, lifecycleToken };
 }
 
 function sameSession(snapshot) {
     const ctx = context();
     return Boolean(mounted && ctx && lifecycleToken === snapshot.lifecycleToken && ctx.chatMetadata === snapshot.metadata
-        && ctx.characterId === snapshot.characterId && ctx.groupId === snapshot.groupId);
+        && ctx.characterId === snapshot.characterId && ctx.groupId === snapshot.groupId && activeContactId === snapshot.contactId);
 }
 
 function getCharacterName(char) {
@@ -658,7 +716,7 @@ function allowedAvatarSrc(src) {
     return '';
 }
 function avatarSources(ctx, data) {
-    const char = selectedCharacter(ctx);
+    const char = contactCharacter(ctx,data?.__contactId||activeContactId);
     const custom = data?.avatars || {};
     let character = allowedAvatarSrc(custom.character);
     if (!character && char?.avatar && char.avatar !== 'none') {
