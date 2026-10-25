@@ -1,5 +1,12 @@
 # 回归记录
 
+## v0.8.10 — 2026-10-26
+
+- `node --test tests/core.test.mjs tests/startup.test.mjs tests/social.test.mjs`：**93/93 通过**；语法检查及改动空白检查通过。
+- 新增诊断分类测试：按钮缺失、被隐藏、在视口外、中心被其他元素遮挡、几何位置正常；保留旧的悬浮开关与启动回归。
+- 诊断在关闭手机、切换开关、挂载后触发。MutationObserver 仅在按钮已开启但实际被移除时安排探测，诊断签名不变不重复写运行日志；扩展设置状态文字相同时不重复改动 DOM，避免触发循环。
+- **仍需安卓实测**：关闭手机后到「运行日志」检查 `悬浮按钮诊断`；若日志显示按钮“几何位置正常”但用户仍看不见，需进一步调查 WebView 顶层渲染／遮挡，不能把此状态当作最终修复。
+
 ## v0.8.9 — 2026-10-26
 
 - `node --test tests/core.test.mjs tests/startup.test.mjs tests/social.test.mjs`：**92/92 通过**；静态语法与 Git diff 空白检查通过。

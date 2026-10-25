@@ -43,6 +43,8 @@ let bootstrapTimer = null;
 let wandObserver = null;
 let wandEntry = null;
 let extensionSettingsPanel = null;
+let launcherProbeTimer = null;
+let lastLauncherProbe = '';
 let extensionEnabled = true;
 let statusText = '';
 let statusKind = 'info';
@@ -134,6 +136,44 @@ function setFloatLauncherEnabled(value) {
         updateLauncherVisibility();return setStatus(recordError('保存悬浮按钮',error),'error');}
     updateLauncherVisibility();
     setStatus(value ? '悬浮按钮已开启；关闭小手机后可在酒馆页面右下角看到。' : '已关闭悬浮按钮；仍可从魔法棒或扩展设置打开。');
+    scheduleLauncherProbe('切换悬浮开关');
+}
+
+function inspectLauncher(reason='状态检查') {
+    if(typeof document==='undefined'||!mounted||!extensionEnabled)return null;
+    const enabled=floatLauncherEnabled(),button=document.getElementById('gujiguji-floating-launcher');
+    const connected=Boolean(button?.isConnected),owned=Boolean(button&&button===nodes?.launcher);
+    let css=null,rect=null,hit=null;
+    if(connected){
+        try{css=window.getComputedStyle?.(button)||null;}catch{/* WebView fallback */}
+        try{rect=button.getBoundingClientRect?.()||null;}catch{/* WebView fallback */}
+        if(rect?.width>0&&rect?.height>0){
+            try{hit=document.elementFromPoint?.(rect.left+rect.width/2,rect.top+rect.height/2)||null;}catch{/* unsupported */}
+        }
+    }
+    const display=css?.display||button?.style?.display||'未知';
+    const visibility=css?.visibility||button?.style?.visibility||'未知';
+    const visibleBox=Boolean(rect&&rect.width>0&&rect.height>0&&rect.bottom>0&&rect.right>0&&
+        rect.top<(window.innerHeight||Infinity)&&rect.left<(window.innerWidth||Infinity));
+    const covered=Boolean(hit&&button&&!button.contains(hit));
+    const state=!enabled?'开关关闭':!connected?'按钮未挂载':button.hidden||display==='none'||visibility==='hidden'?'样式隐藏':
+        rect&&!visibleBox?'尺寸为零或位置在屏幕外':covered?'按钮位置被其他元素占用':visibleBox?'几何位置正常':'无法判断尺寸';
+    const box=rect?`${Math.round(rect.left)},${Math.round(rect.top)} ${Math.round(rect.width)}×${Math.round(rect.height)}`:'未取得';
+    const top=covered?String(hit?.tagName||'元素').slice(0,18)+'#'+String(hit?.id||'').slice(0,40):hit?'按钮自身':'未取得';
+    const detail=`${reason}：${state}；开关=${enabled?'开':'关'}，DOM=${connected?'存在':'缺失'}，引用=${owned?'一致':'不一致'}，display=${display}，visibility=${visibility}，位置=${box}，中心命中=${top}`;
+    const signature=[enabled,state,connected,owned,display,visibility,box,top].join('|');
+    if(signature!==lastLauncherProbe){lastLauncherProbe=signature;recordActivity('悬浮按钮诊断',detail,state==='按钮位置被其他元素占用'||state==='按钮未挂载'||state==='样式隐藏'?'error':'info');}
+    const hint=document.getElementById?.('gujiguji-host-floating-status');
+    if(hint&&enabled){
+        const message=`悬浮按钮：${state}。详细状态请看小手机「运行日志」。`;
+        if(hint.textContent!==message)hint.textContent=message;
+    }
+    return {state,connected,owned,display,visibility,visibleBox,covered};
+}
+function scheduleLauncherProbe(reason) {
+    if(typeof setTimeout!=='function')return;
+    if(launcherProbeTimer)clearTimeout(launcherProbeTimer);
+    launcherProbeTimer=setTimeout(()=>{launcherProbeTimer=null;inspectLauncher(reason);},180);
 }
 
 function themeData() {
@@ -3314,6 +3354,7 @@ function closePhone() {
     const panel = root.querySelector('.lp-panel');
     if (panel?.open && typeof panel.close === 'function') panel.close();
     nodes.launcher.setAttribute('aria-label', '打开咕叽咕机');
+    scheduleLauncherProbe('关闭小手机后');
 }
 
 function installWandEntry() {
@@ -3389,7 +3430,7 @@ function makeUI() {
         <button type="button" class="lp-inline-notification" data-lp="inlineNotification" aria-label="打开新消息" hidden></button>
         <section class="lp-screen lp-home" data-lp-screen="home" aria-label="手机桌面">
           <div class="lp-home-hero">
-            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.8.9</div>
+            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.8.10</div>
             <div class="lp-home-time" data-lp="homeTime">故事时间</div>
             <div class="lp-home-character" data-lp="homeCharacter">等待进入角色存档</div>
           </div>
@@ -3933,9 +3974,13 @@ function mount() {
     }
     syncMainlinePrompt(ctx);
     render();
+    scheduleLauncherProbe('初始化后');
 }
 
 function unmount() {
+    if(launcherProbeTimer)clearTimeout(launcherProbeTimer);
+    launcherProbeTimer=null;
+    lastLauncherProbe='';
     if(momentReplyTimer)clearTimeout(momentReplyTimer);
     momentReplyTimer=null;
     if(notificationTimer)clearTimeout(notificationTimer);
@@ -4005,7 +4050,11 @@ function bindReady() {
     // insertion/replacement without a 15-second deadline or polling forever.
     if (!wandObserver && typeof MutationObserver === 'function') {
         wandObserver = new MutationObserver(() => {
-            if (extensionEnabled) {installWandEntry();installExtensionSettingsEntry();}
+            if (extensionEnabled) {
+                installWandEntry();installExtensionSettingsEntry();
+                if(mounted&&floatLauncherEnabled()&&!nodes?.launcher?.isConnected)
+                    scheduleLauncherProbe('页面移除了悬浮按钮');
+            }
         });
         wandObserver.observe(document.body, { childList: true, subtree: true });
     }
