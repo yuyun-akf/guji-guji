@@ -82,7 +82,7 @@ test('phone opens into a launcher with one send-and-generate action', () => {
     assert.match(html, /data-lp-screen="diagnostics"/);
     assert.match(html, /data-lp="homeLogCount"/);
     assert.match(html, /data-lp="diagnosticState"/);
-    assert.match(html, /data-lp="send">发送并生成/);
+    assert.match(html, /data-lp="send"[^>]*>发送/);
     assert.match(html, /data-lp="floatingLauncher"/);
     assert.match(html, /<dialog class="lp-panel"/);
     assert.equal((html.match(/data-lp="send"/g) || []).length, 1);
@@ -273,6 +273,7 @@ test('wand opens a native top-layer modal despite Android WebView returning no h
     const panel = {
         isConnected: true,
         open: false,
+        style: {},
         showModal() { shown += 1; this.open = true; },
         getBoundingClientRect: () => ({ left: 20, top: 20, right: 340, bottom: 540, width: 320, height: 520 }),
     };
@@ -337,6 +338,7 @@ test('modal entirely outside the viewport produces a visible diagnostic error', 
     const panel = {
         isConnected: true,
         open: false,
+        style: {},
         showModal() { this.open = true; },
         getBoundingClientRect: () => ({ left: 800, top: 700, right: 1120, bottom: 1200, width: 320, height: 500 }),
     };
@@ -369,7 +371,7 @@ test('modal entirely outside the viewport produces a visible diagnostic error', 
 test('diagnostic bootstrap is the manifest entry and exposes lifecycle hooks', () => {
     const manifest = JSON.parse(readFileSync(resolve(testRoot, '../manifest.json'), 'utf8'));
     const bootstrap = readFileSync(resolve(testRoot, '../bootstrap.js'), 'utf8');
-    assert.equal(manifest.version, '0.4.2');
+    assert.equal(manifest.version, '0.5.0');
     assert.equal(manifest.js, 'bootstrap.js');
     assert.match(bootstrap, /import\('\.\/index\.js'\)/);
     assert.match(bootstrap, /export function onActivate\(/);
@@ -458,4 +460,34 @@ test('independent API uses a separate model and ephemeral key without changing h
     assert.equal(outbound.chat_completion_source,'custom');
     assert.equal(JSON.parse(outbound.custom_include_headers).Authorization,'Bearer TEST_SECRET');
     assert.deepEqual(settings,{theme:'unchanged'});
+});
+
+test('messenger has messages, contacts, requests, profile, settings and import/export actions', () => {
+    const html = makeUI().innerHTML;
+    for (const page of ['chatList','contacts','requests','profile','chat','chatOptions']) {
+        assert.match(html,new RegExp('data-lp-screen="' + page + '"'));
+    }
+    for (const control of ['exportChat','copyChat','importChat','deleteChat','clearChat','avatarCharFile','avatarUserFile']) {
+        assert.ok(html.includes('data-lp="' + control + '"'));
+    }
+    assert.doesNotMatch(html,/data-lp="activity"/);
+    assert.doesNotMatch(html,/data-lp="diagnosticToggle"/);
+    assert.match(html,/data-lp="chatMenu"/);
+});
+test('chat import validates schema, sender roles and length limits', () => {
+    const runtime = {console,Date,structuredClone,window:{},document:{}};
+    vm.createContext(runtime);
+    vm.runInContext(source + '\\nglobalThis.importParse = parseChatImport;',runtime);
+    const json=JSON.stringify({format:'gujiguji-chat',version:1,messages:[{from:'user',text:'你好'},{from:'character',text:'在'}]});
+    const list=runtime.importParse(json);
+    assert.equal(list.length,2);
+    assert.equal(list[1].text,'在');
+    assert.throws(()=>runtime.importParse(JSON.stringify({format:'gujiguji-chat',version:1,messages:[{from:'admin',text:'x'}]})),/格式不合法/);
+});
+test('contact data keeps the original v1 chat messages unchanged', () => {
+    const old={version:1,storyTime:'2020-01-01T00:00',messages:[{id:'m1',from:'character',text:'以前的消息'}],friendship:{state:'friends'}};
+    const next=readData({chatMetadata:{st_little_phone_v1:old}});
+    assert.equal(next.messages[0].text,'以前的消息');
+    assert.equal(next.messages[0].id,'m1');
+    assert.equal(next.friendship.state,'friends');
 });
