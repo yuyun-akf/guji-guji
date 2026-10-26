@@ -3525,7 +3525,7 @@ function makeUI() {
         <button type="button" class="lp-inline-notification" data-lp="inlineNotification" aria-label="打开新消息" hidden></button>
         <section class="lp-screen lp-home" data-lp-screen="home" aria-label="手机桌面">
           <div class="lp-home-hero">
-            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.8.12</div>
+            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.8.13</div>
             <div class="lp-home-time" data-lp="homeTime">故事时间</div>
             <div class="lp-home-character" data-lp="homeCharacter">等待进入角色存档</div>
           </div>
@@ -3882,15 +3882,25 @@ function mount() {
     const floatingIcon=document.createElement('span');
     floatingIcon.className='lp-launcher-art';
     floatingIcon.setAttribute('aria-hidden','true');
-    floatingIcon.innerHTML=`<svg viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg" focusable="false">
-      <path d="M5.5 8.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z" fill="#f3c98e"/>
-      <rect x="9" y="2.5" width="20" height="31" rx="6.5" fill="#fffafc" stroke="#8165a8" stroke-width="1.7"/>
-      <rect x="11.6" y="6.5" width="14.8" height="20.4" rx="3.8" fill="#e7defc"/>
-      <path d="M14.3 13.7c0-1.7 1.4-3.1 3.1-3.1h5c1.7 0 3.1 1.4 3.1 3.1v3.2c0 1.7-1.4 3.1-3.1 3.1h-4.2l-3.3 2.5.7-3.1a3 3 0 0 1-1.3-2.5z" fill="#a38bcf"/>
-      <circle cx="18.3" cy="15.4" r="1" fill="white"/><circle cx="21.7" cy="15.4" r="1" fill="white"/>
-      <rect x="16.7" y="4.1" width="4.6" height=".9" rx=".45" fill="#b2a0c9"/>
-      <circle cx="19" cy="30.2" r="1.4" fill="#bca5d9"/>
-      <path d="M29.8 20.1l.85 2.1 2.1.85-2.1.85-.85 2.1-.85-2.1-2.1-.85 2.1-.85z" fill="#f7d69b"/>
+    floatingIcon.innerHTML=`<svg viewBox="0 0 48 54" xmlns="http://www.w3.org/2000/svg" focusable="false">
+      <g fill="none" stroke="#61466f" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 31.5C16.5 40 13.5 44.5 9.5 46.5"/>
+        <path d="M20.5 32.5C22.5 40.5 21 46 18.5 49"/>
+        <path d="M27.5 32.5C27 40.5 31 46 31 49"/>
+        <path d="M34.5 31.5C33 39.5 39 44 43 40.5"/>
+      </g>
+      <g fill="none" stroke="#dce5ff" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 31.5C16.5 40 13.5 44.5 9.5 46.5"/>
+        <path d="M20.5 32.5C22.5 40.5 21 46 18.5 49"/>
+        <path d="M27.5 32.5C27 40.5 31 46 31 49"/>
+        <path d="M34.5 31.5C33 39.5 39 44 43 40.5"/>
+      </g>
+      <path d="M8.2 14.2 7.8 4.6Q7.8 2.2 10.1 3.8L17 9Q24 6.8 31 9L37.9 3.8Q40.2 2.2 40.2 4.6L39.8 14.2Q45 20.2 44.2 28.9Q43.9 33 39.3 32.5Q35.5 35.7 31.3 33Q27.4 35.7 24 33.2Q20.6 35.7 16.7 33Q12.5 35.7 8.7 32.5Q4.1 33 3.8 28.9Q3 20.2 8.2 14.2Z" fill="#dce5ff" stroke="#61466f" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M10.2 6.9 15.4 10.6 10.5 13Z" fill="#f5c6d9"/>
+      <path d="M37.8 6.9 32.6 10.6 37.5 13Z" fill="#f5c6d9"/>
+      <circle cx="17.7" cy="23.5" r="1.7" fill="#61466f"/>
+      <circle cx="30.3" cy="23.5" r="1.7" fill="#61466f"/>
+      <path d="M21 25.3Q21.2 29.2 24 26Q26.8 29.2 27 25.3" fill="none" stroke="#61466f" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>`;
     floating.append(floatingIcon);
     floating.setAttribute('aria-label','打开咕叽咕机，按住可拖动');
