@@ -718,13 +718,22 @@
   place-items: center;
   width: 54px; height: 54px;
   padding: 0;
-  border: 2px solid var(--SmartThemeBorderColor, #dfd1ec);
-  border-radius: 18px;
-  background: var(--SmartThemeQuoteColor, #8263b0);
-  box-shadow: 0 5px 20px var(--SmartThemeShadowColor, #35234d4d);
-  color: var(--SmartThemeBodyColor, #fff); font-size: 25px; cursor: pointer;
+  border: 1.5px solid #fff9;
+  border-radius: 20px;
+  background: linear-gradient(145deg, #fffbff 4%, #f0e6fd 53%, #d8e6fa 100%);
+  box-shadow: 0 6px 19px #53406b45, inset 0 1px 1px #fff;
+  color: #7c65aa;
+  cursor: grab;
   pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
 }
+#gujiguji-floating-launcher .lp-launcher-art,
+#gujiguji-floating-launcher .lp-launcher-art svg { display: block; width: 36px; height: 36px; pointer-events: none; }
+#gujiguji-floating-launcher[data-dragging="true"] { cursor: grabbing; box-shadow: 0 9px 26px #53406b60, inset 0 1px 1px #fff; }
 #gujiguji-floating-launcher[hidden] { display: none !important; }
 #gujiguji-extension-settings { margin: 7px 0; }
 #gujiguji-extension-settings .gujiguji-host-controls { padding: 10px; }

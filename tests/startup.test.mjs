@@ -6,7 +6,7 @@ import vm from 'node:vm';
 const main = readFileSync(new URL('../index.js', import.meta.url), 'utf8').replaceAll('export function ', 'function ');
 const boot = readFileSync(new URL('../bootstrap.js', import.meta.url), 'utf8')
     .replaceAll('export function ', 'function ')
-    .replace("import('./index.js?v=0.8.11')", 'mockImport()');
+    .replace("import('./index.js?v=0.8.12')", 'mockImport()');
 
 function dom() {
     const observers = new Set();
@@ -155,7 +155,7 @@ test('extension settings drawer is unique, opens phone, and toggles the real flo
     assert.equal(launcher.style.transform,'none');
     assert.equal(launcher.popover,'manual');
     assert.equal(launcher.popoverOpen,true,'put the control into the viewport top layer');
-    assert.ok(launcher.querySelector('.fa-mobile-screen-button'),'launcher should have a smartphone icon');
+    assert.ok(launcher.querySelector('.lp-launcher-art'),'launcher should use the custom phone artwork');
     assert.match(host.document.getElementById('gujiguji-host-floating-status').textContent,/已开启/);
     launcher.remove();runtime.api.updateLauncherVisibility();
     assert.equal(host.document.getElementById('gujiguji-floating-launcher'),launcher,'reattach launcher if host/theme removes it');
@@ -168,6 +168,45 @@ test('extension settings drawer is unique, opens phone, and toggles the real flo
     const css=readFileSync(new URL('../style.css',import.meta.url),'utf8');
     assert.match(css,/#gujiguji-floating-launcher\s*\{[\s\S]*?position:\s*fixed/);
     assert.match(css,/#gujiguji-floating-launcher\[hidden\]/);
+});
+
+test('launcher drag stores one normalized position on release, suppresses drag click, and clamps after resize', () => {
+    const host=dom(),ctx={extensionSettings:{gujiguji:{floatingLauncher:true}},saved:0,
+        saveSettingsDebounced(){this.saved++;}};
+    const runtime={...host,console,Date,structuredClone,setTimeout(){return 1;},clearTimeout(){},
+        window:{SillyTavern:{getContext:()=>ctx},innerWidth:360,innerHeight:720}};
+    vm.createContext(runtime);
+    vm.runInContext(main+'\nglobalThis.drag={enableLauncherDragging,positionLauncher};',runtime);
+    const button=host.document.createElement('button');
+    button.style.setProperty=(name,value)=>{button.style[name]=value;};
+    button.getBoundingClientRect=()=>({left:Number.parseFloat(button.style.left)||292,
+        top:Number.parseFloat(button.style.top)||582,width:54,height:54});
+    const consumeClick=runtime.drag.enableLauncherDragging(button);
+    const input=(pointerId,clientX,clientY)=>({pointerId,clientX,clientY,pointerType:'touch',isPrimary:true,
+        preventDefault(){},button:0});
+    button.listeners.pointerdown(input(1,312,600));
+    button.listeners.pointermove(input(1,316,602));
+    button.listeners.pointerup(input(1,316,602));
+    assert.equal(ctx.saved,0,'tiny movement is still a tap');
+    assert.equal(consumeClick(),false);
+    button.listeners.pointerdown(input(2,312,600));
+    button.listeners.pointermove(input(2,82,0));
+    button.listeners.pointerup(input(2,82,0));
+    assert.equal(ctx.saved,1,'save only once when dropped');
+    assert.equal(consumeClick({detail:1}),true,'drag should not also click open the phone');
+    assert.equal(consumeClick({detail:1}),false,'the next ordinary click must work');
+    assert.ok(ctx.extensionSettings.gujiguji.floatingLauncherPosition.x<0.5);
+    assert.equal(ctx.extensionSettings.gujiguji.floatingLauncherPosition.y,0,'clamp against the top edge');
+    runtime.window.innerWidth=260;runtime.window.innerHeight=420;
+    runtime.drag.positionLauncher(button);
+    assert.ok(Number.parseFloat(button.style.left)>=8&&Number.parseFloat(button.style.left)<=198);
+    assert.equal(button.style.top,'8px','normalized top position remains on screen after resize');
+    const saved=ctx.saved,originalLeft=button.style.left;
+    button.listeners.pointerdown(input(3,40,30));
+    button.listeners.pointermove(input(3,240,390));
+    button.listeners.pointercancel(input(3,240,390));
+    assert.equal(ctx.saved,saved,'cancelled drag must not overwrite the previous position');
+    assert.equal(button.style.left,originalLeft,'cancelled drag must restore the saved position');
 });
 
 test('launcher diagnostics distinguish missing, hidden, offscreen, and covered controls', () => {
