@@ -6,7 +6,7 @@ import vm from 'node:vm';
 const main = readFileSync(new URL('../index.js', import.meta.url), 'utf8').replaceAll('export function ', 'function ');
 const boot = readFileSync(new URL('../bootstrap.js', import.meta.url), 'utf8')
     .replaceAll('export function ', 'function ')
-    .replace("import('./index.js?v=0.8.12')", 'mockImport()');
+    .replace("import('./index.js?v=0.8.13')", 'mockImport()');
 
 function dom() {
     const observers = new Set();
@@ -155,7 +155,11 @@ test('extension settings drawer is unique, opens phone, and toggles the real flo
     assert.equal(launcher.style.transform,'none');
     assert.equal(launcher.popover,'manual');
     assert.equal(launcher.popoverOpen,true,'put the control into the viewport top layer');
-    assert.ok(launcher.querySelector('.lp-launcher-art'),'launcher should use the custom phone artwork');
+    assert.ok(launcher.querySelector('.lp-launcher-art'),'launcher should use the cat-jellyfish mascot artwork');
+    assert.match(main,/viewBox="0 0 48 54"/,'mascot must have its own compact SVG silhouette');
+    assert.match(main,/fill="#f5c6d9"/,'cat ears must be part of the approved line-art design');
+    assert.doesNotMatch(main.slice(main.indexOf('floatingIcon.innerHTML'),main.indexOf('floating.append(floatingIcon)')),
+        /fa-mobile-screen-button/,'floating launcher must not reuse the generic phone icon');
     assert.match(host.document.getElementById('gujiguji-host-floating-status').textContent,/已开启/);
     launcher.remove();runtime.api.updateLauncherVisibility();
     assert.equal(host.document.getElementById('gujiguji-floating-launcher'),launcher,'reattach launcher if host/theme removes it');

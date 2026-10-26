@@ -1,5 +1,11 @@
 # 回归记录
 
+## v0.8.13 — 2026-10-26
+
+- `node --test tests/core.test.mjs tests/startup.test.mjs tests/social.test.mjs`：**94/94 通过**。语法检查、`git diff --check` 均通过。
+- 静态断言：小手机通用 FontAwesome 图标已经由猫耳水母内联 SVG 取代，SVG 包含简笔画的淡紫蓝主体、粉色猫耳；图标保持 54px 点击区域但只绘制 48px 吉祥物。
+- 位置持久化、取消拖动、正常轻点和浏览器原生顶层仍由原有测试覆盖；还需真实 Android WebView 确认细节是否清楚及点击区是否正常。
+
 ## v0.8.12 — 2026-10-26
 
 - `node --test tests/core.test.mjs tests/startup.test.mjs tests/social.test.mjs`：**94/94 通过**，语法检查与 `git diff --check` 通过。
