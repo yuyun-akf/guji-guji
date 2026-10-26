@@ -105,6 +105,21 @@ test('browser startup, delayed menu, lifecycle, old data and v0.7 UI', async () 
         assert.ok(launcherPosition.scrollY>100,'test must exercise the scrolled host');
         assert.ok(launcherPosition.top>=0&&launcherPosition.bottom<=launcherPosition.viewport,
             `launcher escaped viewport: ${JSON.stringify(launcherPosition)}`);
+        const beforeDrag=await page.locator('#gujiguji-floating-launcher').boundingBox();
+        await page.mouse.move(beforeDrag.x+27,beforeDrag.y+27);
+        await page.mouse.down();
+        await page.mouse.move(65,150,{steps:5});
+        await page.mouse.up();
+        const dropped=await page.evaluate(()=>({
+            rect:document.getElementById('gujiguji-floating-launcher').getBoundingClientRect().toJSON(),
+            saved:ctx.extensionSettings.gujiguji.floatingLauncherPosition,
+            open:document.querySelector('.lp-panel').open}));
+        assert.ok(dropped.saved&&dropped.saved.x<0.4&&dropped.saved.y<0.3,'drag saves a near-top-left position');
+        assert.equal(dropped.open,false,'drag must not generate an open-phone click');
+        await page.evaluate(async()=>{boot.onDisable();await boot.onEnable();});
+        const restored=await page.locator('#gujiguji-floating-launcher').boundingBox();
+        assert.ok(Math.abs(restored.x-dropped.rect.x)<=2&&Math.abs(restored.y-dropped.rect.y)<=2,
+            're-enable should restore the last dropped position');
         assert.deepEqual(errors, []);
     } finally { await browser.close(); }
 });

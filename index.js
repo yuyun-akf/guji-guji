@@ -89,6 +89,91 @@ function floatLauncherEnabled() {
     return context()?.extensionSettings?.[SETTINGS_KEY]?.floatingLauncher === true;
 }
 
+function launcherBounds() {
+    const width=window.innerWidth||document.documentElement?.clientWidth||360;
+    const height=window.innerHeight||document.documentElement?.clientHeight||720;
+    return {left:8,top:8,spanX:Math.max(0,width-70),spanY:Math.max(0,height-70)};
+}
+
+function savedLauncherPosition() {
+    const value=context()?.extensionSettings?.[SETTINGS_KEY]?.floatingLauncherPosition;
+    if(!Number.isFinite(value?.x)||!Number.isFinite(value?.y))return null;
+    return {x:Math.max(0,Math.min(1,value.x)),y:Math.max(0,Math.min(1,value.y))};
+}
+
+function positionLauncher(button=nodes?.launcher) {
+    if(!button?.style||button.dataset?.dragging==='true')return;
+    const position=savedLauncherPosition(),style=button.style;
+    const force=(name,value)=>{
+        if(typeof style.setProperty==='function')style.setProperty(name,value,'important');
+        else style[name]=value;
+    };
+    if(position){
+        const area=launcherBounds();
+        force('left',`${Math.round(area.left+area.spanX*position.x)}px`);
+        force('top',`${Math.round(area.top+area.spanY*position.y)}px`);
+        force('right','auto');force('bottom','auto');
+    }else{
+        force('top','auto');force('left','auto');
+        force('right','14px');force('bottom','84px');
+    }
+}
+
+function enableLauncherDragging(button) {
+    let drag=null,ignoreNextClick=false;
+    button.addEventListener('pointerdown',event=>{
+        if(event.isPrimary===false||(event.pointerType==='mouse'&&event.button!==0))return;
+        const rect=button.getBoundingClientRect?.();
+        if(!rect)return;
+        ignoreNextClick=false;
+        drag={id:event.pointerId,x:event.clientX,y:event.clientY,left:rect.left,top:rect.top,moved:false};
+        try{button.setPointerCapture?.(event.pointerId);}catch{/* WebView fallback */}
+    });
+    button.addEventListener('pointermove',event=>{
+        if(!drag||event.pointerId!==drag.id)return;
+        const dx=event.clientX-drag.x,dy=event.clientY-drag.y;
+        if(!drag.moved&&Math.hypot(dx,dy)<7)return;
+        drag.moved=true;
+        button.dataset.dragging='true';
+        const area=launcherBounds();
+        const left=Math.round(Math.max(area.left,Math.min(area.left+area.spanX,drag.left+dx)));
+        const top=Math.round(Math.max(area.top,Math.min(area.top+area.spanY,drag.top+dy)));
+        for(const [key,value] of [['left',`${left}px`],['top',`${top}px`],['right','auto'],['bottom','auto']]){
+            if(typeof button.style.setProperty==='function')button.style.setProperty(key,value,'important');
+            else button.style[key]=value;
+        }
+        event.preventDefault?.();
+    });
+    const finish=(event,cancelled=false)=>{
+        if(!drag||event.pointerId!==drag.id)return;
+        const moved=drag.moved;
+        drag=null;delete button.dataset.dragging;
+        if(moved&&!cancelled){
+            ignoreNextClick=true;
+            const rect=button.getBoundingClientRect();
+            const area=launcherBounds();
+            const pos={x:area.spanX?Math.max(0,Math.min(1,(rect.left-area.left)/area.spanX)):0,
+                y:area.spanY?Math.max(0,Math.min(1,(rect.top-area.top)/area.spanY)):0};
+            const ctx=context();
+            if(ctx?.extensionSettings){
+                (ctx.extensionSettings[SETTINGS_KEY]||={}).floatingLauncherPosition=pos;
+                try{ctx.saveSettingsDebounced?.();}catch(error){recordError('保存悬浮按钮位置',error);}
+            }
+            positionLauncher(button);
+            scheduleLauncherProbe('拖动后');
+        }else if(cancelled)positionLauncher(button);
+        try{button.releasePointerCapture?.(event.pointerId);}catch{/* Already released */}
+    };
+    button.addEventListener('pointerup',event=>finish(event));
+    button.addEventListener('pointercancel',event=>finish(event,true));
+    button.addEventListener('lostpointercapture',event=>finish(event,true));
+    return event=>{
+        const suppress=ignoreNextClick&&event?.detail!==0;
+        ignoreNextClick=false;
+        return suppress;
+    };
+}
+
 function updateLauncherVisibility() {
     const enabled=floatLauncherEnabled();
     if (nodes?.launcher) {
@@ -104,10 +189,7 @@ function updateLauncherVisibility() {
             };
             force('position','fixed','position');
             force('z-index','2147483645','zIndex');
-            force('top','auto','top');
-            force('left','auto','left');
-            force('right','14px','right');
-            force('bottom','84px','bottom');
+            positionLauncher(nodes.launcher);
             force('transform','none','transform');
             force('margin','0','margin');
             force('display',enabled?'grid':'none','display');
@@ -3443,7 +3525,7 @@ function makeUI() {
         <button type="button" class="lp-inline-notification" data-lp="inlineNotification" aria-label="打开新消息" hidden></button>
         <section class="lp-screen lp-home" data-lp-screen="home" aria-label="手机桌面">
           <div class="lp-home-hero">
-            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.8.11</div>
+            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.8.12</div>
             <div class="lp-home-time" data-lp="homeTime">故事时间</div>
             <div class="lp-home-character" data-lp="homeCharacter">等待进入角色存档</div>
           </div>
@@ -3797,11 +3879,22 @@ function mount() {
     floating.id = 'gujiguji-floating-launcher';
     floating.className = 'lp-launcher';
     floating.setAttribute('popover','manual');
-    const floatingIcon=document.createElement('i');
-    floatingIcon.className='fa-solid fa-mobile-screen-button';
+    const floatingIcon=document.createElement('span');
+    floatingIcon.className='lp-launcher-art';
     floatingIcon.setAttribute('aria-hidden','true');
+    floatingIcon.innerHTML=`<svg viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg" focusable="false">
+      <path d="M5.5 8.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z" fill="#f3c98e"/>
+      <rect x="9" y="2.5" width="20" height="31" rx="6.5" fill="#fffafc" stroke="#8165a8" stroke-width="1.7"/>
+      <rect x="11.6" y="6.5" width="14.8" height="20.4" rx="3.8" fill="#e7defc"/>
+      <path d="M14.3 13.7c0-1.7 1.4-3.1 3.1-3.1h5c1.7 0 3.1 1.4 3.1 3.1v3.2c0 1.7-1.4 3.1-3.1 3.1h-4.2l-3.3 2.5.7-3.1a3 3 0 0 1-1.3-2.5z" fill="#a38bcf"/>
+      <circle cx="18.3" cy="15.4" r="1" fill="white"/><circle cx="21.7" cy="15.4" r="1" fill="white"/>
+      <rect x="16.7" y="4.1" width="4.6" height=".9" rx=".45" fill="#b2a0c9"/>
+      <circle cx="19" cy="30.2" r="1.4" fill="#bca5d9"/>
+      <path d="M29.8 20.1l.85 2.1 2.1.85-2.1.85-.85 2.1-.85-2.1-2.1-.85 2.1-.85z" fill="#f7d69b"/>
+    </svg>`;
     floating.append(floatingIcon);
-    floating.setAttribute('aria-label','打开咕叽咕机');
+    floating.setAttribute('aria-label','打开咕叽咕机，按住可拖动');
+    floating.setAttribute('title','轻点打开 · 拖动移动');
     floating.hidden = !floatLauncherEnabled();
     document.body.append(floating);
     nodes = Object.fromEntries(['title', 'subtitle', 'back', 'close', 'time',
@@ -3815,7 +3908,9 @@ function mount() {
         'messages','messageActions','quotedPreview','quotedText','cancelQuote','emojiPanel','morePanel','chatImageInput','input', 'retry', 'send', 'launcher']
         .map(key => [key, key === 'launcher' ? floating : root.querySelector(`[data-lp="${key}"]`)]));
 
-    nodes.launcher.addEventListener('click', () => {
+    const draggedClick=enableLauncherDragging(nodes.launcher);
+    nodes.launcher.addEventListener('click', event => {
+        if(draggedClick(event)){event.preventDefault?.();return;}
         const opening = !root.classList.contains('lp-open');
         if (opening) openPhone();
         else closePhone();
@@ -3941,7 +4036,7 @@ function mount() {
     });
     nodes.input.addEventListener('focus', () => setTimeout(syncPhoneViewport, 120));
     nodes.input.addEventListener('blur', () => setTimeout(syncPhoneViewport, 120));
-    viewportListener = () => syncPhoneViewport();
+    viewportListener = () => {syncPhoneViewport();positionLauncher();};
     window.visualViewport?.addEventListener('resize', viewportListener);
     window.visualViewport?.addEventListener('scroll', viewportListener);
     window.addEventListener('resize', viewportListener);
