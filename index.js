@@ -1324,12 +1324,13 @@ function updateBusy() {
     nodes.time.disabled = busy || !ready;
     nodes.send.textContent = '发送';
     nodes.diagnosticState.textContent = busy
-        ? `${busyKind === 'friend' ? '好友申请处理中' : '正在请求模型回复'} · ${Math.floor((Date.now() - busyStartedAt) / 1000)} 秒`
+        ? `${busyKind === 'friend' ? '好友申请处理中' : busyKind === 'send' ? '正在保存玩家消息' : '正在请求模型回复'} · ${Math.floor((Date.now() - busyStartedAt) / 1000)} 秒`
         : statusText || '空闲：当前没有正在运行的请求。';
     const lastMessage = data?.messages?.at(-1);
-    const canRetry = Boolean(isFriend && !busy && lastMessage?.from === 'user');
-    nodes.retry.hidden = !canRetry;
-    nodes.retry.disabled = busy;
+    const canGenerate = Boolean(isFriend && !busy && lastMessage?.from === 'user');
+    nodes.generate.disabled = !canGenerate;
+    nodes.generate.textContent = '生成';
+    nodes.generate.title = canGenerate ? '生成回复：将连续发送的玩家消息一起交给模型（1 次 API 请求）' : '先发送玩家消息，再生成角色回复';
 }
 
 function startBusy(kind) {
@@ -3210,7 +3211,7 @@ async function runReply(ctx, char, data, session, existingJob = null) {
     }
 }
 
-async function retryLastReply() {
+async function generateReply() {
     if (!mounted || busy) return;
     const ctx = context();
     const char = contactCharacter(ctx);
@@ -3231,7 +3232,6 @@ async function sendUserMessage(text,image='',sticker=null) {
     const content=String(text||'').trim();
     if(!char||!content||friendshipState(readData(ctx))!=='friends')return;
     if(image && !sticker && readApiOptions(readData(ctx)).mode!=='custom')return setStatus('图片发送需使用支持视觉输入的独立 API','error');
-    if(typeof ctx.generateRaw!=='function' && !ctx.ChatCompletionService?.sendRequest)return setStatus('当前酒馆未提供生成接口','error');
     const session=captureSession(ctx);
     const data=structuredClone(readData(ctx));
     const quoted=data.messages.find(x=>x.id===quotedMessageId);
@@ -3240,15 +3240,15 @@ async function sendUserMessage(text,image='',sticker=null) {
     if(image)message.image=image;
     if(sticker){message.sticker=true;message.stickerName=sticker.label;}
     data.chatDeleted=false;
-    const job=startBusy('reply');
-    recordActivity('发送消息','正在保存玩家消息');
+    const job=startBusy('send');
+    recordActivity('发送消息','仅保存玩家消息，不调用模型；可继续发送或点「生成」。');
     try {
         await writeData(ctx,data);
         if(!sameSession(session))return;
         nodes.input.value='';
         clearQuote();
         nodes.morePanel.hidden=true;nodes.emojiPanel.hidden=true;
-        await runReply(ctx,char,data,session,job);
+        setStatus('已发送，可继续发送；准备好后点「生成」让角色回复。');
     }catch(e){if(sameSession(session))setStatus(recordError('发送消息',e),'error');}
     finally{finishBusy(job);if(mounted)render();}
 }
@@ -3525,7 +3525,7 @@ function makeUI() {
         <button type="button" class="lp-inline-notification" data-lp="inlineNotification" aria-label="打开新消息" hidden></button>
         <section class="lp-screen lp-home" data-lp-screen="home" aria-label="手机桌面">
           <div class="lp-home-hero">
-            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.8.13</div>
+            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.8.14</div>
             <div class="lp-home-time" data-lp="homeTime">故事时间</div>
             <div class="lp-home-character" data-lp="homeCharacter">等待进入角色存档</div>
           </div>
@@ -3759,8 +3759,8 @@ function makeUI() {
             <button type="button" class="lp-tool-btn" data-chat-tool="emoji" aria-label="表情包">☺</button>
             <textarea data-lp="input" rows="1" placeholder="发送消息" aria-label="手机消息内容"></textarea>
             <button type="button" class="lp-tool-btn" data-chat-tool="more" aria-label="更多功能">＋</button>
-            <button type="button" data-lp="send" aria-label="发送并生成">发送</button>
-            <button type="button" class="lp-retry" data-lp="retry" hidden>重试回复</button>
+            <button type="button" data-lp="send" aria-label="发送消息，不调用模型" title="只发送这条消息，可连续发送多条">发送</button>
+            <button type="button" data-lp="generate" aria-label="生成角色回复，调用一次 API" title="让角色回复以上消息（1 次 API 请求）" disabled>生成</button>
           </div>
         </section>
         <section class="lp-screen lp-chatlist" data-lp-screen="chatOptions" aria-label="聊天记录管理" hidden>
@@ -3915,7 +3915,7 @@ function mount() {
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
         'presetSource','presetInfo','presetEntries','worldBookList','worldSelectionSummary','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','readMainlineMemory','memorySource','phoneToMainline','saveContextSettings','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themeIcons',
         'diagnostics', 'diagnosticState', 'copyDiagnostics', 'clearDiagnostics',
-        'messages','messageActions','quotedPreview','quotedText','cancelQuote','emojiPanel','morePanel','chatImageInput','input', 'retry', 'send', 'launcher']
+        'messages','messageActions','quotedPreview','quotedText','cancelQuote','emojiPanel','morePanel','chatImageInput','input', 'generate', 'send', 'launcher']
         .map(key => [key, key === 'launcher' ? floating : root.querySelector(`[data-lp="${key}"]`)]));
 
     const draggedClick=enableLauncherDragging(nodes.launcher);
@@ -4010,7 +4010,7 @@ function mount() {
         const action=event.target.closest('button[data-message-action]');
         if(action&&root.contains(action)){if(action.dataset.messageAction==='cancel')closeMessageActions();else void handleMessageOperation(action.dataset.messageAction);}
     });
-    nodes.retry.addEventListener('click', retryLastReply);
+    nodes.generate.addEventListener('click', () => void generateReply());
     nodes.cancelQuote.addEventListener('click',clearQuote);
     nodes.friendSave.addEventListener('click', saveManualFriendship);
     nodes.addNpcSave.addEventListener('click',()=>void addNpcContact());
