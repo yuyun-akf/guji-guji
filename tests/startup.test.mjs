@@ -6,7 +6,7 @@ import vm from 'node:vm';
 const main = readFileSync(new URL('../index.js', import.meta.url), 'utf8').replaceAll('export function ', 'function ');
 const boot = readFileSync(new URL('../bootstrap.js', import.meta.url), 'utf8')
     .replaceAll('export function ', 'function ')
-    .replace("import('./index.js?v=0.8.13')", 'mockImport()');
+    .replace("import('./index.js?v=0.8.14')", 'mockImport()');
 
 function dom() {
     const observers = new Set();
@@ -276,4 +276,65 @@ test('bootstrap retries failed import and failed activation instead of caching n
     assert.ok(await runtime.api.onEnable());
     assert.equal(calls, 2);
     assert.equal(starts, 2);
+});
+
+test('private chat queues multiple user sends and generates once on demand, with safe retry', async () => {
+    const saved = {data:{friendship:{state:'friends'},messages:[],storyTime:'2026-10-30T12:30'},failNext:true};
+    const calls = [];
+    const ctx = {characterId:0,characters:[{name:'测试角色'}],generateRaw(){}};
+    const runtime = {console,Date,structuredClone,setInterval(){return 1;},clearInterval(){},ctx,saved,calls};
+    vm.createContext(runtime);
+    vm.runInContext(main + `
+        mounted=true;
+        nodes={send:{},generate:{},input:{value:''},time:{},diagnosticState:{},morePanel:{hidden:false},
+            emojiPanel:{hidden:false},quotedPreview:{hidden:true},quotedText:{}};
+        context=()=>ctx;
+        selectedCharacter=()=>ctx.characters[0];
+        contactCharacter=()=>ctx.characters[0];
+        readData=()=>saved.data;
+        writeData=async(_ctx,data)=>{saved.data=data;};
+        friendshipState=()=> 'friends';
+        captureSession=()=>({});
+        sameSession=()=>true;
+        render=()=>updateBusy();
+        renderMessages=()=>{};
+        setStatus=()=>{};
+        recordActivity=()=>{};
+        recordError=(_title,error)=>String(error.message||error);
+        composePhonePrompt=async()=> '人设';
+        messageStylePrompt=()=> '';
+        stickerLibrary=()=>[];
+        stickerPrompt=()=> '';
+        generateWithTimeout=async(_ctx,options)=>{
+            calls.push(options.prompt);
+            if(saved.failNext){saved.failNext=false;throw Error('模拟的模型故障');}
+            return '收到';
+        };
+        parseStickerReply=answer=>[{text:answer}];
+        globalThis.phone={sendUserMessage,generateReply,controls:()=>nodes,
+            quote(id){quotedMessageId=id;}};
+    `,runtime);
+
+    const shell=runtime.phone.controls();
+    assert.match(main,/data-lp="send" aria-label="发送消息，不调用模型"/);
+    assert.match(main,/data-lp="generate" aria-label="生成角色回复，调用一次 API"/);
+    await runtime.phone.sendUserMessage('第一句');
+    assert.equal(saved.data.messages.length,1);
+    assert.equal(calls.length,0,'sending text does not invoke a paid model');
+    runtime.phone.quote(saved.data.messages[0].id);
+    await runtime.phone.sendUserMessage('第二句');
+    assert.equal(saved.data.messages.length,2);
+    assert.equal(saved.data.messages[1].replyQuote,'第一句','quote remains on the second send');
+    assert.equal(calls.length,0);
+    assert.equal(shell.generate.disabled,false,'pending user messages enable generation');
+    await runtime.phone.generateReply();
+    assert.equal(calls.length,1,'only generation performs a model call');
+    assert.equal(saved.data.messages.length,2,'model failure must preserve pending sends');
+    assert.equal(shell.generate.disabled,false,'failure permits safe retry');
+    await runtime.phone.generateReply();
+    assert.equal(calls.length,2);
+    assert.equal(saved.data.messages.length,3);
+    assert.deepEqual(Array.from(calls.at(-1),m=>m.role),['user','user']);
+    assert.deepEqual(Array.from(saved.data.messages,m=>m.from),['user','user','character']);
+    assert.equal(shell.generate.disabled,true,'successful reply closes the pending batch');
 });
