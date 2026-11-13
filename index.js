@@ -367,8 +367,9 @@ async function phoneGenerate(ctx,options,data) {
             if(phoneRequestImageCount(payload?.messages||[])!==imageCount)
                 throw new Error('酒馆构建请求时丢失图片内容，已取消本次生成；请检查连接和模型。');
             payload.stream=false;
-            recordActivity('多模态图片请求',`跟随酒馆当前模型：${model}；通道 ${payload.chat_completion_source||'未识别'}；照片 ${imageCount} 张以图片数据提交。此日志证明发出的是多模态请求，实际识图结果仍取决于模型。`);
+            recordActivity('多模态图片请求',`已构建图片请求：当前模型 ${model}；通道 ${payload.chat_completion_source||'未识别'}；包含 ${imageCount} 张照片。正在交给酒馆现有连接发送，不额外配置 API。`);
             const result=await service.sendRequest(payload);
+            recordActivity('多模态响应',`酒馆接口已返回；本轮提交 ${imageCount} 张照片。是否正确理解图片内容仍需核对回复。`,'success');
             return typeof result==='string'?result:result?.content||'';
         }
         if(typeof ctx?.generateRaw!=='function')throw new Error('酒馆生成接口不可用');
