@@ -577,6 +577,7 @@ async function populateConfigLists() {
         option.value = name; option.textContent = name; nodes.presetSource.append(option);
     }
     nodes.presetSource.value=presets.includes(chosenPreset)?chosenPreset:'';
+    if(nodes.saveSelections)nodes.saveSelections.title='将本角色当前选择写入聊天存档和酒馆扩展设置';
     if(nodes.presetInfo)nodes.presetInfo.textContent='选择预设后默认使用原预设中已启用的条目；世界书勾选后默认按原书的启用状态进行关键词触发。也可在条目列表手动调整，最后点「保存预设与世界书配置」。不会切换酒馆正文的预设。';
     renderWorldBookSelector(ctx,worlds);
     showPresetEntries();
@@ -4025,7 +4026,8 @@ function makeUI() {
           <h2>选择世界书（可多选）</h2>
           <div class="lp-worldbook-list" data-lp="worldBookList" aria-label="可用世界书多选列表"></div>
           <button type="button" class="lp-settings-link" data-lp="openWorldPicker">管理已选世界书的条目（0 本）</button>
-          <p class="lp-settings-hint">先勾选需要使用的多本世界书，再进入条目管理页分别开关条目。暂时关闭某本书不会删除该书已勾选的条目；重新开启即可恢复。仅触发条目进入提示，最多约 12,000 字符。</p>
+          <p class="lp-settings-hint">勾选一本世界书后，默认启用书中原本允许的条目，并在聊天时按关键词触发；可进条目列表单独关闭。暂停某本书不删除已保存的勾选。单次世界书注入限约 12,000 字符。</p>
+          <button type="button" class="lp-settings-link" data-lp="saveSelections">保存预设与世界书配置</button>
           <h2>正文记忆与互通</h2>
           <label class="lp-entry-option"><input type="checkbox" data-lp="readMainlineMemory" checked /> 只读获取已安装插件的正文记忆</label>
           <label class="lp-field">记忆来源<select data-lp="memorySource">
@@ -4046,12 +4048,14 @@ function makeUI() {
           <div class="lp-picker-head" data-lp="presetPickerTitle">预设</div>
           <input class="lp-picker-search" type="search" data-lp="presetSearch" placeholder="搜索条目名称或内容" aria-label="搜索预设条目" />
           <div class="lp-picker-rows" data-lp="presetEntries"></div>
+          <button type="button" class="lp-settings-link" data-lp="savePresetPicker">保存选择并返回设置</button>
         </section>
         <section class="lp-screen lp-picker" data-lp-screen="worldPicker" hidden>
           <div class="lp-picker-head" data-lp="worldPickerTitle">世界书</div>
           <div class="lp-worldbook-summary" data-lp="worldSelectionSummary"></div>
           <input class="lp-picker-search" type="search" data-lp="worldSearch" placeholder="搜索条目名称或内容" aria-label="搜索世界书条目" />
           <div class="lp-picker-rows" data-lp="worldEntries"></div>
+          <button type="button" class="lp-settings-link" data-lp="saveWorldPicker">保存选择并返回设置</button>
         </section>
         <section class="lp-screen lp-settings" data-lp-screen="calendar" aria-label="日历" hidden>
           <h2>当前故事时间</h2>
@@ -4140,7 +4144,7 @@ function mount() {
         'friendLabel', 'friendActions','profileAvatar','profileName','profileDescription','contactEvidence','contactExchange','contactLinks','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcScanState','npcCandidates','npcSaveCandidates','storyPeopleList','viewPrimaryContact','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','avatarUserFile','resetCharAvatar','resetUserAvatar',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
-        'presetSource','presetInfo','presetEntries','worldBookList','worldSelectionSummary','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','readMainlineMemory','memorySource','phoneToMainline','saveContextSettings','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themeIcons',
+        'presetSource','presetInfo','presetEntries','worldBookList','worldSelectionSummary','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','saveSelections','savePresetPicker','saveWorldPicker','readMainlineMemory','memorySource','phoneToMainline','saveContextSettings','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themeIcons',
         'diagnostics', 'diagnosticState', 'copyDiagnostics', 'clearDiagnostics',
         'messages','messageActions','quotedPreview','quotedText','cancelQuote','emojiPanel','morePanel','chatImageInput','input', 'generate', 'send', 'launcher']
         .map(key => [key, key === 'launcher' ? floating : root.querySelector(`[data-lp="${key}"]`)]));
@@ -4204,6 +4208,9 @@ function mount() {
     nodes.worldSearch.addEventListener('input',()=>filterPicker('world'));
     nodes.openPresetPicker.addEventListener('click',()=>setScreen('presetPicker'));
     nodes.openWorldPicker.addEventListener('click',()=>setScreen('worldPicker'));
+    nodes.saveSelections.addEventListener('click',()=>void saveSelectionSettings());
+    nodes.savePresetPicker.addEventListener('click',()=>void saveSelectionSettings(true));
+    nodes.saveWorldPicker.addEventListener('click',()=>void saveSelectionSettings(true));
 
     nodes.apiMode.addEventListener('change', () => { nodes.customApiFields.hidden = nodes.apiMode.value !== 'custom'; });
     nodes.saveApi.addEventListener('click', () => void savePhoneApi());
