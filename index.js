@@ -1746,7 +1746,7 @@ async function maybeAutoFriendRequest(ctx=context()) {
             systemPrompt:system+'\n\n【是否主动申请好友】主线里这两个人已经交换联系方式，但尚未互加好友。请按当前角色的自主意愿决定是否向 user 发起好友申请。可以不申请。只输出 APPLY 或 SKIP。',
             prompt:[...buildPrompt(data,ctx,person).slice(-8),{role:'user',content:'【主线已发生】'+evidence+'\n是否由你主动发起好友申请？'}]
         },data);
-        if(!same()||!/^APPLY$/i.test(String(answer||'').trim()))return;
+        if(!same()||!/^APPLY$/i.test(stripModelReasoning(answer)))return;
         const latest=structuredClone(readData(ctx,eligible));
         if(friendshipState(latest)!=='stranger')return;
         rememberFriendship(latest,'incoming','对方根据已发生的联系方式交换事件，主动请求添加 user 为好友。');
@@ -2206,6 +2206,7 @@ async function tickAutonomousActivity(manualChannel='') {
             },data);
         }
         if(!same())return;
+        answer=stripModelReasoning(answer);
         if(!answer||/^\s*\[SKIP\]\s*$/i.test(answer)){
             recordActivity('角色自主活动',contactDisplayName(ctx,id)+' 选择这次不发送','info');
             if(manualChannel&&nodes?.autonomyStatus)nodes.autonomyStatus.textContent='已连接模型，角色选择本次不发送（SKIP）';
@@ -2304,7 +2305,7 @@ function momentBatchTask(ctx,post,actors,{writePost=false,replyComments=[]}={}) 
     ].filter(Boolean).join('\n');
 }
 function parseMomentBatch(value) {
-    const raw=String(value||'').trim(),first=raw.indexOf('{'),last=raw.lastIndexOf('}');
+    const raw=stripModelReasoning(value),first=raw.indexOf('{'),last=raw.lastIndexOf('}');
     if(first<0||last<=first)return null;
     try {
         const parsed=JSON.parse(raw.slice(first,last+1));
@@ -3548,7 +3549,7 @@ async function reviewOutgoingRequest() {
             ],
         }, data);
         if (!sameSession(session)) return;
-        const response = typeof result === 'string' ? result.trim().replace(/^`+|`+$/g, '').trim() : '';
+        const response = typeof result === 'string' ? stripModelReasoning(result).replace(/^`+|`+$/g, '').trim() : '';
         const verdict = /^(ACCEPT|REJECT)$/i.test(response) ? response.toUpperCase() : '';
         if (!verdict) throw new Error('模型没有按要求返回 ACCEPT 或 REJECT，好友申请保持待处理。');
         const next = verdict === 'ACCEPT' ? 'friends' : 'stranger';
