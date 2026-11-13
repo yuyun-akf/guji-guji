@@ -1,5 +1,12 @@
 # 回归记录
 
+## v0.8.17 — 2026-11-14
+
+- 根据 SillyTavern 1.18/1.19 官方 `public/script.js` 确认 `createRawPrompt` 会将原 `content` 数组通过字符串拼接转换为文本，因此此前图片没有进入模型；两个版本的 `ChatCompletionService.presetToGeneratePayload`、`sendRequest` 与 `st-context.js` 均存在。
+- 受控 V8 验证：模拟当前 Vertex/Gemini 配置下，`image_url` 能保留到 `sendRequest` 实际请求；包含照片时 `generateRaw` 调用为 0，纯文本仍调用 `generateRaw`；缺失多模态接口时明确错误；`[[thought\n]]`、`[[thought]]`、`[[thought:...]]`、跨气泡被截断的标签均可清理。
+- 新增运行日志统计，区分手机历史照片总数与最近 24 条实际纳入数量。需要真实安卓、Gemini Vertex AI 服务账号、官方酒馆 1.18/1.19 与完整 Node 回归核验，当前没有真实 API 成功识图的测试结果。
+
+
 ## v0.8.16 — 2026-11-14
 
 - 增加源选择即生效/原版启用状态、常驻与关键词匹配、手动全部关闭、显式保存及配置状态提示、thinking 清洗与被拆分的旧消息隐藏等回归用例。
