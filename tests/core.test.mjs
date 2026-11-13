@@ -371,10 +371,10 @@ test('modal entirely outside the viewport produces a visible diagnostic error', 
 test('diagnostic bootstrap is the manifest entry and exposes lifecycle hooks', () => {
     const manifest = JSON.parse(readFileSync(resolve(testRoot, '../manifest.json'), 'utf8'));
     const bootstrap = readFileSync(resolve(testRoot, '../bootstrap.js'), 'utf8');
-    assert.equal(manifest.version, '0.8.16');
+    assert.equal(manifest.version, '0.8.17');
     assert.equal(manifest.minimum_client_version, '1.18.0');
     assert.equal(manifest.js, 'bootstrap.js');
-    assert.match(bootstrap, /import\('\.\/index\.js\?v=0\.8\.16'\)/);
+    assert.match(bootstrap, /import\('\.\/index\.js\?v=0\.8\.17'\)/);
     assert.match(bootstrap, /export function onActivate\(/);
     assert.match(bootstrap, /export function onEnable\(/);
     assert.match(bootstrap, /export function onDisable\(/);
@@ -939,17 +939,29 @@ test('role-scoped phone selections survive a new chat and stay isolated from ano
     assert.equal(api.savedPhoneSelections(ctx),null,'another character must not inherit this role config');
 });
 
-test('regular photos use the current multimodal model without a custom API', async () => {
+test('photos bypass generateRaw and are transmitted intact to the active multimodal model',async()=>{
     const image='data:image/jpeg;base64,QUJD';
     const prompt=buildPrompt({messages:[{id:'m1',from:'user',text:'[图片]',image}]});
-    let called=0;
-    const ctx={generateRaw:async options=>{called++;return options;}};
-    const result=await vm.runInContext('phoneGenerate',sandbox)(ctx,{prompt},{config:{api:{mode:'inherit'}}});
-    assert.equal(called,1);
-    assert.equal(result.prompt[0].content[1].type,'image_url');
-    assert.equal(result.prompt[0].content[1].image_url.url,image);
+    let rawCalls=0,serviceCalls=0,payload=null;
+    const ctx={mainApi:'openai',chatCompletionSettings:{chat_completion_source:'vertexai',vertexai_model:'gemini-4a'},
+        getChatCompletionModel:()=> 'gemini-4a',
+        generateRaw:async()=>{rawCalls++;throw new Error('generateRaw must never stringify image blocks');},
+        ChatCompletionService:{
+            presetToGeneratePayload:async(_preset,_overrides,options)=>({
+                chat_completion_source:'vertexai',messages:options.messages,model:options.model,stream:false}),
+            sendRequest:async request=>{payload=request;serviceCalls++;return {content:'看到了游戏截图',reasoning:'PRIVATE_THOUGHTS'};}
+        }};
+    const result=await vm.runInContext('phoneGenerate',sandbox)(ctx,{systemPrompt:'rules',prompt},{config:{api:{mode:'inherit'}}});
+    assert.equal(result,'看到了游戏截图');
+    assert.equal(rawCalls,0);
+    assert.equal(serviceCalls,1);
+    assert.equal(payload.chat_completion_source,'vertexai');
+    assert.equal(payload.model,'gemini-4a');
+    assert.equal(payload.messages[1].content[1].type,'image_url');
+    assert.equal(payload.messages[1].content[1].image_url.url,image);
+    await assert.rejects(vm.runInContext('phoneGenerate',sandbox)(
+        {...ctx,ChatCompletionService:{}},{prompt},{config:{api:{mode:'inherit'}}}),/多模态请求接口/);
     assert.doesNotMatch(raw,/图片发送需使用支持视觉输入的独立 API/);
-    assert.doesNotMatch(raw,/图片识别需要在设置中使用支持视觉输入的独立 OpenAI 兼容 API/);
 });
 
 test('choosing a source enables the original active prompts and worldbook entries by default',async()=>{
@@ -987,6 +999,9 @@ test('reasoning tags are stripped before splitting; old broken fragments stay ou
     const reply='[[thinking:用户发了四条消息；计划回复。]]我哪句凶你了？[PHONE_NEXT]别闹。';
     assert.equal(strip(reply),'我哪句凶你了？[PHONE_NEXT]别闹。');
     assert.equal(strip('<think>幕后推理</think>回话。'),'回话。');
+    assert.equal(strip('[[thought\n]]本贵妃刚洗完澡'),'本贵妃刚洗完澡');
+    assert.equal(strip('[[thought]]角色台词'),'角色台词');
+    assert.equal(strip('[[thought:内部分析]]回复内容'),'回复内容');
     const old=[{id:'1',from:'character',text:'[[thinking:用户发了四条消息，'},
         {id:'2',from:'character',text:'分隔。]]我哪句凶你了？'},
         {id:'3',from:'user',text:'好吧'}];
@@ -996,6 +1011,10 @@ test('reasoning tags are stripped before splitting; old broken fragments stay ou
     const prompt=buildPrompt({messages:old});
     assert.equal(prompt.length,2);
     assert.doesNotMatch(JSON.stringify(prompt),/thinking|分隔/);
+    const interrupted=clean([{from:'character',text:'[[thought'},
+        {from:'character',text:']]今晚上线吗？'}]);
+    assert.equal(interrupted[0].text,'');
+    assert.equal(interrupted[1].text,'今晚上线吗？');
     assert.match(makeUI().innerHTML,/data-lp="saveSelections"/);
     assert.match(makeUI().innerHTML,/data-lp="savePresetPicker"/);
     assert.match(makeUI().innerHTML,/data-lp="saveWorldPicker"/);
@@ -1027,4 +1046,22 @@ test('explicit config Save materializes initial enabled selections into role set
     assert.equal(saved.worldInitialized[0],'B');
     assert.match(fixture.selectionSaveStatus.textContent,/已保存/);
     assert.equal(saves,1);
+});
+
+test('text-only generation still uses normal generateRaw while image-less context stays text', async()=>{
+    let count=0;
+    const ctx={mainApi:'openai',generateRaw:async options=>{count++;return options.prompt[0].content+'：回复';}};
+    const result=await vm.runInContext('phoneGenerate',sandbox)(ctx,{
+        prompt:[{role:'user',content:'文字消息'}]},{config:{api:{mode:'inherit'}}});
+    assert.equal(result,'文字消息：回复');
+    assert.equal(count,1);
+});
+test('photos outside the 24-message context are reported as excluded without pretending to read them',()=>{
+    const image='data:image/jpeg;base64,QUJD';
+    const data={messages:[{id:'img',from:'user',text:'[图片]',image},
+        ...Array.from({length:24},(_,i)=>({id:'text'+i,from:'user',text:'后续文字'+i}))]};
+    const prompt=buildPrompt(data);
+    assert.equal(prompt.length,24);
+    const count=vm.runInContext('phoneRequestImageCount',sandbox)(prompt);
+    assert.equal(count,0,'old photos outside the 24-message window must not be falsely reported as sent');
 });
