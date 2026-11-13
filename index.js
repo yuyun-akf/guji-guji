@@ -19,6 +19,7 @@ const EXTENSION_PANEL_ID = 'gujiguji-extension-settings';
 const CONTEXT_MESSAGE_LIMIT = 24;
 const CHARACTER_TEXT_LIMIT = 9000;
 const PHONE_LORE_BUDGET = 12000;
+const PHONE_PRESET_BUDGET = 30000;
 const PHONE_MEMORY_BUDGET = 4800;
 const MAINLINE_PROMPT_ID = 'gujiguji:phone-history';
 const DIAGNOSTIC_LIMIT = 24;
@@ -450,10 +451,49 @@ function filterPicker(kind) {
     }
 }
 function availablePresetEntries(name, ctx) {
-    const manager = ctx?.getPresetManager?.('openai');
-    const preset = manager?.getCompletionPresetByName?.(name);
-    return (preset?.prompts || []).filter(p => typeof p.content === 'string' && p.content.trim())
-        .map(p => ({id:String(p.identifier || p.name),name:p.name || p.identifier || '未命名条目',content:p.content}));
+    if(!name)return [];
+    const preset = ctx?.getPresetManager?.('openai')?.getCompletionPresetByName?.(name);
+    const orders=Array.isArray(preset?.prompt_order)?preset.prompt_order:[];
+    const group=orders.find(item=>String(item?.character_id)==='100001') || orders[0];
+    const activeOrder=Array.isArray(group?.order)&&group.order.length
+        ? new Map(group.order.map(item=>[String(item.identifier),item.enabled!==false])):null;
+    return (preset?.prompts || []).filter(p=>typeof p.content==='string' && p.content.trim())
+        .map(p=>{
+            const id=String(p.identifier || p.name);
+            return {id,name:p.name||p.identifier||'未命名条目',content:p.content,
+                enabled:activeOrder?activeOrder.get(id)===true:p.enabled!==false};
+        });
+}
+function presetEntryDefaults(ctx,name) {
+    return availablePresetEntries(name,ctx).filter(entry=>entry.enabled).map(entry=>({preset:name,id:entry.id}));
+}
+function worldEntryDefaults(book,name) {
+    return Object.entries(book?.entries||{}).filter(([,entry])=>entry&&typeof entry.content==='string'&&entry.content.trim()
+        && entry.disable!==true && entry.enabled!==false)
+        .map(([key,entry])=>({book:name,id:String(entry.uid??key)}));
+}
+function initializedChoice(config,kind,name) {
+    const field=kind==='preset'?'presetInitialized':'worldInitialized';
+    return Array.isArray(config?.[field]) && config[field].includes(name);
+}
+function ensureChoiceDefaults(config,kind,name,defaults) {
+    const field=kind==='preset'?'presetEntries':'worldEntries';
+    const property=kind==='preset'?'preset':'book';
+    const initField=kind==='preset'?'presetInitialized':'worldInitialized';
+    config[field]=Array.isArray(config[field])?config[field]:[];
+    config[initField]=Array.isArray(config[initField])?config[initField]:[];
+    if(!config[initField].includes(name)){
+        if(!config[field].some(item=>item?.[property]===name))config[field].push(...defaults);
+        config[initField].push(name);
+    }
+}
+function selectedPresetForGeneration(ctx,config) {
+    const source=configuredPhonePreset({config});
+    if(!source)return [];
+    const explicit=(Array.isArray(config?.presetEntries)?config.presetEntries:[])
+        .filter(item=>item?.preset===source);
+    if(initializedChoice(config,'preset',source)||explicit.length)return explicit;
+    return presetEntryDefaults(ctx,source);
 }
 function configuredPhonePreset(data) {
     const source=data?.config?.presetSource;
@@ -481,12 +521,15 @@ function selectionSnapshot(config) {
     const entries=(items,key)=>Array.isArray(items)?items.filter(x=>x&&typeof x[key]==='string'&&typeof x.id==='string')
         .map(x=>({[key]:x[key],id:x.id})):[];
     const worldEntries=entries(cfg.worldEntries,'book');
+    const strings=values=>Array.isArray(values)?[...new Set(values.filter(x=>typeof x==='string'&&x.trim()))]:[];
     return {
         presetSource:typeof cfg.presetSource==='string'?cfg.presetSource:'',
         presetEntries:entries(cfg.presetEntries,'preset'),
-        worldBooks:Array.isArray(cfg.worldBooks)?[...new Set(cfg.worldBooks.filter(x=>typeof x==='string'&&x.trim()))]:
+        worldBooks:Array.isArray(cfg.worldBooks)?strings(cfg.worldBooks):
             [...new Set(worldEntries.map(x=>x.book))],
-        worldEntries
+        worldEntries,
+        presetInitialized:strings(cfg.presetInitialized),
+        worldInitialized:strings(cfg.worldInitialized)
     };
 }
 function persistPhoneSelections(ctx,config) {
@@ -534,7 +577,7 @@ async function populateConfigLists() {
         option.value = name; option.textContent = name; nodes.presetSource.append(option);
     }
     nodes.presetSource.value=presets.includes(chosenPreset)?chosenPreset:'';
-    if(nodes.presetInfo)nodes.presetInfo.textContent='预设、世界书和条目选择自动保存到当前角色的配置；刷新或进入此角色其他聊天存档会恢复。它们不切换酒馆正在使用的预设。';
+    if(nodes.presetInfo)nodes.presetInfo.textContent='选择预设后默认使用原预设中已启用的条目；世界书勾选后默认按原书的启用状态进行关键词触发。也可在条目列表手动调整，最后点「保存预设与世界书配置」。不会切换酒馆正文的预设。';
     renderWorldBookSelector(ctx,worlds);
     showPresetEntries();
 }
@@ -547,6 +590,7 @@ function onPresetSourceChange() {
         if(!sameConfigScope(scope,ctx))return;
         const data=structuredClone(readRootData(ctx));
         data.config||={};data.config.presetSource=selected;
+        if(selected)ensureChoiceDefaults(data.config,'preset',selected,presetEntryDefaults(ctx,selected));
         await writeData(ctx,{...data,__contactId:PRIMARY_CONTACT_ID});
         const persisted=persistPhoneSelections(ctx,data.config);
         setStatus(persisted?(selected?`已保存手机预设：${selected}`:'已清除手机预设选择'):'已保存到当前存档；角色通用设置不可用');
@@ -587,7 +631,14 @@ function onWorldBookChange(input) {
         const data=structuredClone(readRootData(ctx));
         data.config||={};
         const names=selectedWorldBookNames(data).filter(item=>item!==name);
-        if(enabled)names.push(name);
+        if(enabled){
+            names.push(name);
+            if(typeof ctx.loadWorldInfo==='function'){
+                const book=await ctx.loadWorldInfo(name);
+                if(!sameConfigScope(scope,context()))return;
+                ensureChoiceDefaults(data.config,'world',name,worldEntryDefaults(book,name));
+            }
+        }
         data.config.worldBooks=names;
         await writeData(ctx,{...data,__contactId:PRIMARY_CONTACT_ID});
         const persisted=persistPhoneSelections(ctx,data.config);
@@ -599,7 +650,8 @@ function showPresetEntries() {
     if (!nodes?.presetEntries) return;
     const ctx = context();
     const name = nodes.presetSource.value;
-    const selected = readData(ctx)?.config?.presetEntries || [];
+    const config=readData(ctx)?.config||{};
+    const selected=selectedPresetForGeneration(ctx,{...config,presetSource:name});
     const entries = availablePresetEntries(name, ctx);
     nodes.presetEntries.replaceChildren();
     if (!entries.length) nodes.presetEntries.textContent = '没有可选的文本条目';
@@ -615,12 +667,14 @@ async function showWorldEntries() {
     nodes.worldEntries.replaceChildren();
     nodes.worldPickerTitle.textContent=`管理 ${names.length} 本世界书的条目`;
     if(!names.length||!ctx?.loadWorldInfo){nodes.worldEntries.textContent='请先到设置中选择一本或多本世界书';return;}
-    const selected=readData(ctx)?.config?.worldEntries || [];
+    const config=readData(ctx)?.config||{};
     for(const name of names){
         try {
             const book=await ctx.loadWorldInfo(name);
             if(request!==worldPickerRenderToken||ctx.chatMetadata!==context()?.chatMetadata)return;
             const entries=Object.entries(book?.entries||{}).filter(([,value])=>typeof value?.content==='string'&&value.content.trim());
+            const explicit=(Array.isArray(config.worldEntries)?config.worldEntries:[]).filter(item=>item?.book===name);
+            const selected=initializedChoice(config,'world',name)||explicit.length?explicit:worldEntryDefaults(book,name);
             const group=document.createElement('section');group.className='lp-worldbook-group';
             const heading=document.createElement('h3');
             heading.textContent=`${name} · 已勾选 ${selected.filter(item=>item.book===name).length} 条`;
@@ -655,6 +709,12 @@ function onConfigChange(input) {
         if (!sameConfigScope(scope,ctx)) return;
         const data = structuredClone(readData(ctx));
         data.config ||= {};
+        if(kind==='preset')ensureChoiceDefaults(data.config,kind,source,presetEntryDefaults(ctx,source));
+        else if(typeof ctx.loadWorldInfo==='function'){
+            const book=await ctx.loadWorldInfo(source);
+            if(!sameConfigScope(scope,context()))return;
+            ensureChoiceDefaults(data.config,kind,source,worldEntryDefaults(book,source));
+        }
         const selected = Array.isArray(data.config[field]) ? data.config[field] : [];
         data.config[field] = selected.filter(x=>!(x[key] === source && x.id === id));
         if (checked) data.config[field].push({[key]:source,id});
@@ -662,6 +722,42 @@ function onConfigChange(input) {
         const persisted=persistPhoneSelections(ctx,data.config);
         setStatus(`${source} 的条目已${checked?'启用':'关闭'}`+(persisted?'':'（仅保存到当前存档）'));
     }).catch(e => setStatus(recordError('保存条目选择',e),'error'));
+}
+async function saveSelectionSettings(returnToSettings=false) {
+    const scope=configScope(context());
+    try {
+        await configWriteQueue;
+        const ctx=context();
+        if(!sameConfigScope(scope,ctx))throw new Error('聊天存档已切换，请在当前角色中重新打开设置');
+        const data=structuredClone(readRootData(ctx));
+        data.config||={};
+        const source=nodes?.presetSource?.value||'';
+        data.config.presetSource=source;
+        if(source)ensureChoiceDefaults(data.config,'preset',source,presetEntryDefaults(ctx,source));
+        const choices=nodes?.worldBookList?.querySelectorAll?.('input[data-world-book]')||[];
+        const names=Array.from(choices).filter(input=>input.checked).map(input=>input.dataset.worldBook);
+        // The settings checkboxes are the authoritative source when the player presses Save.
+        data.config.worldBooks=names;
+        for(const name of names){
+            if(typeof ctx.loadWorldInfo==='function'){
+                const book=await ctx.loadWorldInfo(name);
+                if(!sameConfigScope(scope,context()))throw new Error('聊天存档已切换');
+                ensureChoiceDefaults(data.config,'world',name,worldEntryDefaults(book,name));
+            }
+        }
+        await writeData(ctx,{...data,__contactId:PRIMARY_CONTACT_ID});
+        const persisted=persistPhoneSelections(ctx,data.config);
+        const presetCount=selectedPresetForGeneration(ctx,data.config).length;
+        const worldCount=data.config.worldEntries?.filter(x=>names.includes(x.book)).length||0;
+        const summary=`已保存：预设 ${source||'未选择'}（${presetCount} 条）；世界书 ${names.length} 本（${worldCount} 条已启用）。`;
+        setStatus(summary+(persisted?'':' 当前酒馆无法跨存档保存，只保存到本存档。'));
+        recordActivity('配置保存',summary,persisted?'success':'info');
+        if(returnToSettings)setScreen('settings');
+        return true;
+    }catch(error){
+        setStatus(recordError('保存预设与世界书配置',error),'error');
+        return false;
+    }
 }
 function localDateTime() {
     const now = new Date();
