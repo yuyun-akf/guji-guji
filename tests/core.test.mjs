@@ -371,10 +371,10 @@ test('modal entirely outside the viewport produces a visible diagnostic error', 
 test('diagnostic bootstrap is the manifest entry and exposes lifecycle hooks', () => {
     const manifest = JSON.parse(readFileSync(resolve(testRoot, '../manifest.json'), 'utf8'));
     const bootstrap = readFileSync(resolve(testRoot, '../bootstrap.js'), 'utf8');
-    assert.equal(manifest.version, '0.8.15');
+    assert.equal(manifest.version, '0.8.16');
     assert.equal(manifest.minimum_client_version, '1.18.0');
     assert.equal(manifest.js, 'bootstrap.js');
-    assert.match(bootstrap, /import\('\.\/index\.js\?v=0\.8\.15'\)/);
+    assert.match(bootstrap, /import\('\.\/index\.js\?v=0\.8\.16'\)/);
     assert.match(bootstrap, /export function onActivate\(/);
     assert.match(bootstrap, /export function onEnable\(/);
     assert.match(bootstrap, /export function onDisable\(/);
@@ -394,7 +394,7 @@ test('theme and calendar are separate apps with per-session time setting', () =>
 });
 test('phone preset entry selection only reads requested prompt content', async () => {
     const data = newData();
-    data.config = {presetEntries:[{preset:'A',id:'intro'}],worldEntries:[]};
+    data.config = {presetSource:'A',presetEntries:[{preset:'A',id:'intro'}],worldEntries:[]};
     const ctx = {getPresetManager:()=>({getCompletionPresetByName:()=>({prompts:[
         {identifier:'intro',content:'ONLY_THIS'},
         {identifier:'other',content:'NOT_THIS'}
@@ -431,7 +431,7 @@ test('phone preset selection persists independently from the active host preset'
     await runtime.refresh();
     assert.equal(presetSource.value,'B','the saved phone setting beats the host active A');
     assert.deepEqual(presetSource.options.map(option=>option.value),['','A','B']);
-    assert.match(fixture.presetInfo.textContent,/独立选择并保存/);
+    assert.match(fixture.presetInfo.textContent,/默认使用原预设中已启用的条目/);
     presetSource.value='A';runtime.changePreset();
     await runtime.waitForConfig();
     assert.equal(ctx.chatMetadata.st_little_phone_v1.config.presetSource,'A');
@@ -439,7 +439,7 @@ test('phone preset selection persists independently from the active host preset'
     presetSource.value='B';await runtime.refresh();
     assert.equal(presetSource.value,'A','reopening must return the chosen phone preset, not an old DOM value');
 });
-test('selected phone preset entries from A and B enter generation without switching the host',async()=>{
+test('selected phone preset only injects active source; other source choices remain stored',async()=>{
     let hostSwitches=0;
     const ctx={getPresetManager:()=>({
         getSelectedPresetName:()=> 'A',
@@ -447,10 +447,10 @@ test('selected phone preset entries from A and B enter generation without switch
         selectPreset(){hostSwitches+=1;}
     })};
     const data=newData();
-    data.config={presetEntries:[{preset:'B',id:'intro'},{preset:'A',id:'intro'}],worldEntries:[]};
+    data.config={presetSource:'B',presetEntries:[{preset:'B',id:'intro'},{preset:'A',id:'intro'}],worldEntries:[]};
     const prompt=await composePhonePrompt(ctx,{name:'角色甲'},data);
-    assert.ok(prompt.includes('A-CONTENT'));
-    assert.ok(prompt.includes('B-CONTENT'),'explicitly checked B entries must not be filtered out by host A');
+    assert.equal(prompt.includes('A-CONTENT'),false,'inactive A prompt must not mix into active B');
+    assert.ok(prompt.includes('B-CONTENT'),'current phone preset B should be injected even when host uses A');
     assert.equal(hostSwitches,0);
     assert.equal(data.config.presetEntries.length,2,'do not erase saved selections from other presets');
 });
@@ -950,4 +950,81 @@ test('regular photos use the current multimodal model without a custom API', asy
     assert.equal(result.prompt[0].content[1].image_url.url,image);
     assert.doesNotMatch(raw,/图片发送需使用支持视觉输入的独立 API/);
     assert.doesNotMatch(raw,/图片识别需要在设置中使用支持视觉输入的独立 OpenAI 兼容 API/);
+});
+
+test('choosing a source enables the original active prompts and worldbook entries by default',async()=>{
+    const preset={prompts:[
+        {identifier:'main',content:'PHONE_PRESET_ACTIVE'},
+        {identifier:'off',content:'PHONE_PRESET_DISABLED'}],
+        prompt_order:[{character_id:100001,order:[
+            {identifier:'main',enabled:true},{identifier:'off',enabled:false}]}]};
+    const book={entries:{
+        1:{uid:1,constant:true,content:'PHONE_BOOK_CONSTANT'},
+        2:{uid:2,key:['林知远'],content:'PHONE_BOOK_TRIGGER'},
+        3:{uid:3,key:['never'],content:'PHONE_BOOK_MISS'},
+        4:{uid:4,constant:true,disable:true,content:'PHONE_BOOK_DISABLED'}}};
+    const ctx={name1:'面具甲',getPresetManager:()=>({getCompletionPresetByName:()=>preset}),
+        loadWorldInfo:async()=>book};
+    const data=newData();
+    data.config={presetSource:'手机预设',worldBooks:['林知远设定']};
+    const result=await composePhonePrompt(ctx,{name:'林知远'},data);
+    assert.match(result,/PHONE_PRESET_ACTIVE/);
+    assert.doesNotMatch(result,/PHONE_PRESET_DISABLED/);
+    assert.match(result,/PHONE_BOOK_CONSTANT/);
+    assert.match(result,/PHONE_BOOK_TRIGGER/);
+    assert.doesNotMatch(result,/PHONE_BOOK_MISS|PHONE_BOOK_DISABLED/);
+    const optedOut=structuredClone(data);
+    optedOut.config.presetInitialized=['手机预设'];
+    optedOut.config.worldInitialized=['林知远设定'];
+    optedOut.config.presetEntries=[];
+    optedOut.config.worldEntries=[];
+    const nothing=await composePhonePrompt(ctx,{name:'林知远'},optedOut);
+    assert.doesNotMatch(nothing,/PHONE_PRESET_ACTIVE|PHONE_BOOK_CONSTANT/);
+});
+test('reasoning tags are stripped before splitting; old broken fragments stay out of model context',()=>{
+    const strip=vm.runInContext('stripModelReasoning',sandbox);
+    const clean=vm.runInContext('cleanPhoneHistory',sandbox);
+    const reply='[[thinking:用户发了四条消息；计划回复。]]我哪句凶你了？[PHONE_NEXT]别闹。';
+    assert.equal(strip(reply),'我哪句凶你了？[PHONE_NEXT]别闹。');
+    assert.equal(strip('<think>幕后推理</think>回话。'),'回话。');
+    const old=[{id:'1',from:'character',text:'[[thinking:用户发了四条消息，'},
+        {id:'2',from:'character',text:'分隔。]]我哪句凶你了？'},
+        {id:'3',from:'user',text:'好吧'}];
+    const filtered=clean(old);
+    assert.equal(filtered[0].text,'');
+    assert.equal(filtered[1].text,'我哪句凶你了？');
+    const prompt=buildPrompt({messages:old});
+    assert.equal(prompt.length,2);
+    assert.doesNotMatch(JSON.stringify(prompt),/thinking|分隔/);
+    assert.match(makeUI().innerHTML,/data-lp="saveSelections"/);
+    assert.match(makeUI().innerHTML,/data-lp="savePresetPicker"/);
+    assert.match(makeUI().innerHTML,/data-lp="saveWorldPicker"/);
+});
+test('explicit config Save materializes initial enabled selections into role settings',async()=>{
+    let saves=0;
+    const ctx={characterId:0,chatId:'story-a',name1:'玩家',
+        characters:[{name:'角色',avatar:'unique.png'}],extensionSettings:{},
+        chatMetadata:{st_little_phone_v1:{...newData(),config:{}}},
+        getPresetManager:()=>({getCompletionPresetByName:()=>({
+            prompts:[{identifier:'main',content:'RULE'}]})}),
+        loadWorldInfo:async()=>({entries:{1:{uid:1,constant:true,content:'BOOK'}}}),
+        saveMetadata:async()=>{saves++;},saveSettingsDebounced:()=>{}};
+    const fixture={presetSource:{value:'A'},
+        worldBookList:{querySelectorAll:()=>[{dataset:{worldBook:'B'},checked:true}]},
+        selectionSaveStatus:{textContent:''}};
+    const vmCtx={console,Date,structuredClone,window:{SillyTavern:{getContext:()=>ctx}},fixture};
+    vm.createContext(vmCtx);
+    vm.runInContext(source+`
+        nodes=fixture;setStatus=()=>{};recordActivity=()=>{};
+        globalThis.doSave=saveSelectionSettings;
+        globalThis.saved=savedPhoneSelections;`,vmCtx);
+    assert.equal(await vmCtx.doSave(),true);
+    const saved=vmCtx.saved(ctx);
+    assert.equal(saved.presetSource,'A');
+    assert.equal(saved.presetEntries[0].id,'main');
+    assert.equal(saved.worldEntries[0].id,'1');
+    assert.equal(saved.presetInitialized[0],'A');
+    assert.equal(saved.worldInitialized[0],'B');
+    assert.match(fixture.selectionSaveStatus.textContent,/已保存/);
+    assert.equal(saves,1);
 });
