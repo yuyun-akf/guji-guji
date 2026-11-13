@@ -371,10 +371,10 @@ test('modal entirely outside the viewport produces a visible diagnostic error', 
 test('diagnostic bootstrap is the manifest entry and exposes lifecycle hooks', () => {
     const manifest = JSON.parse(readFileSync(resolve(testRoot, '../manifest.json'), 'utf8'));
     const bootstrap = readFileSync(resolve(testRoot, '../bootstrap.js'), 'utf8');
-    assert.equal(manifest.version, '0.8.14');
+    assert.equal(manifest.version, '0.8.15');
     assert.equal(manifest.minimum_client_version, '1.18.0');
     assert.equal(manifest.js, 'bootstrap.js');
-    assert.match(bootstrap, /import\('\.\/index\.js\?v=0\.8\.13'\)/);
+    assert.match(bootstrap, /import\('\.\/index\.js\?v=0\.8\.15'\)/);
     assert.match(bootstrap, /export function onActivate\(/);
     assert.match(bootstrap, /export function onEnable\(/);
     assert.match(bootstrap, /export function onDisable\(/);
@@ -905,4 +905,49 @@ test('published NPC form uses generic user/char placeholders without private cha
     assert.ok(html.includes('placeholder="如：{{char}}的母亲、{{user}}的同学"'));
     assert.ok(html.includes('placeholder="NPC 姓名"'));
     assert.ok(!html.includes('角色甲的母亲'), 'test fixture names must not leak into the public UI');
+});
+
+test('role-scoped phone selections survive a new chat and stay isolated from another character', async () => {
+    let settingsSaves=0;
+    const ctx={characterId:0,chatId:'chat-one',characters:[
+        {name:'角色甲',avatar:'role-a.png'},{name:'角色乙',avatar:'role-b.png'}],
+        extensionSettings:{},chatMetadata:{st_little_phone_v1:{...newData(),config:{
+            presetSource:'旧预设',worldBooks:['旧书'],worldEntries:[{book:'旧书',id:'1'}]}}},
+        saveSettingsDebounced:()=>{settingsSaves++;},saveMetadata:async()=>{}};
+    const runtime={console,Date,structuredClone,window:{SillyTavern:{getContext:()=>ctx}}};
+    vm.createContext(runtime);
+    vm.runInContext(source+`
+        globalThis.phoneConfigTest={
+            newData,readRootData,persistPhoneSelections,savedPhoneSelections,
+            inheritLegacyPhoneSelections,onWorldBookChange,queue:()=>configWriteQueue
+        };`,runtime);
+    const api=runtime.phoneConfigTest;
+    api.inheritLegacyPhoneSelections(ctx);
+    assert.equal(api.savedPhoneSelections(ctx).presetSource,'旧预设');
+    api.persistPhoneSelections(ctx,{presetSource:'新预设',
+        presetEntries:[{preset:'新预设',id:'intro'}],
+        worldBooks:['天气书'],worldEntries:[{book:'天气书',id:'12'}]});
+    ctx.chatId='chat-two';
+    ctx.chatMetadata={st_little_phone_v1:newData()};
+    assert.equal(api.readRootData(ctx).config.presetSource,'新预设');
+    api.onWorldBookChange({dataset:{worldBook:'人物书'},checked:true});
+    await api.queue();
+    assert.deepEqual(Array.from(api.readRootData(ctx).config.worldBooks),['天气书','人物书']);
+    assert.equal(api.readRootData(ctx).config.worldEntries[0].id,'12');
+    assert.ok(settingsSaves>=2);
+    ctx.characterId=1;
+    assert.equal(api.savedPhoneSelections(ctx),null,'another character must not inherit this role config');
+});
+
+test('regular photos use the current multimodal model without a custom API', async () => {
+    const image='data:image/jpeg;base64,QUJD';
+    const prompt=buildPrompt({messages:[{id:'m1',from:'user',text:'[图片]',image}]});
+    let called=0;
+    const ctx={generateRaw:async options=>{called++;return options;}};
+    const result=await vm.runInContext('phoneGenerate',sandbox)(ctx,{prompt},{config:{api:{mode:'inherit'}}});
+    assert.equal(called,1);
+    assert.equal(result.prompt[0].content[1].type,'image_url');
+    assert.equal(result.prompt[0].content[1].image_url.url,image);
+    assert.doesNotMatch(raw,/图片发送需使用支持视觉输入的独立 API/);
+    assert.doesNotMatch(raw,/图片识别需要在设置中使用支持视觉输入的独立 OpenAI 兼容 API/);
 });
