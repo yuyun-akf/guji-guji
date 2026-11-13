@@ -1,5 +1,5 @@
 /**
- * GujiGuji v0.8.15: a modular phone shell with isolated per-chat context.
+ * GujiGuji v0.8.16: a modular phone shell with isolated per-chat context.
  * No direct host-module imports; uses only the documented context surface.
  */
 
@@ -751,12 +751,16 @@ async function saveSelectionSettings(returnToSettings=false) {
         const presetCount=selectedPresetForGeneration(ctx,data.config).length;
         const worldCount=data.config.worldEntries?.filter(x=>names.includes(x.book)).length||0;
         const summary=`已保存：预设 ${source||'未选择'}（${presetCount} 条）；世界书 ${names.length} 本（${worldCount} 条已启用）。`;
-        setStatus(summary+(persisted?'':' 当前酒馆无法跨存档保存，只保存到本存档。'));
+        const feedback=summary+(persisted?'':' 当前酒馆无法跨存档保存，只保存到本存档。');
+        setStatus(feedback);
+        if(nodes?.selectionSaveStatus)nodes.selectionSaveStatus.textContent=feedback;
         recordActivity('配置保存',summary,persisted?'success':'info');
         if(returnToSettings)setScreen('settings');
         return true;
     }catch(error){
-        setStatus(recordError('保存预设与世界书配置',error),'error');
+        const feedback=recordError('保存预设与世界书配置',error);
+        setStatus(feedback,'error');
+        if(nodes?.selectionSaveStatus)nodes.selectionSaveStatus.textContent=feedback;
         return false;
     }
 }
@@ -1246,8 +1250,11 @@ async function composePhonePrompt(ctx, char, data) {
         const entry=preset?.prompts?.find(p=>String(p.identifier||p.name)===item.id);
         if(!entry?.content){summary.skipped++;continue;}
         const section='[手机预设 · '+(entry.name||item.id)+']\n'+entry.content;
-        if(presetUsed+section.length>PHONE_PRESET_BUDGET){summary.skipped++;continue;}
-        parts.push(section);presetUsed+=section.length;summary.preset++;
+        const remaining=PHONE_PRESET_BUDGET-presetUsed;
+        if(remaining<400){summary.skipped++;continue;}
+        const toAdd=section.length>remaining?section.slice(0,remaining-40)+'\n[后续预设内容因手机预算截断]':section;
+        parts.push(toAdd);presetUsed+=toAdd.length;summary.preset++;
+        if(toAdd.length<section.length)summary.skipped++;
     }
     const activeBooks=selectedWorldBookNames(data);
     const scan=phoneScanText(char,data,ctx);
@@ -3753,7 +3760,7 @@ function makeUI() {
         <button type="button" class="lp-inline-notification" data-lp="inlineNotification" aria-label="打开新消息" hidden></button>
         <section class="lp-screen lp-home" data-lp-screen="home" aria-label="手机桌面">
           <div class="lp-home-hero">
-            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.8.15</div>
+            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.8.16</div>
             <div class="lp-home-time" data-lp="homeTime">故事时间</div>
             <div class="lp-home-character" data-lp="homeCharacter">等待进入角色存档</div>
           </div>
@@ -4028,6 +4035,7 @@ function makeUI() {
           <button type="button" class="lp-settings-link" data-lp="openWorldPicker">管理已选世界书的条目（0 本）</button>
           <p class="lp-settings-hint">勾选一本世界书后，默认启用书中原本允许的条目，并在聊天时按关键词触发；可进条目列表单独关闭。暂停某本书不删除已保存的勾选。单次世界书注入限约 12,000 字符。</p>
           <button type="button" class="lp-settings-link" data-lp="saveSelections">保存预设与世界书配置</button>
+          <div class="lp-settings-status" data-lp="selectionSaveStatus" role="status" aria-live="polite"></div>
           <h2>正文记忆与互通</h2>
           <label class="lp-entry-option"><input type="checkbox" data-lp="readMainlineMemory" checked /> 只读获取已安装插件的正文记忆</label>
           <label class="lp-field">记忆来源<select data-lp="memorySource">
@@ -4144,7 +4152,7 @@ function mount() {
         'friendLabel', 'friendActions','profileAvatar','profileName','profileDescription','contactEvidence','contactExchange','contactLinks','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcScanState','npcCandidates','npcSaveCandidates','storyPeopleList','viewPrimaryContact','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','avatarUserFile','resetCharAvatar','resetUserAvatar',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
-        'presetSource','presetInfo','presetEntries','worldBookList','worldSelectionSummary','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','saveSelections','savePresetPicker','saveWorldPicker','readMainlineMemory','memorySource','phoneToMainline','saveContextSettings','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themeIcons',
+        'presetSource','presetInfo','presetEntries','worldBookList','worldSelectionSummary','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','saveSelections','savePresetPicker','saveWorldPicker','selectionSaveStatus','readMainlineMemory','memorySource','phoneToMainline','saveContextSettings','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themeIcons',
         'diagnostics', 'diagnosticState', 'copyDiagnostics', 'clearDiagnostics',
         'messages','messageActions','quotedPreview','quotedText','cancelQuote','emojiPanel','morePanel','chatImageInput','input', 'generate', 'send', 'launcher']
         .map(key => [key, key === 'launcher' ? floating : root.querySelector(`[data-lp="${key}"]`)]));
