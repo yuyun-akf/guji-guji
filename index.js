@@ -1,5 +1,5 @@
 /**
- * GujiGuji v0.4.0: a modular phone shell with isolated per-chat context.
+ * GujiGuji v0.8.15: a modular phone shell with isolated per-chat context.
  * No direct host-module imports; uses only the documented context surface.
  */
 
@@ -461,10 +461,69 @@ function configuredPhonePreset(data) {
     const unique=[...new Set((data?.config?.presetEntries||[]).map(entry=>entry.preset).filter(Boolean))];
     return unique.length===1?unique[0]:'';
 }
+// These four choices belong to the role, not to a single mainline chat.
+// Keep chat metadata as the old-format fallback; never migrate or clear messages.
+function phoneSelectionKey(ctx) {
+    const char=selectedCharacter(ctx);
+    if(!char)return '';
+    const avatar=String(char.avatar||char.data?.avatar||'').trim();
+    return avatar ? 'avatar:'+avatar : 'character:'+String(ctx.characterId)+':'+getCharacterName(char);
+}
+function savedPhoneSelections(ctx) {
+    const key=phoneSelectionKey(ctx);
+    const all=ctx?.extensionSettings?.[SETTINGS_KEY]?.phoneSelections;
+    if(!key||!all||!Object.prototype.hasOwnProperty.call(all,key))return null;
+    const profile=all[key];
+    return profile&&typeof profile==='object'&&!Array.isArray(profile)?profile:null;
+}
+function selectionSnapshot(config) {
+    const cfg=config&&typeof config==='object'?config:{};
+    const entries=(items,key)=>Array.isArray(items)?items.filter(x=>x&&typeof x[key]==='string'&&typeof x.id==='string')
+        .map(x=>({[key]:x[key],id:x.id})):[];
+    const worldEntries=entries(cfg.worldEntries,'book');
+    return {
+        presetSource:typeof cfg.presetSource==='string'?cfg.presetSource:'',
+        presetEntries:entries(cfg.presetEntries,'preset'),
+        worldBooks:Array.isArray(cfg.worldBooks)?[...new Set(cfg.worldBooks.filter(x=>typeof x==='string'&&x.trim()))]:
+            [...new Set(worldEntries.map(x=>x.book))],
+        worldEntries
+    };
+}
+function persistPhoneSelections(ctx,config) {
+    const key=phoneSelectionKey(ctx);
+    if(!key||!ctx?.extensionSettings||typeof ctx.saveSettingsDebounced!=='function')return false;
+    const settings=ctx.extensionSettings[SETTINGS_KEY]||={};
+    const all=settings.phoneSelections||={};
+    const next=selectionSnapshot(config);
+    if(JSON.stringify(all[key])===JSON.stringify(next))return true;
+    const previous=all[key];
+    all[key]=next;
+    try{ctx.saveSettingsDebounced();}
+    catch(error){if(previous===undefined)delete all[key];else all[key]=previous;throw error;}
+    return true;
+}
+function inheritLegacyPhoneSelections(ctx) {
+    if(savedPhoneSelections(ctx))return;
+    const legacy=ctx?.chatMetadata?.[DATA_KEY]?.config;
+    if(!legacy||!(legacy.presetSource||legacy.presetEntries?.length||legacy.worldBooks?.length||legacy.worldEntries?.length))return;
+    try{persistPhoneSelections(ctx,legacy);}
+    catch(error){recordError('继承旧手机条目配置',error);}
+}
+function configScope(ctx) {
+    return {characterId:ctx?.characterId,groupId:ctx?.groupId,
+        chatId:ctx?.chatId??ctx?.getCurrentChatId?.()??null,metadata:ctx?.chatMetadata};
+}
+function sameConfigScope(scope,ctx) {
+    if(!selectedCharacter(ctx)||ctx.characterId!==scope.characterId||ctx.groupId!==scope.groupId)return false;
+    const chatId=ctx.chatId??ctx.getCurrentChatId?.()??null;
+    return scope.chatId!=null&&chatId!=null ? String(chatId)===String(scope.chatId) :
+        ctx.chatMetadata===scope.metadata;
+}
 async function populateConfigLists() {
     if (!nodes?.presetSource || !nodes?.worldBookList) return;
     const ctx = context();
     updateApiInfo();
+    inheritLegacyPhoneSelections(ctx);
     const presets = ctx?.getPresetManager?.('openai')?.getAllPresets?.() || [];
     const worlds = ctx?.getWorldInfoNames?.() || [];
     const chosenPreset=configuredPhonePreset(readRootData(ctx));
@@ -475,21 +534,22 @@ async function populateConfigLists() {
         option.value = name; option.textContent = name; nodes.presetSource.append(option);
     }
     nodes.presetSource.value=presets.includes(chosenPreset)?chosenPreset:'';
-    if(nodes.presetInfo)nodes.presetInfo.textContent='此处独立选择并保存手机查看的预设；你勾选的预设条目会参与手机生成，不受酒馆当前预设限制，也不会切换酒馆预设。';
+    if(nodes.presetInfo)nodes.presetInfo.textContent='预设、世界书和条目选择自动保存到当前角色的配置；刷新或进入此角色其他聊天存档会恢复。它们不切换酒馆正在使用的预设。';
     renderWorldBookSelector(ctx,worlds);
     showPresetEntries();
 }
 function onPresetSourceChange() {
     const selected=nodes?.presetSource?.value||'';
     showPresetEntries();
-    const snapshot=context(),metadata=snapshot?.chatMetadata,characterId=snapshot?.characterId;
+    const scope=configScope(context());
     configWriteQueue=configWriteQueue.then(async()=>{
         const ctx=context();
-        if(!selectedCharacter(ctx)||ctx.chatMetadata!==metadata||ctx.characterId!==characterId)return;
+        if(!sameConfigScope(scope,ctx))return;
         const data=structuredClone(readRootData(ctx));
         data.config||={};data.config.presetSource=selected;
         await writeData(ctx,{...data,__contactId:PRIMARY_CONTACT_ID});
-        setStatus(selected?`已保存手机预设：${selected}`:'已清除手机预设选择');
+        const persisted=persistPhoneSelections(ctx,data.config);
+        setStatus(persisted?(selected?`已保存手机预设：${selected}`:'已清除手机预设选择'):'已保存到当前存档；角色通用设置不可用');
     }).catch(error=>setStatus(recordError('保存手机预设',error),'error'));
 }
 function selectedWorldBookNames(data) {
@@ -520,18 +580,19 @@ function onWorldBookChange(input) {
     const name=input?.dataset?.worldBook;
     if(!name)return;
     const enabled=input.checked;
-    const snapshot=context(),metadata=snapshot?.chatMetadata,characterId=snapshot?.characterId;
+    const scope=configScope(context());
     configWriteQueue=configWriteQueue.then(async()=>{
         const ctx=context();
-        if(!selectedCharacter(ctx)||ctx.chatMetadata!==metadata||ctx.characterId!==characterId)return;
+        if(!sameConfigScope(scope,ctx))return;
         const data=structuredClone(readRootData(ctx));
         data.config||={};
         const names=selectedWorldBookNames(data).filter(item=>item!==name);
         if(enabled)names.push(name);
         data.config.worldBooks=names;
         await writeData(ctx,{...data,__contactId:PRIMARY_CONTACT_ID});
+        const persisted=persistPhoneSelections(ctx,data.config);
         renderWorldBookSelector(ctx);
-        setStatus(`${name} 已${enabled?'启用':'暂停'}；已选条目的勾选记录保留。`);
+        setStatus(`${name} 已${enabled?'启用':'暂停'}；条目勾选保留。`+(persisted?'':'（仅保存到当前存档）'));
     }).catch(error=>setStatus(recordError('保存世界书选择',error),'error'));
 }
 function showPresetEntries() {
@@ -588,19 +649,18 @@ function onConfigChange(input) {
     const field = kind === 'preset' ? 'presetEntries' : 'worldEntries';
     const key = kind === 'preset' ? 'preset' : 'book';
     const checked = input.checked;
-    const snapshot = context();
-    const metadata = snapshot?.chatMetadata;
-    const characterId = snapshot?.characterId;
+    const scope=configScope(context());
     configWriteQueue = configWriteQueue.then(async () => {
         const ctx = context();
-        if (!selectedCharacter(ctx) || ctx.chatMetadata !== metadata || ctx.characterId !== characterId) return;
+        if (!sameConfigScope(scope,ctx)) return;
         const data = structuredClone(readData(ctx));
         data.config ||= {};
         const selected = Array.isArray(data.config[field]) ? data.config[field] : [];
         data.config[field] = selected.filter(x=>!(x[key] === source && x.id === id));
         if (checked) data.config[field].push({[key]:source,id});
         await writeData(ctx,data);
-        if(kind==='world')setStatus(`${source} 的条目已${checked?'启用':'关闭'}`);
+        const persisted=persistPhoneSelections(ctx,data.config);
+        setStatus(`${source} 的条目已${checked?'启用':'关闭'}`+(persisted?'':'（仅保存到当前存档）'));
     }).catch(e => setStatus(recordError('保存条目选择',e),'error'));
 }
 function localDateTime() {
@@ -648,8 +708,11 @@ function newData() {
 function readRootData(ctx) {
     const value=ctx?.chatMetadata?.[DATA_KEY];
     const base=(!value||value.version!==1||!Array.isArray(value.messages))?newData():value;
+    const saved=savedPhoneSelections(ctx);
     return {
         ...base,
+        // Role-scoped persistent choices override old per-chat choices, not chat history or other settings.
+        config:saved?{...(base.config||{}),...selectionSnapshot(saved)}:base.config,
         friendship:FRIEND_STATES.has(base.friendship?.state)?base.friendship:(value?{state:'friends'}:{state:'stranger'}),
         contacts:Array.isArray(base.contacts)?base.contacts.filter(c=>c&&typeof c.id==='string'&&c.id.startsWith('npc:')):[],
         conversations:base.conversations&&typeof base.conversations==='object'&&!Array.isArray(base.conversations)?base.conversations:{}
@@ -1203,7 +1266,7 @@ function buildPrompt(data,ctx=null,char=null) {
         .map(message => ({
             role: message.from === 'character' ? 'assistant' : 'user',
             content: !message.sticker && message.image && typeof message.image==='string' && /^data:image\/(?:jpeg|png|webp);base64,/.test(message.image)
-              ? [{type:'text',text:resolvePhonePlaceholders((message.text||'')+'（请根据图片中实际可见内容回复，不要虚构看不到的细节）',ctx,char)},
+              ? [{type:'text',text:resolvePhonePlaceholders((message.replyQuote?'[引用：'+message.replyQuote+']\n':'')+(message.text||'')+'（请根据图片中实际可见内容回复，不要虚构看不到的细节）',ctx,char)},
                  {type:'image_url',image_url:{url:message.image,detail:'auto'}}]
               : resolvePhonePlaceholders((message.replyQuote?'[引用：'+message.replyQuote+']\n':'')+message.text,ctx,char),
         }));
@@ -2972,17 +3035,49 @@ async function handleMessageOperation(action) {
     }
     closeMessageActions();
 }
+async function encodeChatPhoto(file) {
+    if(!['image/jpeg','image/png','image/webp'].includes(file?.type))
+        throw new Error('目前支持 PNG、JPG、WebP 图片');
+    if(file.size>12*1024*1024)throw new Error('图片超过 12MB，请换一张较小的图片');
+    const original=await new Promise((resolve,reject)=>{
+        const reader=new FileReader();
+        reader.onerror=()=>reject(new Error('图片读取失败'));
+        reader.onload=()=>resolve(reader.result);
+        reader.readAsDataURL(file);
+    });
+    if(typeof original!=='string'||!/^data:image\/(?:jpeg|png|webp);base64,/.test(original))
+        throw new Error('图片数据不符合格式要求');
+    const limit=1400000;
+    if(original.length<=limit)return original;
+    if(typeof Image!=='function')throw new Error('此浏览器无法压缩大图，请换一张较小的图片');
+    const picture=await new Promise((resolve,reject)=>{
+        const img=new Image();
+        img.onload=()=>resolve(img);
+        img.onerror=()=>reject(new Error('图片解码失败'));
+        img.src=original;
+    });
+    if(!picture.width||!picture.height)throw new Error('图片尺寸无效');
+    const canvas=document.createElement('canvas'),paint=canvas.getContext('2d');
+    if(!paint)throw new Error('浏览器不支持图片压缩');
+    for(const edge of [1600,1400,1200,1024,896]){
+        const ratio=Math.min(1,edge/Math.max(picture.width,picture.height));
+        canvas.width=Math.max(1,Math.round(picture.width*ratio));
+        canvas.height=Math.max(1,Math.round(picture.height*ratio));
+        paint.drawImage(picture,0,0,canvas.width,canvas.height);
+        for(const quality of [0.86,0.76,0.66]){
+            const result=canvas.toDataURL('image/jpeg',quality);
+            if(result.length<=limit)return result;
+        }
+    }
+    throw new Error('照片压缩后仍太大，请换一张图片');
+}
 async function sendImageFile(file) {
     if(!file||busy)return;
-    if(!['image/jpeg','image/png','image/webp'].includes(file.type))return setStatus('目前支持 PNG、JPG、WebP 图片','error');
-    if(file.size>650*1024)return setStatus('图片暂限 650KB，请先缩小图片再发送','error');
-    const ctx=context();
-    if(readApiOptions(readData(ctx)).mode!=='custom')return setStatus('图片识别需要在设置中使用支持视觉输入的独立 OpenAI 兼容 API','error');
-    const reader=new FileReader();
-    const session=captureSession(ctx);
-    reader.onerror=()=>setStatus('图片读取失败','error');
-    reader.onload=()=>{if(sameSession(session)&&typeof reader.result==='string')void sendUserMessage('[图片]',reader.result);};
-    reader.readAsDataURL(file);
+    const session=captureSession(context());
+    try{
+        const encoded=await encodeChatPhoto(file);
+        if(sameSession(session))await sendUserMessage('[图片]',encoded);
+    }catch(error){if(sameSession(session))setStatus(recordError('发送照片',error),'error');}
 }
 function toggleChatTools(type) {
     if(!nodes)return;
@@ -3231,7 +3326,8 @@ async function sendUserMessage(text,image='',sticker=null) {
     const char=contactCharacter(ctx);
     const content=String(text||'').trim();
     if(!char||!content||friendshipState(readData(ctx))!=='friends')return;
-    if(image && !sticker && readApiOptions(readData(ctx)).mode!=='custom')return setStatus('图片发送需使用支持视觉输入的独立 API','error');
+    // Inherited connections use the current SillyTavern multimodal generation pipeline.
+    // The model/provider must support images; do not require a separate API.
     const session=captureSession(ctx);
     const data=structuredClone(readData(ctx));
     const quoted=data.messages.find(x=>x.id===quotedMessageId);
