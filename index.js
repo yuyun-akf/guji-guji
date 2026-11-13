@@ -1,5 +1,5 @@
 /**
- * GujiGuji v0.8.16: a modular phone shell with isolated per-chat context.
+ * GujiGuji v0.8.17: a modular phone shell with isolated per-chat context.
  * No direct host-module imports; uses only the documented context surface.
  */
 
@@ -328,26 +328,65 @@ function normalizeApiUrl(value) {
     url.pathname = url.pathname.replace(/\/+$/,'').replace(/\/chat\/completions$/,'') || '/';
     return url.toString().replace(/\/$/,'');
 }
-async function phoneGenerate(ctx, options, data) {
-    const cfg = readApiOptions(data);
-    if (cfg.mode !== 'custom') {
-        if (typeof ctx?.generateRaw !== 'function') throw new Error('酒馆生成接口不可用');
+// SillyTavern generateRaw() runs substituteParams() on each message content.
+// Passing an image block array to that path coerces it into "[object Object]"
+// and silently prevents vision. ChatCompletionService preserves content parts.
+function buildPhoneRequestMessages(options) {
+    const prompts=Array.isArray(options?.prompt)?options.prompt:[{role:'user',content:String(options?.prompt||'')}];
+    return [{role:'system',content:String(options?.systemPrompt||'')},
+        ...prompts.map(m=>({
+            role:['assistant','system'].includes(m.role)?m.role:'user',
+            content:Array.isArray(m.content)?m.content:String(m.content||'')
+        }))];
+}
+function phoneRequestImageCount(messages) {
+    return messages.reduce((count,msg)=>count+(Array.isArray(msg.content)?
+        msg.content.filter(block=>block?.type==='image_url'&&/^data:image\/(?:png|jpeg|webp);base64,/.test(block?.image_url?.url||'')).length:0),0);
+}
+function currentPhoneModel(ctx) {
+    const settings=ctx?.chatCompletionSettings||{};
+    let detected='';
+    try{detected=ctx?.getChatCompletionModel?.(settings)||'';}catch{/* fall through */}
+    return detected||settings.vertexai_model||settings.google_model||settings.custom_model||
+        settings.openrouter_model||settings.openai_model||settings.model||'';
+}
+async function phoneGenerate(ctx,options,data) {
+    const cfg=readApiOptions(data);
+    const messages=buildPhoneRequestMessages(options);
+    const imageCount=phoneRequestImageCount(messages);
+    if(cfg.mode!=='custom'){
+        if(imageCount){
+            if(ctx?.mainApi!=='openai')throw new Error('当前酒馆不是 Chat Completion 连接，无法直接传递照片；请切换到支持视觉的 Chat Completion 通道。');
+            const service=ctx?.ChatCompletionService;
+            if(typeof service?.presetToGeneratePayload!=='function'||typeof service?.sendRequest!=='function')
+                throw new Error('酒馆未提供多模态请求接口，无法把照片送到当前模型；不会改用丢失图片的文本请求。');
+            const model=currentPhoneModel(ctx);
+            if(typeof model!=='string'||!model.trim())throw new Error('无法读取酒馆当前模型名称，照片未发送给模型。');
+            const payload=await service.presetToGeneratePayload({}, {}, {messages,model,stream:false});
+            // Require an intact multimodal payload. Do not falsely claim successful vision.
+            if(phoneRequestImageCount(payload?.messages||[])!==imageCount)
+                throw new Error('酒馆构建请求时丢失图片内容，已取消本次生成；请检查连接和模型。');
+            payload.stream=false;
+            recordActivity('多模态图片请求',`跟随酒馆当前模型：${model}；通道 ${payload.chat_completion_source||'未识别'}；照片 ${imageCount} 张以图片数据提交。此日志证明发出的是多模态请求，实际识图结果仍取决于模型。`);
+            const result=await service.sendRequest(payload);
+            return typeof result==='string'?result:result?.content||'';
+        }
+        if(typeof ctx?.generateRaw!=='function')throw new Error('酒馆生成接口不可用');
         return ctx.generateRaw(options);
     }
-    if (!ctx?.ChatCompletionService?.sendRequest) throw new Error('酒馆独立 API 接口不可用');
-    const key = transientApiKeys.get(apiSessionId(ctx));
-    if (!key) throw new Error('独立 API 密钥未设置，请在「设置」中填写');
-    const url = normalizeApiUrl(cfg.url);
-    if (!cfg.model.trim()) throw new Error('请填写独立 API 模型名称');
-    const prompts = Array.isArray(options.prompt) ? options.prompt : [{role:'user',content:String(options.prompt || '')}];
-    const messages = [{role:'system',content:String(options.systemPrompt || '')},
-        ...prompts.map(m=>({role:m.role==='assistant'?'assistant':'user',content:Array.isArray(m.content)?m.content:String(m.content || '')}))];
-    const result = await ctx.ChatCompletionService.sendRequest({
+    const service=ctx?.ChatCompletionService;
+    if(typeof service?.sendRequest!=='function')throw new Error('酒馆独立 API 接口不可用');
+    const key=transientApiKeys.get(apiSessionId(ctx));
+    if(!key)throw new Error('独立 API 密钥未设置，请在「设置」中填写');
+    const url=normalizeApiUrl(cfg.url);
+    if(!cfg.model.trim())throw new Error('请填写独立 API 模型名称');
+    if(imageCount)recordActivity('多模态图片请求',`独立 API：照片 ${imageCount} 张以图片数据提交。`);
+    const result=await service.sendRequest({
         chat_completion_source:'custom',custom_url:url,
-        custom_include_headers:JSON.stringify({Authorization:'Bearer ' + key}),
+        custom_include_headers:JSON.stringify({Authorization:'Bearer '+key}),
         model:cfg.model.trim(),messages,stream:false,max_tokens:cfg.maxTokens,temperature:0.85
     });
-    return typeof result === 'string' ? result : result?.content || '';
+    return typeof result==='string'?result:result?.content||'';
 }
 async function savePhoneApi() {
     const ctx = context();
@@ -1345,12 +1384,16 @@ function messageStylePrompt(data) {
 // Old messages are sanitized on read; their stored originals remain untouched.
 function stripModelReasoning(value) {
     let text=String(value||'');
-    text=text.replace(/<\s*(think|thinking|analysis|reasoning)\b[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi,'');
-    text=text.replace(/\[\[\s*(?:think|thinking|analysis|reasoning)\s*[:：][\s\S]*?\]\]/gi,'');
-    text=text.replace(/\[\s*(think|thinking|analysis|reasoning)\s*\][\s\S]*?\[\s*\/\s*\1\s*\]/gi,'');
-    text=text.replace(/<\s*(?:think|thinking|analysis|reasoning)\b[^>]*>[\s\S]*$/gi,'');
-    text=text.replace(/\[\[\s*(?:think|thinking|analysis|reasoning)\s*[:：][\s\S]*$/gi,'');
-    text=text.replace(/\[\s*(?:think|thinking|analysis|reasoning)\s*\][\s\S]*$/gi,'');
+    text=text.replace(/<\s*(think|thinking|thought|thoughts|analysis|reasoning)\b[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi,'');
+    text=text.replace(/\[\[\s*(?:think|thinking|thought|thoughts|analysis|reasoning)\s*[:：][\s\S]*?\]\]/gi,'');
+    text=text.replace(/\[\s*(think|thinking|thought|thoughts|analysis|reasoning)\s*\][\s\S]*?\[\s*\/\s*\1\s*\]/gi,'');
+    // A bare [[thought]] or [[thought\n]] is a leaked label, not a reasoning block:
+    // strip the tag but preserve the actual character message that follows.
+    text=text.replace(/\[\[\s*\/?\s*(?:think|thinking|thought|thoughts|analysis|reasoning)\s*\]\]/gi,'');
+    text=text.replace(/<\s*(?:think|thinking|thought|thoughts|analysis|reasoning)\b[^>]*>[\s\S]*$/gi,'');
+    text=text.replace(/\[\[\s*(?:think|thinking|thought|thoughts|analysis|reasoning)\s*[:：][\s\S]*$/gi,'');
+    text=text.replace(/\[\[\s*(?:think|thinking|thought|thoughts|analysis|reasoning)\s*$/gi,'');
+    text=text.replace(/\[\s*(?:think|thinking|thought|thoughts|analysis|reasoning)\s*\][\s\S]*$/gi,'');
     return text.trim();
 }
 function cleanPhoneHistory(messages) {
@@ -1363,7 +1406,7 @@ function cleanPhoneHistory(messages) {
             if(close<0)return {...message,text:''};
             text=text.slice(close+2);hidden=false;
         }
-        const trailing=/\[\[\s*(?:think|thinking|analysis|reasoning)\s*[:：][\s\S]*$/i.exec(text);
+        const trailing=/\[\[\s*(?:think|thinking|thought|thoughts|analysis|reasoning)(?:\s*[:：][\s\S]*)?$/i.exec(text);
         if(trailing&&!trailing[0].includes(']]'))hidden=true;
         return {...message,text:stripModelReasoning(text)};
     });
@@ -3420,9 +3463,13 @@ async function runReply(ctx, char, data, session, existingJob = null) {
         const catalog=stickerLibrary(ctx);
         const systemPrompt = [await composePhonePrompt(ctx, char, data), messageStylePrompt(data), stickerPrompt(catalog)].filter(Boolean).join('\n\n');
         recordActivity('生成配置','使用当前酒馆连接'+(ctx?.mainApi?' · '+ctx.mainApi:'')+'；手机历史 '+buildPrompt(data).length+' 条；当前手机预设 '+(configuredPhonePreset(data)||'未选择')+'；启用世界书 '+selectedWorldBookNames(data).length+' 本。实际注入数请看「注入预览」，包含自动继承的原版启用条目。');
+        const phoneHistory=buildPrompt(data,ctx,char);
+        const count=phoneRequestImageCount(phoneHistory);
+        const imageRecords=(data.messages||[]).filter(msg=>msg?.image&&!msg?.sticker).length;
+        recordActivity('图片上下文',`当前手机记录有 ${imageRecords} 张普通照片；最近 ${CONTEXT_MESSAGE_LIMIT} 条消息内已纳入 ${count} 张；${count?'将使用多模态图片通道':'本轮仅文本，未向模型传图片'}。`);
         const result = await generateWithTimeout(ctx, {
             systemPrompt,
-            prompt: buildPrompt(data,ctx,char),
+            prompt: phoneHistory,
         }, data);
         if (!sameSession(session)) return;
         const rawReply = typeof result === 'string' ? result.trim() : '';
@@ -3761,7 +3808,7 @@ function makeUI() {
         <button type="button" class="lp-inline-notification" data-lp="inlineNotification" aria-label="打开新消息" hidden></button>
         <section class="lp-screen lp-home" data-lp-screen="home" aria-label="手机桌面">
           <div class="lp-home-hero">
-            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.8.16</div>
+            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.8.17</div>
             <div class="lp-home-time" data-lp="homeTime">故事时间</div>
             <div class="lp-home-character" data-lp="homeCharacter">等待进入角色存档</div>
           </div>
