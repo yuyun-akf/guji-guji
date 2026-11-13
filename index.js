@@ -3621,7 +3621,7 @@ function makeUI() {
         <button type="button" class="lp-inline-notification" data-lp="inlineNotification" aria-label="打开新消息" hidden></button>
         <section class="lp-screen lp-home" data-lp-screen="home" aria-label="手机桌面">
           <div class="lp-home-hero">
-            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.8.14</div>
+            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.8.15</div>
             <div class="lp-home-time" data-lp="homeTime">故事时间</div>
             <div class="lp-home-character" data-lp="homeCharacter">等待进入角色存档</div>
           </div>
