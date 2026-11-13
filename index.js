@@ -1174,9 +1174,10 @@ function worldEntryTriggered(entry, scanText) {
     return !(entry.useProbability && Number(entry.probability) < 100 && Math.random()*100 >= Math.max(0,Number(entry.probability)||0));
 }
 
-function phoneScanText(char, data) {
-    const recent = (data?.messages || []).filter(m => ['user','character'].includes(m.from)).slice(-12);
-    return recent.map(m => `${m.from === 'user' ? 'user' : getCharacterName(char)}: ${m.text || ''}`).join('\n').slice(-16000);
+function phoneScanText(char, data, ctx=null) {
+    const recent=cleanPhoneHistory(data?.messages||[]).filter(m=>['user','character'].includes(m.from)).slice(-12);
+    const names=[getCharacterName(char),ctx?.name1||''].filter(Boolean).join('\n');
+    return (names+'\n'+recent.map(m=>`${m.from==='user'?'user':getCharacterName(char)}: ${m.text||''}`).join('\n')).slice(-16000);
 }
 
 function clipContext(text, budget) {
@@ -1234,32 +1235,33 @@ async function composePhonePrompt(ctx, char, data) {
     const persona=currentPersona(ctx);
     const parts = [createSystemPrompt(char, data, persona)];
     const summary={preset:0,selected:0,world:0,skipped:0,characters:0};
-    const selectedPresets = (Array.isArray(data?.config?.presetEntries) ? data.config.presetEntries : [])
-        .filter(item=>item&&typeof item.preset==='string');
-    if (selectedPresets.length) {
-        const manager = ctx?.getPresetManager?.('openai');
-        for (const item of selectedPresets) {
-            const preset = manager?.getCompletionPresetByName?.(item.preset);
-            const entry = preset?.prompts?.find(p => String(p.identifier || p.name) === item.id);
-            if (!entry || !entry.content) throw new Error('选中的预设条目不可用：' + item.preset + '/' + item.id);
-            parts.push('[手机预设 · ' + (entry.name || item.id) + ']\n' + entry.content);
-            summary.preset++;
-        }
+    const config=data?.config||{};
+    // The chosen preset implicitly enables its originally enabled prompts.
+    // Manual choices, including an empty checked set, take priority.
+    const selectedPresets=selectedPresetForGeneration(ctx,config);
+    let presetUsed=0;
+    for(const item of selectedPresets){
+        const preset=ctx?.getPresetManager?.('openai')?.getCompletionPresetByName?.(item.preset);
+        const entry=preset?.prompts?.find(p=>String(p.identifier||p.name)===item.id);
+        if(!entry?.content){summary.skipped++;continue;}
+        const section='[手机预设 · '+(entry.name||item.id)+']\n'+entry.content;
+        if(presetUsed+section.length>PHONE_PRESET_BUDGET){summary.skipped++;continue;}
+        parts.push(section);presetUsed+=section.length;summary.preset++;
     }
     const activeBooks=selectedWorldBookNames(data);
-    const selectedBooks = (Array.isArray(data?.config?.worldEntries) ? data.config.worldEntries : [])
-        .filter(item=>activeBooks.includes(item.book));
-    const scan=phoneScanText(char,data);
+    const scan=phoneScanText(char,data,ctx);
     const triggered=[];
-    for (const bookName of [...new Set(selectedBooks.map(x => x.book))]) {
-        if (typeof ctx?.loadWorldInfo !== 'function') throw new Error('酒馆世界书接口不可用');
-        const book = await ctx.loadWorldInfo(bookName);
-        const entries = book?.entries || {};
-        for (const selected of selectedBooks.filter(x => x.book === bookName)) {
-            const entry = entries[selected.id] ?? Object.values(entries).find(e => String(e.uid) === selected.id);
-            if (!entry || !entry.content) throw new Error('选中的世界书条目不可用：' + bookName + '/' + selected.id);
+    for(const bookName of activeBooks){
+        if(typeof ctx?.loadWorldInfo!=='function')throw new Error('酒馆世界书接口不可用');
+        const book=await ctx.loadWorldInfo(bookName);
+        const entries=book?.entries||{};
+        const explicit=(Array.isArray(config.worldEntries)?config.worldEntries:[]).filter(item=>item?.book===bookName);
+        const selected=initializedChoice(config,'world',bookName)||explicit.length?explicit:worldEntryDefaults(book,bookName);
+        for(const item of selected){
+            const entry=entries[item.id]??Object.values(entries).find(e=>String(e.uid)===item.id);
+            if(!entry?.content){summary.skipped++;continue;}
             summary.selected++;
-            if (worldEntryTriggered(entry,scan)) triggered.push({bookName,id:selected.id,entry});
+            if(worldEntryTriggered(entry,scan))triggered.push({bookName,id:item.id,entry});
             else summary.skipped++;
         }
     }
