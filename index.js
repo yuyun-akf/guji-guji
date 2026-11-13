@@ -1305,6 +1305,7 @@ function createSystemPrompt(char, data, persona = {name:'user',description:''}) 
     return [
         `你正在扮演角色「${getCharacterName(char)}」，与 user 通过一部虚构的手机进行私聊。`,
         '只回复这一角色实际发出的手机消息。不要写旁白、动作描写、镜头说明、心理活动、双方对话或 user 的行为。',
+        '只输出角色要发送的消息正文，不要输出内部推理、分析、thinking 标记或隐藏思考内容。',
         '不要替 user 发言，也不要强行推进关系。角色的人格、边界与关系阶段以角色卡和实际已经发生的事为准；正文记忆仅用于识别既有事实，不得把未发生的未来当作经历。',
         '角色能够看到 user 的公开人设，但不能凭人设臆断 user 的内心、秘密、意愿或行动；手机聊天中 user 未说的话不能视作说过。',
         '【保密与视角】角色卡中关于真实身份、职业、公众身份、家境及幕后工作的资料，是扮演依据，并不代表 user 已经获悉。若设定表明双方为网友、身份尚未公开、或角色刻意隐瞒信息，不得主动自曝或通过导演、剧本、拍摄、资源等职业细节变相暴露，除非当前时间线已有明确公开证据。不要用角色的上帝视角补充 user 尚未知晓的事实。',
@@ -1331,6 +1332,33 @@ function messageStylePrompt(data) {
         '如果一次想连续发送多条不同的消息，请在消息之间单独放置 [PHONE_NEXT]，不加编号，不解释这个标记。最多连续发五条。',
         '避免演讲体、长篇旁白、舞台指示、心理描写、替对方发言及机械总结。'
     ].join('\n');
+}
+// Keep provider reasoning out of user-visible bubbles and subsequent model context.
+// Old messages are sanitized on read; their stored originals remain untouched.
+function stripModelReasoning(value) {
+    let text=String(value||'');
+    text=text.replace(/<\s*(think|thinking|analysis|reasoning)\b[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi,'');
+    text=text.replace(/\[\[\s*(?:think|thinking|analysis|reasoning)\s*[:：][\s\S]*?\]\]/gi,'');
+    text=text.replace(/\[\s*(think|thinking|analysis|reasoning)\s*\][\s\S]*?\[\s*\/\s*\1\s*\]/gi,'');
+    text=text.replace(/<\s*(?:think|thinking|analysis|reasoning)\b[^>]*>[\s\S]*$/gi,'');
+    text=text.replace(/\[\[\s*(?:think|thinking|analysis|reasoning)\s*[:：][\s\S]*$/gi,'');
+    text=text.replace(/\[\s*(?:think|thinking|analysis|reasoning)\s*\][\s\S]*$/gi,'');
+    return text.trim();
+}
+function cleanPhoneHistory(messages) {
+    let hidden=false;
+    return (Array.isArray(messages)?messages:[]).map(message=>{
+        if(message?.from!=='character'){hidden=false;return message;}
+        let text=String(message.text||'');
+        if(hidden){
+            const close=text.indexOf(']]');
+            if(close<0)return {...message,text:''};
+            text=text.slice(close+2);hidden=false;
+        }
+        const trailing=/\[\[\s*(?:think|thinking|analysis|reasoning)\s*[:：][\s\S]*$/i.exec(text);
+        if(trailing&&!trailing[0].includes(']]'))hidden=true;
+        return {...message,text:stripModelReasoning(text)};
+    });
 }
 function splitPhoneReply(text, data) {
     const source = String(text || '').trim();
@@ -1359,8 +1387,9 @@ function splitPhoneReply(text, data) {
 function buildPrompt(data,ctx=null,char=null) {
     // Official generateRaw accepts Chat Completion messages and converts them
     // for the selected generation mode. Preserve user/assistant roles.
-    return data.messages.slice(-CONTEXT_MESSAGE_LIMIT)
-        .filter(message => typeof message.text === 'string' && ['user', 'character'].includes(message.from))
+    return cleanPhoneHistory(data.messages).slice(-CONTEXT_MESSAGE_LIMIT)
+        .filter(message => typeof message.text === 'string' && ['user', 'character'].includes(message.from)
+            && (message.from==='user'||message.text.trim()||message.image))
         .map(message => ({
             role: message.from === 'character' ? 'assistant' : 'user',
             content: !message.sticker && message.image && typeof message.image==='string' && /^data:image\/(?:jpeg|png|webp);base64,/.test(message.image)
@@ -3223,8 +3252,8 @@ function renderMessages(data) {
     }
     const fragment=document.createDocumentFragment();
     const avatars=avatarSources(context(),data);
-    for (const message of data.messages) {
-        if (typeof message?.text!=='string') continue;
+    for (const message of cleanPhoneHistory(data.messages)) {
+        if (typeof message?.text!=='string'||(message.from==='character'&&!message.text.trim()&&!message.image)) continue;
         const row=document.createElement('div');
         row.className='lp-message '+(message.from==='system'?'lp-system':message.from==='character'?'lp-theirs':'lp-mine');
         const body=document.createElement('div');
@@ -3381,14 +3410,15 @@ async function runReply(ctx, char, data, session, existingJob = null) {
     try {
         const catalog=stickerLibrary(ctx);
         const systemPrompt = [await composePhonePrompt(ctx, char, data), messageStylePrompt(data), stickerPrompt(catalog)].filter(Boolean).join('\n\n');
-        recordActivity('生成配置', '使用当前酒馆连接' + (ctx?.mainApi ? ' · ' + ctx.mainApi : '') + '；手机历史 ' + buildPrompt(data).length + ' 条；单独预设条目 ' + (data?.config?.presetEntries?.length || 0) + ' 条；世界书条目 ' + (data?.config?.worldEntries?.length || 0) + ' 条。');
+        recordActivity('生成配置','使用当前酒馆连接'+(ctx?.mainApi?' · '+ctx.mainApi:'')+'；手机历史 '+buildPrompt(data).length+' 条；当前手机预设 '+(configuredPhonePreset(data)||'未选择')+'；启用世界书 '+selectedWorldBookNames(data).length+' 本。实际注入数请看「注入预览」，包含自动继承的原版启用条目。');
         const result = await generateWithTimeout(ctx, {
             systemPrompt,
             prompt: buildPrompt(data,ctx,char),
         }, data);
         if (!sameSession(session)) return;
-        const reply = typeof result === 'string' ? result.trim() : '';
-        if (!reply) throw new Error('模型返回了空消息或不支持的回复类型。');
+        const rawReply = typeof result === 'string' ? result.trim() : '';
+        const reply=stripModelReasoning(rawReply);
+        if(!reply)throw new Error(rawReply?'模型仅返回思考内容，未生成可发送的角色消息，请重试。':'模型返回了空消息或不支持的回复类型。');
         const phoneMessages = parseStickerReply(reply,data,catalog);
         if (!phoneMessages.length) throw new Error('角色消息为空');
         for (const message of phoneMessages) appendPhoneMessage(data,'character',resolvePhonePlaceholders(message.text,ctx,char),message);
@@ -3409,6 +3439,9 @@ async function generateReply() {
     const ctx = context();
     const char = contactCharacter(ctx);
     if (!selectedCharacter(ctx)) return;
+    // Wait for queued checkbox/selection saves before capturing generation context.
+    await configWriteQueue;
+    if(!mounted||busy||context()?.chatMetadata!==ctx.chatMetadata)return;
     const data = structuredClone(readData(ctx));
     if (friendshipState(data) !== 'friends' || data.messages.at(-1)?.from !== 'user') return;
     if (typeof ctx.generateRaw !== 'function' && !ctx.ChatCompletionService?.sendRequest) {
