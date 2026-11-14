@@ -1033,7 +1033,7 @@ function selectedCharacter(ctx) {
 }
 
 function newData() {
-    return {version:1,storyTime:localDateTime(),messages:[],friendship:{state:'stranger'},contacts:[],conversations:{}};
+    return {version:1,storyTime:localDateTime(),messages:[],friendship:{state:'stranger'},contacts:[],conversations:{},storyEvents:[]};
 }
 function readRootData(ctx) {
     const value=ctx?.chatMetadata?.[DATA_KEY];
@@ -1146,6 +1146,9 @@ async function syncStoryRelationships(ctx=context(),force=false) {
                     !/我(?:已经|刚刚|刚才)?(?:接受|同意|通过)/.test(ev.evidence))continue;
                 convo.friendship={state:ev.state};
                 (convo.friendEvents||=[]).push({at:new Date().toISOString(),state:ev.state,notice:'主线事件：'+ev.evidence.slice(0,140)});
+                phonePublishEvent(work,{id:'mainline:friend:'+id+':'+phoneStableHash(ev.evidence),
+                    type:'contact.'+ev.state,detail:'正文好友关系：'+ev.evidence.slice(0,140),
+                    origin:'mainline',contactId:id});
                 modified=true;changes++;
                 break;
             }
@@ -1444,6 +1447,27 @@ async function syncMainlinePayments(ctx=context()) {
     }
 }
 
+function phonePublishEvent(data,{id=walletOperationId('event'),type,detail,
+    storyTime='',origin='phone',reference='',contactId=PRIMARY_CONTACT_ID,actor=''}) {
+    if(!type||typeof type!=='string')throw new Error('事件类型不能为空');
+    if(!Array.isArray(data.storyEvents))data.storyEvents=[];
+    const existing=data.storyEvents.find(evt=>evt.id===id);
+    if(existing)return existing;
+    const event={id,type,detail:String(detail||'').slice(0,240),
+        storyTime:storyTime||data.storyTime||localDateTime(),
+        origin,reference,contactId,actor};
+    data.storyEvents.push(event);
+    if(data.storyEvents.length>400)data.storyEvents=data.storyEvents.slice(-400);
+    return event;
+}
+// Shared event bus for upcoming shopping, delivery and public social apps.
+// Each app supplies one stable event ID; repeated calls cannot double-publish.
+function publishPhoneAppEvent(data,{app,action,id,detail,contactId='',reference=''}) {
+    if(!app||!action||!id)throw new Error('应用事件缺少来源或编号');
+    return phonePublishEvent(data,{id:'app:'+app+':'+id,type:app+'.'+action,
+        detail,origin:'phone',contactId,reference});
+}
+
 function walletState(data) {
     const saved=data?.wallet;
     return {
@@ -1497,6 +1521,7 @@ function walletEvent(data,{id,type,detail,storyTime='',origin='phone',reference=
     if(wallet.events.some(entry=>entry.id===id))return false;
     wallet.events.push({id,type,detail:String(detail||'').slice(0,240),storyTime:storyTime||data.storyTime||localDateTime(),origin,reference});
     if(wallet.events.length>300)wallet.events=wallet.events.slice(-300);
+    phonePublishEvent(data,{id,type,detail,storyTime,origin,reference});
     return true;
 }
 function walletAdjustBalance(data,targetCents,reason='余额调整') {
@@ -1598,15 +1623,21 @@ function walletExpireTransfers(data) {
 function walletChargeOrder(data,{orderId,amountCents,shop,category='shopping'}) {
     if(!orderId||!['shopping','takeout','service'].includes(category)||
         !Number.isSafeInteger(amountCents)||amountCents<=0)throw new Error('订单金额或类型无效');
-    return walletApplyEntry(data,{id:'order:'+category+':'+orderId,amountCents:-amountCents,
+    const entry=walletApplyEntry(data,{id:'order:'+category+':'+orderId,amountCents:-amountCents,
         label:String(shop||'订单付款').slice(0,100),kind:category,relatedId:orderId});
+    publishPhoneAppEvent(data,{app:category,action:'paid',id:orderId,
+        detail:'已付款 ¥'+walletMoney(amountCents)+' · '+String(shop||'订单'),reference:orderId});
+    return entry;
 }
 function walletRefundOrder(data,{orderId,amountCents,category='shopping'}) {
     if(!orderId||!['shopping','takeout','service'].includes(category))throw new Error('退款类型无效');
     const paid=walletState(data).ledger.find(entry=>entry.id==='order:'+category+':'+orderId);
     if(!paid||amountCents<=0||amountCents>-paid.amountCents)throw new Error('找不到可退款的订单');
-    return walletApplyEntry(data,{id:'order-refund:'+category+':'+orderId,amountCents,
+    const entry=walletApplyEntry(data,{id:'order-refund:'+category+':'+orderId,amountCents,
         label:'订单退款',kind:'refund',relatedId:orderId});
+    publishPhoneAppEvent(data,{app:category,action:'refunded',id:orderId,
+        detail:'已退款 ¥'+walletMoney(amountCents),reference:orderId});
+    return entry;
 }
 
 function contextSettings(data) {
@@ -1627,7 +1658,11 @@ function mainlineStructuredEvents(rootData){
         .slice(-12).map(item=>item.storyTime+' · '+item.detail);
     const friends=(rootData.friendEvents||[]).filter(e=>e&&FRIEND_STATES.has(e.to))
         .slice(-4).map(e=>(e.storyTime||'')+' · 手机好友关系更新：'+FRIEND_LABELS[e.to]);
-    const facts=[...events,...friends].filter(Boolean);
+    const shared=Array.isArray(rootData.storyEvents)?rootData.storyEvents:[];
+    const appEvents=shared.filter(evt=>evt.origin!=='mainline'&&
+        /^(?:shopping|takeout|service)\.(?:paid|refunded)$/.test(evt.type))
+        .slice(-8).map(evt=>evt.storyTime+' · '+evt.detail);
+    const facts=[...events,...friends,...appEvents].filter(Boolean);
     return facts.length?'【咕叽咕机已确认的事件】\n'+facts.join('\n')+
         '\n以上是手机中已经完成的事件，不代表 user 还要重复操作。角色仅知道自己参与或已被告知的部分。':'';
 }
@@ -3878,12 +3913,12 @@ function renderWallet(ctx=context()) {
     }
     if(nodes.bridgeEvents){
         nodes.bridgeEvents.replaceChildren();
-        for(const event of wallet.events.slice(-30).reverse()){
+        for(const event of (rootData.storyEvents||wallet.events).slice(-30).reverse()){
             const item=document.createElement('div');item.className='lp-wallet-event';
             item.textContent=String(event.storyTime||'').replace('T',' ')+' · '+event.detail;
             nodes.bridgeEvents.append(item);
         }
-        if(!wallet.events.length)nodes.bridgeEvents.textContent='暂无事件记录';
+        if(!(rootData.storyEvents||wallet.events).length)nodes.bridgeEvents.textContent='暂无事件记录';
     }
 }
 async function saveWalletBalance() {
@@ -4353,6 +4388,8 @@ function rememberFriendship(data, nextState, notice) {
     const events = Array.isArray(data.friendEvents) ? data.friendEvents.slice(-39) : [];
     events.push({ from, to: nextState, storyTime: data.storyTime, at: new Date().toISOString() });
     data.friendEvents = events;
+    phonePublishEvent(data,{type:'contact.'+nextState,detail:notice||FRIEND_LABELS[nextState],
+        origin:'phone',contactId:data.__contactId||activeContactId});
     if (notice) data.messages.push(makeMessage('system', notice, data.storyTime));
 }
 
