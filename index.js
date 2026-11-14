@@ -1905,7 +1905,7 @@ function createSystemPrompt(char, data, persona = {name:'user',description:''}) 
         .join('；');
 
     return [
-        `你正在扮演角色「${getCharacterName(char)}」，与 user 通过一部虚构的手机进行私聊。`,
+        `你正在扮演角色「${getCharacterName(char)}」，与 user 通过手机进行私聊。`,
         '只回复这一角色实际发出的手机消息。不要写旁白、动作描写、镜头说明、心理活动、双方对话或 user 的行为。',
         '只输出角色要发送的消息正文，不要输出内部推理、分析、thinking 标记或隐藏思考内容。',
         '不要替 user 发言，也不要强行推进关系。角色的人格、边界与关系阶段以角色卡和实际已经发生的事为准；正文记忆仅用于识别既有事实，不得把未发生的未来当作经历。',
