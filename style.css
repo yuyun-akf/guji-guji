@@ -1828,3 +1828,112 @@
   font:inherit;color-scheme:light;
 }
 #st-little-phone-root .lp-calendar-time-editor details button{width:100%;}
+
+/* v0.9.0 — account dashboard, payment cards and transaction composer */
+#st-little-phone-root .lp-wallet-screen{
+  background:#f4f3f7;overflow-y:auto;overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;
+}
+#st-little-phone-root .lp-wallet-main{display:flex;flex-direction:column;gap:10px;padding-bottom:20px;}
+#st-little-phone-root .lp-wallet-head{
+  display:flex;flex-direction:column;align-items:flex-start;gap:8px;
+  padding:24px 20px 22px;
+  background:linear-gradient(145deg,#ece4fa,#ded2f0);
+  color:#48385d;border-radius:0 0 18px 18px;
+}
+#st-little-phone-root .lp-wallet-heading{display:flex;align-items:center;gap:9px;font-size:18px;}
+#st-little-phone-root .lp-wallet-heading>span{font-size:25px;}
+#st-little-phone-root .lp-wallet-caption{color:#745d85;font-size:12px;margin-top:11px;}
+#st-little-phone-root .lp-wallet-number{font-size:30px;font-weight:650;letter-spacing:.015em;}
+#st-little-phone-root .lp-wallet-shortcut{
+  min-height:40px;width:100%;margin-top:8px;background:#fff;
+  color:#73528d;border:0;border-radius:11px;font:inherit;font-size:14px;
+}
+#st-little-phone-root .lp-wallet-adjust,#st-little-phone-root .lp-wallet-events,
+#st-little-phone-root .lp-wallet-section{
+  margin:0 12px;padding:14px 13px;background:#fff;border:0;border-radius:13px;color:#493d56;
+}
+#st-little-phone-root .lp-wallet-adjust>summary,
+#st-little-phone-root .lp-wallet-events>summary{font-size:13px;font-weight:600;cursor:pointer;}
+#st-little-phone-root .lp-wallet-section h3{font-size:15px;margin:0 0 11px;font-weight:650;}
+#st-little-phone-root .lp-wallet-adjust-controls{
+  display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px;
+}
+#st-little-phone-root .lp-wallet-adjust-controls label{font-size:12px;color:#72657b;}
+#st-little-phone-root .lp-wallet-adjust-controls input{
+  flex:1 1 115px;width:100px;min-width:80px;min-height:38px;
+  background:#fff;border:1px solid #e1d9e8;border-radius:9px;
+  padding:5px 8px;font:inherit;font-size:14px;color:#45354e;
+}
+#st-little-phone-root .lp-wallet-adjust-controls button{
+  border:0;background:#a68bc4;color:white;border-radius:9px;padding:9px 15px;
+  min-height:38px;font:inherit;font-size:13px;
+}
+#st-little-phone-root .lp-wallet-bills{display:flex;flex-direction:column;gap:0;}
+#st-little-phone-root .lp-wallet-bill{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:11px 0;border-bottom:1px solid #f1edf3;
+}
+#st-little-phone-root .lp-wallet-bill:last-child{border-bottom:0;}
+#st-little-phone-root .lp-wallet-bill>div{min-width:0;flex:1;display:flex;flex-direction:column;gap:4px;}
+#st-little-phone-root .lp-wallet-bill strong{font-size:13px;font-weight:550;overflow-wrap:anywhere;}
+#st-little-phone-root .lp-wallet-bill small{font-size:10px;color:#968a9d;}
+#st-little-phone-root .lp-wallet-bill>span{font-size:14px;font-weight:650;white-space:nowrap;}
+#st-little-phone-root .lp-wallet-positive{color:#48836b;}
+#st-little-phone-root .lp-wallet-pending-button{
+  min-width:43px;padding:7px;border:1px solid #dfcfea;border-radius:8px;
+  background:#f9f4fc;color:#72538d;font-size:11px;
+}
+#st-little-phone-root .lp-wallet-empty{margin:3px 0;color:#a094a8;font-size:12px;}
+#st-little-phone-root .lp-wallet-event-list{margin-top:9px;display:flex;flex-direction:column;gap:7px;}
+#st-little-phone-root .lp-wallet-event{font-size:11px;line-height:1.55;color:#7c7084;padding-bottom:7px;border-bottom:1px solid #f1edf3;}
+#st-little-phone-root .lp-wallet-inline-status{margin:0 13px;color:#7c688c;font-size:12px;}
+#st-little-phone-root .lp-payment-panel[hidden]{display:none!important;}
+#st-little-phone-root .lp-payment-panel{
+  display:flex;flex-direction:column;gap:9px;flex:0 0 auto;
+  padding:12px 13px;background:#faf7fd;border-top:1px solid #e5daec;
+  max-height:min(55vh,340px);overflow-y:auto;
+}
+#st-little-phone-root .lp-payment-panel-head{
+  display:flex;align-items:center;justify-content:space-between;
+}
+#st-little-phone-root .lp-payment-panel-head strong{font-size:15px;color:#51405f;}
+#st-little-phone-root .lp-payment-panel-head button{
+  width:29px;height:29px;border:0;background:transparent;
+  color:#736384;font-size:22px;
+}
+#st-little-phone-root .lp-payment-panel label{display:flex;align-items:center;gap:9px;color:#71637e;font-size:12px;}
+#st-little-phone-root .lp-payment-panel select,
+#st-little-phone-root .lp-payment-panel input{
+  min-width:0;flex:1;height:37px;border-radius:8px;border:1px solid #e2d8eb;
+  background:#fff;color:#3f3448;font:inherit;font-size:13px;padding:6px 8px;
+}
+#st-little-phone-root .lp-payment-panel-foot{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+}
+#st-little-phone-root .lp-payment-panel-foot small{font-size:11px;color:#8d7d97;}
+#st-little-phone-root .lp-payment-panel-foot button{
+  min-height:37px;padding:0 15px;border-radius:8px;border:0;
+  background:#9e81bd;color:white;font:inherit;font-size:12px;
+}
+#st-little-phone-root .lp-payment-card{
+  display:flex;flex-direction:column;gap:5px;min-width:140px;
+  padding:12px;border-radius:12px;color:#fff;
+  background:linear-gradient(130deg,#d3a167,#c68144);
+}
+#st-little-phone-root .lp-payment-card.lp-payment-redpacket{
+  background:linear-gradient(130deg,#d46b64,#b94852);
+}
+#st-little-phone-root .lp-payment-card strong{font-size:12px;}
+#st-little-phone-root .lp-payment-card .lp-payment-amount{font-size:24px;font-weight:750;}
+#st-little-phone-root .lp-payment-card small{font-size:11px;color:#fff9;}
+#st-little-phone-root .lp-payment-card em{font-style:normal;font-size:11px;color:#fffbe3;}
+#st-little-phone-root .lp-payment-actions{display:flex;gap:6px;padding-top:6px;}
+#st-little-phone-root .lp-payment-actions button{
+  flex:1;min-height:32px;border:1px solid #fff8;border-radius:8px;
+  color:#fff;background:#ffffff24;font:inherit;font-size:12px;
+}
+#st-little-phone-root .lp-payment-actions button:disabled{opacity:.5;}
+#st-little-phone-root .lp-payment-card,
+#st-little-phone-root .lp-payment-card *,
+#st-little-phone-root .lp-wallet-main *{box-sizing:border-box;}
