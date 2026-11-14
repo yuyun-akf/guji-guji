@@ -1,5 +1,5 @@
 /**
- * GujiGuji v0.8.19: a modular phone shell with isolated per-chat context.
+ * GujiGuji v0.9.0: a modular phone shell with isolated per-chat context.
  * No direct host-module imports; uses only the documented context surface.
  */
 
@@ -1602,9 +1602,8 @@ function mainlineStructuredEvents(rootData){
     const events=wallet.events.filter(item=>item.origin!=='mainline'&&
         /^(?:transfer|redpacket)\.(?:created|accepted|declined|cancelled|expired)$/.test(item.type))
         .slice(-12).map(item=>item.storyTime+' · '+item.detail);
-    const friends=(rootData.friendEvents||[]).filter(e=>e&&
-        /你已|你同意|你拒绝|你撤回|玩家/.test(String(e.notice||'')))
-        .slice(-6).map(e=>(e.storyTime||'')+' · 好友状态更新：'+FRIEND_LABELS[e.to]);
+    const friends=(rootData.friendEvents||[]).filter(e=>e&&FRIEND_STATES.has(e.to))
+        .slice(-4).map(e=>(e.storyTime||'')+' · 手机好友关系更新：'+FRIEND_LABELS[e.to]);
     const facts=[...events,...friends].filter(Boolean);
     return facts.length?'【咕叽咕机已确认的事件】\n'+facts.join('\n')+
         '\n以上是手机中已经完成的事件，不代表 user 还要重复操作。角色仅知道自己参与或已被告知的部分。':'';
@@ -4571,7 +4570,7 @@ function makeUI() {
         <button type="button" class="lp-inline-notification" data-lp="inlineNotification" aria-label="打开新消息" hidden></button>
         <section class="lp-screen lp-home" data-lp-screen="home" aria-label="手机桌面">
           <div class="lp-home-hero">
-            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.8.19</div>
+            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.9.0</div>
             <div class="lp-home-time" data-lp="homeTime">故事时间</div>
             <div class="lp-home-character" data-lp="homeCharacter">等待进入角色存档</div>
           </div>
@@ -5264,7 +5263,11 @@ function mount() {
 
     mounted = true;
     if (autonomousTicker)clearInterval(autonomousTicker);
-    autonomousTicker=setInterval(()=>{void syncStoryRelationships(context());void tickAutonomousActivity();void tickMomentInteractions();void maybeAutoFriendRequest(context());},60000);
+    autonomousTicker=setInterval(()=>{
+        void syncStoryRelationships(context());
+        void syncMainlinePayments(context());
+        void tickAutonomousActivity();void tickMomentInteractions();void maybeAutoFriendRequest(context());
+    },60000);
     renderDiagnostics();
     const ctx = context();
     if (ctx?.eventSource && ctx?.event_types?.CHAT_CHANGED) {
@@ -5281,12 +5284,27 @@ function mount() {
             syncMainlinePrompt(context());
             render();
             void syncStoryRelationships(context());
+            void syncMainlinePayments(context());
             void tickAutonomousActivity();
             void tickMomentInteractions();
         };
         listeningSource.on(listeningEvent, chatChangedHandler);
     }
+    // These events are emitted after edits, swipes, deletions and completed replies.
+    // Reconcile against the currently active message branch instead of trusting
+    // one generation or silently duplicating an incoming transfer.
+    if(ctx?.eventSource?.on && ctx.event_types){
+        const names=['MESSAGE_RECEIVED','MESSAGE_SENT','MESSAGE_EDITED','MESSAGE_UPDATED',
+            'MESSAGE_DELETED','MESSAGE_SWIPED','GENERATION_ENDED'];
+        for(const name of names){
+            const event=ctx.event_types[name];if(!event)continue;
+            const handler=()=>{void syncMainlinePayments(context());};
+            ctx.eventSource.on(event,handler);
+            bridgeListeners.push({source:ctx.eventSource,event,handler});
+        }
+    }
     syncMainlinePrompt(ctx);
+    void syncMainlinePayments(ctx);
     render();
     scheduleLauncherProbe('初始化后');
 }
@@ -5320,6 +5338,15 @@ function unmount() {
     activityTicker = null;
     if (autonomousTicker)clearInterval(autonomousTicker);
     autonomousTicker=null;
+    for(const listener of bridgeListeners.splice(0)){
+        try{
+            if(typeof listener.source.removeListener==='function')
+                listener.source.removeListener(listener.event,listener.handler);
+            else listener.source.off?.(listener.event,listener.handler);
+        }catch(error){recordError('解除正文事件监听',error);}
+    }
+    bridgeNeedsSync=false;
+    bridgeSyncWorking=false;
     if (listeningSource && chatChangedHandler) {
         if (typeof listeningSource.removeListener === 'function') {
             listeningSource.removeListener(listeningEvent, chatChangedHandler);
