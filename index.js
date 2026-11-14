@@ -2811,7 +2811,8 @@ async function tickAutonomousActivity(manualChannel='') {
         let answer;
         if(channel==='messages'){
             answer=await generateWithTimeout(ctx,{
-                systemPrompt:[system,messageStylePrompt(data),'【主动发消息】请你作为当前联系人，结合关系、角色性格、现有私聊和最近生活，自然地给 user 发一条主动消息。不是回复正在等待的提问。可以决定不打扰，此时只输出 [SKIP]。不得替 user 说话，也不要虚构已经发生的事件。'].join('\n\n'),
+                systemPrompt:[system,messageStylePrompt(data),paymentReplyInstructions(data,id),
+                    '【主动发消息】请你作为当前联系人，结合关系、角色性格、现有私聊和最近生活，自然地给 user 发一条主动消息。不是回复正在等待的提问。可以决定不打扰，此时只输出 [SKIP]。不得替 user 说话，也不要虚构已经发生的事件。'].join('\n\n'),
                 prompt:[...buildPrompt(data,ctx,contact).slice(-10),{role:'user',content:'【系统触发：主动发消息时机】可以自主决定是否联系 user。'}]
             },data);
         }else{
@@ -2830,14 +2831,23 @@ async function tickAutonomousActivity(manualChannel='') {
             return;
         }
         if(channel==='messages'){
-            const messages=splitPhoneReply(String(answer),data).slice(0,4);
+            const afterReceipt=applyPaymentModelTags(data,String(answer),id);
+            const paymentResult=applyCharacterPaymentSendTag(data,afterReceipt,id);
+            const messages=paymentResult.text?splitPhoneReply(paymentResult.text,data).slice(0,4):[];
             for(const message of messages)appendPhoneMessage(data,'character',resolvePhonePlaceholders(message,ctx,contact));
+            if(paymentResult.created){
+                const card=appendPhoneMessage(data,'character',
+                    paymentResult.created.kind==='redpacket'?'[红包]':'[转账]');
+                card.paymentId=paymentResult.created.id;
+            }
+            const total=messages.length+(paymentResult.created?1:0);
+            if(!total&&!/\[\[PAYMENT_(?:ACCEPT|DECLINE):/i.test(String(answer)))return;
             const currentlyReading=root?.classList.contains('lp-open')&&activeScreen==='chat'&&activeContactId===id;
-            if(!currentlyReading){
-                data.unreadCounts={...(data.unreadCounts||{}),[id]:Math.min(99,unreadCount(data,id)+messages.length)};
+            if(!currentlyReading&&total){
+                data.unreadCounts={...(data.unreadCounts||{}),[id]:Math.min(99,unreadCount(data,id)+total)};
             }
             await writeData(ctx,{...data,__contactId:id});
-            if(same())showIncomingAlert(id,messages.length);
+            if(same()&&total)showIncomingAlert(id,total);
         }else{
             const parsed=batchActors.length?parseMomentBatch(answer):null;
             const postText=batchActors.length?parsed?.post:String(answer).slice(0,450);
