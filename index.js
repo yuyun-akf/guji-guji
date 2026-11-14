@@ -4167,15 +4167,37 @@ async function clearOrDeleteChat(deleteConversation=false) {
     } catch(e) {setStatus(recordError('删除聊天记录',e),'error');}
 }
 
-function openMessageActions(id) {
-    if(busy)return;
-    selectedMessageId=id;
-    nodes.messageActions.hidden=false;
+
+let messageHoldTimer=null;
+function openMessageActions(id,anchor=null){
+ if(busy||!nodes?.messageActions)return;
+ selectedMessageId=id;
+ nodes.messageActions.hidden=false;
+ const target=anchor||nodes.messages.querySelector('[data-message-id="'+CSS.escape(String(id))+'"] .lp-bubble');
+ if(!target)return;
+ const r=target.getBoundingClientRect(),menu=nodes.messageActions;
+ const availableWidth=window.innerWidth||document.documentElement.clientWidth;
+ const availableHeight=window.visualViewport?.height||window.innerHeight;
+ const width=menu.offsetWidth||265,height=menu.offsetHeight||120;
+ const left=Math.max(8,Math.min(availableWidth-width-8,r.left+r.width/2-width/2));
+ const top=r.top>=height+14?r.top-height-9:Math.min(availableHeight-height-12,r.bottom+9);
+ menu.style.left=left+'px';menu.style.top=Math.max(5,top)+'px';
 }
-function closeMessageActions() {
-    selectedMessageId=null;
-    nodes.messageActions.hidden=true;
+function closeMessageActions(){
+ selectedMessageId=null;
+ if(nodes?.messageActions)nodes.messageActions.hidden=true;
 }
+function attachMessageHold(bubble,id){
+ const stop=()=>{if(messageHoldTimer)clearTimeout(messageHoldTimer);messageHoldTimer=null;};
+ bubble.addEventListener('pointerdown',e=>{
+  if(e.pointerType!=='touch'&&e.pointerType!=='pen')return;
+  stop();messageHoldTimer=setTimeout(()=>{messageHoldTimer=null;openMessageActions(id,bubble);},470);
+ },{passive:true});
+ bubble.addEventListener('pointermove',e=>{if(Math.abs(e.movementX)>6||Math.abs(e.movementY)>6)stop();},{passive:true});
+ for(const type of ['pointerup','pointercancel','pointerleave'])bubble.addEventListener(type,stop,{passive:true});
+ bubble.addEventListener('contextmenu',event=>{event.preventDefault();stop();openMessageActions(id,bubble);});
+}
+
 function clearQuote() {
     quotedMessageId=null;
     if(nodes?.quotedPreview)nodes.quotedPreview.hidden=true;
@@ -4596,62 +4618,95 @@ async function deleteIndividualMessage(id) {
     try { await writeData(ctx,data);render(); }catch(e){setStatus(recordError('删除消息',e),'error');}
 }
 
-function renderMessages(data) {
-    nodes.messages.replaceChildren();
-    nodes.messageActions.hidden=true;
-    if (!data.messages.length) {
-        const empty = document.createElement('p');
-        empty.className='lp-empty';
-        empty.textContent='暂无消息';
-        nodes.messages.append(empty);
-    }
-    const fragment=document.createDocumentFragment();
-    const avatars=avatarSources(context(),data);
-    for (const message of cleanPhoneHistory(data.messages)) {
-        if (typeof message?.text!=='string'||(message.from==='character'&&!message.text.trim()&&!message.image)) continue;
-        const row=document.createElement('div');
-        row.className='lp-message '+(message.from==='system'?'lp-system':message.from==='character'?'lp-theirs':'lp-mine');
-        const body=document.createElement('div');
-        body.className='lp-message-body';
-        const bubble=document.createElement('div');
-        bubble.className='lp-bubble'+(message.paymentId?' lp-payment-shell':'');
-        bubble.textContent=visibleStickerText(message,context(),contactCharacter(context()));
-        if(message.paymentId){
-            const paymentCard=walletRenderCard(context(),message);
-            if(paymentCard){bubble.textContent='';bubble.append(paymentCard);}
-        }
-        if(message.replyQuote){const quote=document.createElement('div');quote.className='lp-inline-quote';quote.textContent=resolvePhonePlaceholders(message.replyQuote,context(),contactCharacter(context()));bubble.prepend(quote);}
-        if(message.image){const picture=document.createElement('img');picture.className='lp-chat-image';picture.src=message.image;picture.alt=message.sticker?'表情包图片':'聊天图片';bubble.append(picture);}
-        const stamp=document.createElement('small');
-        stamp.className='lp-message-time';
-        stamp.textContent=String(message.storyTime || '').replace('T',' ');
-        body.append(bubble,stamp);
-        if (message.from!=='system') {
-            row.append(makeAvatarElement(message.from==='character'?avatars.character:avatars.user,message.from==='character'?'角色头像':'我的头像'),body);
-        } else row.append(body);
-        const remove=document.createElement('button');
-        remove.type='button';
-        remove.className='lp-message-remove';
-        remove.textContent='⋯';
-        remove.setAttribute('aria-label','消息操作');
-        remove.addEventListener('click',()=>openMessageActions(message.id));
-        row.append(remove);
-        bubble.addEventListener('contextmenu',event=>{event.preventDefault();openMessageActions(message.id);});
-        fragment.append(row);
-    }
-    if (busy && busyKind==='reply') {
-        const typing=document.createElement('div');
-        typing.className='lp-message lp-theirs lp-typing-row';
-        typing.append(makeAvatarElement(avatars.character,'角色头像'));
-        const bubble=document.createElement('div');
-        bubble.className='lp-typing';
-        bubble.textContent='● ● ●';
-        bubble.setAttribute('aria-label','对方正在输入');
-        typing.append(bubble);
-        fragment.append(typing);
-    }
-    nodes.messages.append(fragment);
-    nodes.messages.scrollTop=nodes.messages.scrollHeight;
+
+function chatTimeLabel(stamp,reference){
+ const time=String(stamp||''),now=String(reference||'');
+ const date=time.slice(0,10),today=now.slice(0,10);
+ if(!/^\d{4}-\d\d-\d\d$/.test(date))return time.replace('T',' ').slice(0,16);
+ const clock=time.slice(11,16)||'00:00';
+ const a=Date.parse(date+'T12:00:00'),b=Date.parse(today+'T12:00:00');
+ const day=Number.isFinite(a)&&Number.isFinite(b)?Math.round((b-a)/86400000):null;
+ if(day===0)return clock;
+ if(day===1)return '昨天 '+clock;
+ if(day!==null&&day>=2&&day<7){
+  const weekday=['星期日','星期一','星期二','星期三','星期四','星期五','星期六'][new Date(a).getDay()];
+  return weekday+' '+clock;
+ }
+ return date.replaceAll('-','年').replace(/年(\d\d)$/,'月$1日')+' '+clock;
+}
+function isChatTimeBreak(previous,stamp){
+ if(!previous)return true;
+ const currentDate=String(stamp||'').slice(0,10),oldDate=String(previous||'').slice(0,10);
+ if(currentDate!==oldDate)return true;
+ const a=Date.parse(String(previous)),b=Date.parse(String(stamp));
+ return !Number.isFinite(a)||!Number.isFinite(b)||b<a||b-a>=600000;
+}
+function locationCard(text){
+ const matched=/^\[分享位置\]\s*(.*)$/s.exec(String(text||''));
+ if(!matched)return null;
+ const card=document.createElement('div');card.className='lp-location-card';
+ const icon=document.createElement('span');icon.className='lp-location-symbol';icon.textContent='⌖';icon.setAttribute('aria-hidden','true');
+ const main=document.createElement('div');main.className='lp-location-copy';
+ const title=document.createElement('strong');title.textContent=matched[1].trim()||'分享的位置';
+ const subtitle=document.createElement('small');subtitle.textContent='位置分享';
+ main.append(title,subtitle);card.append(icon,main);
+ return card;
+}
+function renderMessages(data){
+ nodes.messages.replaceChildren();
+ closeMessageActions();
+ const list=cleanPhoneHistory(data.messages);
+ if(!list.length){
+  const empty=document.createElement('p');empty.className='lp-empty';empty.textContent='暂无消息';
+  nodes.messages.append(empty);
+ }
+ const fragment=document.createDocumentFragment();
+ const ctx=context(),character=contactCharacter(ctx),avatars=avatarSources(ctx,data);
+ let lastSeparator='';
+ const currentStoryDate=String(data.storyTime||localDateTime());
+ for(const message of list){
+  if(typeof message?.text!=='string'||(message.from==='character'&&!message.text.trim()&&!message.image))continue;
+  const stamp=String(message.storyTime||'');
+  if(stamp&&isChatTimeBreak(lastSeparator,stamp)){
+   const separator=document.createElement('div');separator.className='lp-chat-time-divider';
+   separator.textContent=chatTimeLabel(stamp,currentStoryDate);
+   fragment.append(separator);lastSeparator=stamp;
+  }
+  const row=document.createElement('div');
+  row.className='lp-message '+(message.from==='system'?'lp-system':message.from==='character'?'lp-theirs':'lp-mine');
+  row.dataset.messageId=message.id;
+  const body=document.createElement('div');body.className='lp-message-body';
+  const bubble=document.createElement('div');bubble.className='lp-bubble'+(message.paymentId?' lp-payment-shell':'');
+  const located=!message.paymentId?locationCard(message.text):null;
+  if(located){bubble.classList.add('lp-location-shell');bubble.append(located);}
+  else bubble.textContent=visibleStickerText(message,ctx,character);
+  if(message.paymentId){
+   const paymentCard=walletRenderCard(ctx,message);
+   if(paymentCard){bubble.textContent='';bubble.append(paymentCard);}
+  }
+  if(message.replyQuote){
+   const quote=document.createElement('div');quote.className='lp-inline-quote';
+   quote.textContent=resolvePhonePlaceholders(message.replyQuote,ctx,character);bubble.prepend(quote);
+  }
+  if(message.image){
+   const picture=document.createElement('img');picture.className='lp-chat-image';picture.src=message.image;
+   picture.alt=message.sticker?'表情包图片':'聊天图片';bubble.append(picture);
+  }
+  body.append(bubble);
+  if(message.from!=='system'){
+   row.append(makeAvatarElement(message.from==='character'?avatars.character:avatars.user,message.from==='character'?'角色头像':'我的头像'),body);
+  }else row.append(body);
+  attachMessageHold(bubble,message.id);
+  fragment.append(row);
+ }
+ if(busy&&busyKind==='reply'){
+  const typing=document.createElement('div');typing.className='lp-message lp-theirs lp-typing-row';
+  typing.append(makeAvatarElement(avatars.character,'角色头像'));
+  const bubble=document.createElement('div');bubble.className='lp-typing';bubble.textContent='● ● ●';bubble.setAttribute('aria-label','对方正在输入');
+  typing.append(bubble);fragment.append(typing);
+ }
+ nodes.messages.append(fragment);
+ nodes.messages.scrollTop=nodes.messages.scrollHeight;
 }
 
 function renderFriendship(data) {
@@ -5435,16 +5490,6 @@ function makeUI() {
             <span data-lp="quotedText"></span>
             <button type="button" data-lp="cancelQuote" aria-label="取消引用">✕</button>
           </div>
-          <div class="lp-emoji-panel" data-lp="emojiPanel" hidden>
-          </div>
-          <div class="lp-more-panel" data-lp="morePanel" hidden>
-            <button type="button" data-chat-tool="photo">相册</button>
-            <button type="button" data-chat-tool="call">电话</button>
-            <button type="button" data-chat-tool="transfer">转账</button>
-            <button type="button" data-chat-tool="redpacket">红包</button>
-            <button type="button" data-chat-tool="location">定位</button>
-            <button type="button" data-chat-tool="time">跳转时间</button>
-          </div>
           <input type="file" accept="image/png,image/jpeg,image/webp" data-lp="chatImageInput" hidden />
           <div class="lp-payment-panel" data-lp="paymentPanel" hidden>
             <div class="lp-payment-panel-head"><strong data-lp="paymentTitle">转账</strong><button type="button" data-lp="paymentClose" aria-label="关闭">×</button></div>
@@ -5490,6 +5535,15 @@ function makeUI() {
             <button type="button" class="lp-tool-btn" data-chat-tool="more" aria-label="更多功能">＋</button>
             <button type="button" data-lp="send" aria-label="发送消息，不调用模型" title="只发送这条消息，可连续发送多条">发送</button>
             <button type="button" data-lp="generate" aria-label="生成角色回复，调用一次 API" title="让角色回复以上消息（1 次 API 请求）" disabled>生成</button>
+          </div>
+          <div class="lp-emoji-panel" data-lp="emojiPanel" hidden></div>
+          <div class="lp-more-panel" data-lp="morePanel" hidden>
+            <button type="button" data-chat-tool="photo">相册</button>
+            <button type="button" data-chat-tool="call">电话</button>
+            <button type="button" data-chat-tool="transfer">转账</button>
+            <button type="button" data-chat-tool="redpacket">红包</button>
+            <button type="button" data-chat-tool="location">定位</button>
+            <button type="button" data-chat-tool="time">跳转时间</button>
           </div>
         </section>
         <section class="lp-screen lp-chatlist" data-lp-screen="chatOptions" aria-label="聊天记录管理" hidden>
@@ -5877,7 +5931,9 @@ function mount() {
     nodes.stickerUpload.addEventListener('change',event=>{const files=[...event.target.files];event.target.value='';void uploadStickers(files);});
     nodes.stickerPackUpload.addEventListener('change',event=>{const files=[...event.target.files];event.target.value='';void uploadStickerPack(files);});
     nodes.chatImageInput.addEventListener('change',event=>{void sendImageFile(event.target.files?.[0]);event.target.value='';});
+    nodes.messages.addEventListener('scroll',()=>{if(selectedMessageId)closeMessageActions();},{passive:true});
     root.addEventListener('click',event=>{
+        if(selectedMessageId&&!event.target.closest('.lp-message-actions,.lp-bubble'))closeMessageActions();
         const moreSticker=event.target.closest('button[data-sticker-more]');
         if(moreSticker&&root.contains(moreSticker)){
             stickerPages[moreSticker.dataset.stickerMore]+=1;renderStickerLibrary();return;
