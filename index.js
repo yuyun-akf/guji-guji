@@ -650,7 +650,9 @@ function applyTheme(){
  root.dataset.font=['system','serif','rounded'].includes(theme.font)?theme.font:'system';
  let saved='';
  try{saved=window.localStorage.getItem(WALLPAPER_STORAGE_KEY)||'';}catch{}
- const image=(typeof theme.wallpaper==='string'&&theme.wallpaper)||saved;
+ const themeKey=theme.palette==='custom'?'custom':'swiss';
+ const bound=theme.bindWallpaper===true;
+ const image=bound?String(theme.wallpapers?.[themeKey]||''):(typeof theme.wallpaper==='string'&&theme.wallpaper)||saved;
  const background=/^data:image\/(?:png|jpeg|webp);base64,/.test(image)?'url("'+image+'")':'none';
  root.style.setProperty('--lp-wallpaper',background);
  // Older home/lock backgrounds use !important; set both screens explicitly.
@@ -668,7 +670,10 @@ function applyTheme(){
   if(input)input.value=paletteValue(key,colors[key]||value);
  }
  if(nodes?.themeCustomColors)nodes.themeCustomColors.hidden=theme.palette!=='custom';
- if(nodes?.themeWallpaperPreview)nodes.themeWallpaperPreview.textContent=background==='none'?'当前：默认纯色':'当前：自定义壁纸已应用到主页与锁屏';
+ if(nodes?.themeBindWallpaper)nodes.themeBindWallpaper.checked=bound;
+ if(nodes?.themeWallpaperPreview)nodes.themeWallpaperPreview.textContent=
+ (bound?'壁纸已绑定当前主题。':'壁纸在所有主题之间共用。')+
+ (background==='none'?' 当前：默认纯色':' 当前：已应用自定义壁纸（主页与锁屏）');
 }
 function changeTheme(partial){
  const ctx=context();
@@ -690,8 +695,14 @@ function loadWallpaper(file){
    canvas.width=Math.max(1,Math.round(img.width*scale));canvas.height=Math.max(1,Math.round(img.height*scale));
    canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
    const content=canvas.toDataURL('image/webp',.84);
-   try{window.localStorage.setItem(WALLPAPER_STORAGE_KEY,content);}catch(e){recordError('壁纸本地缓存',e);}
-   changeTheme({wallpaper:content});
+   const t=themeData();
+   if(t.bindWallpaper===true){
+    const key=t.palette==='custom'?'custom':'swiss';
+    changeTheme({wallpapers:{...(t.wallpapers||{}),[key]:content}});
+   }else{
+    try{window.localStorage.setItem(WALLPAPER_STORAGE_KEY,content);}catch(e){recordError('壁纸本地缓存',e);}
+    changeTheme({wallpaper:content});
+   }
    setStatus('壁纸已应用于主页和锁屏');
   };
   img.onerror=()=>setStatus('图片解码失败','error');
@@ -701,8 +712,22 @@ function loadWallpaper(file){
  reader.readAsDataURL(file);
 }
 function resetWallpaper(){
- try{window.localStorage.removeItem(WALLPAPER_STORAGE_KEY);}catch{}
- changeTheme({wallpaper:''});
+ const t=themeData();
+ if(t.bindWallpaper===true){
+  const key=t.palette==='custom'?'custom':'swiss';
+  changeTheme({wallpapers:{...(t.wallpapers||{}),[key]:''}});
+ }else{
+  try{window.localStorage.removeItem(WALLPAPER_STORAGE_KEY);}catch{}
+  changeTheme({wallpaper:''});
+ }
+}
+function toggleThemeWallpaperBinding(enabled){
+ const t=themeData(),key=t.palette==='custom'?'custom':'swiss';
+ let oldImage=String(t.wallpaper||'');
+ if(!oldImage){try{oldImage=window.localStorage.getItem(WALLPAPER_STORAGE_KEY)||'';}catch{}}
+ const activeImage=t.bindWallpaper?String(t.wallpapers?.[key]||''):oldImage;
+ changeTheme({bindWallpaper:enabled,wallpapers:{...(t.wallpapers||{}),[key]:activeImage},
+  ...(enabled?{}:{wallpaper:activeImage})});
 }
 function saveThemeColors(){
  const colors={};
@@ -2528,7 +2553,7 @@ function setScreen(screen) {
     }
     nodes.back.hidden = screen === 'home'||screen==='lock';
     if(nodes.close)nodes.close.hidden=true;
-    const titles = {lock:'锁屏',home:'咕叽咕机',weibo:'群星',wallet:'吱付宝',chat:'',chatList:'咕叽聊',contacts:'通讯录',discover:'发现',me:'我',requests:'新的朋友',profile:'联系人资料',addNpc:'添加 NPC',discoverNpc:'发现故事人物',chatOptions:'聊天设置',settings:'设置',diagnostics:'运行日志',calendar:'日历',theme:'主题',presetPicker:'选择预设条目',worldPicker:'选择世界书条目' };
+    const titles = {lock:'锁屏',home:'咕叽咕机',weibo:'群星',wallet:'吱付宝',chat:'',chatList:'咕叽聊',contacts:'咕叽聊',discover:'咕叽聊',me:'咕叽聊',requests:'新的朋友',profile:'联系人资料',addNpc:'添加 NPC',discoverNpc:'发现故事人物',chatOptions:'聊天设置',settings:'设置',diagnostics:'运行日志',calendar:'日历',theme:'主题',presetPicker:'选择预设条目',worldPicker:'选择世界书条目' };
     nodes.title.textContent = screen === 'chat' ? contactDisplayName(context()) : titles[screen];
     nodes.chatMenu.hidden = screen !== 'chat';
     if(nodes.homeExit)nodes.homeExit.hidden=screen!=='home';
@@ -3090,7 +3115,7 @@ function beginFilePicker() {
 function filePickerReturning() { return Boolean(pickerState)||Date.now()<pickerGuardUntil; }
 function finishFilePicker() {
     if(!pickerState)return;
-    const saved=pickerState;pickerState=null;pickerGuardUntil=Date.now()+700;
+    const saved=pickerState;pickerState=null;pickerGuardUntil=Date.now()+2800;
     if(!mounted||!extensionEnabled)return;
     const panel=root.querySelector('.lp-panel');
     if(panel && !panel.open && typeof panel.showModal==='function')panel.showModal();
@@ -4784,7 +4809,7 @@ function render() {
     renderChatLists(ctx,char,data);
     renderMoments(ctx);
     renderWallet(ctx);
-    nodes.subtitle.textContent = char ? '故事中的小手机 · 独立聊天' : '请先选择单人角色存档';
+    nodes.subtitle.textContent = '';
     nodes.homeCharacter.textContent = primary ? resolvePhonePlaceholders('与 {{char}} 的故事',ctx,primary) : '等待进入角色存档';
     nodes.npcRelation.placeholder=resolvePhonePlaceholders('如：{{char}}的母亲、{{user}}的同学',ctx,primary);
     nodes.homeTime.textContent = String(data?.storyTime||localDateTime()).slice(11,16);
@@ -5319,7 +5344,6 @@ function makeUI() {
         </section>
         <section class="lp-screen lp-chatlist" data-lp-screen="chatList" aria-label="消息列表" hidden>
           <div class="lp-list-body">
-            <div class="lp-list-heading">消息</div>
             <div data-lp="recentChats"></div>
           </div>
           <nav class="lp-tabbar" aria-label="咕叽聊导航">
@@ -5723,6 +5747,8 @@ function makeUI() {
             <button type="button" data-lp="themeSaveColors" class="lp-settings-link">应用自定义配色</button>
           </div>
           <h2>手机壁纸</h2>
+          <label class="lp-theme-binding"><input type="checkbox" data-lp="themeBindWallpaper" />
+            将壁纸绑定到当前主题（切换主题时自动切换壁纸）</label>
           <p class="lp-settings-hint">上传后同时应用在主页和锁屏；不改变其他应用的背景。</p>
           <input type="file" accept="image/png,image/jpeg,image/webp" data-lp="themeWallpaper" aria-label="选择壁纸图片" />
           <p class="lp-settings-hint" data-lp="themeWallpaperPreview"></p>
@@ -5801,7 +5827,7 @@ function mount() {
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','avatarUserFile','resetCharAvatar','resetUserAvatar',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
         'walletBalance','walletPending','walletBills','walletAdjustInput','walletSaveBalance','walletToChat','walletStatus',
-        'presetSource','presetInfo','presetEntries','worldBookList','worldSelectionSummary','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','saveSelections','savePresetPicker','saveWorldPicker','selectionSaveStatus','readMainlineMemory','memorySource','phoneToMainline','eventBridge','saveContextSettings','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themePreset','themeCustomColors','themeSaveColors','themeWallpaperPreview','themeDesktopEffect',
+        'presetSource','presetInfo','presetEntries','worldBookList','worldSelectionSummary','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','saveSelections','savePresetPicker','saveWorldPicker','selectionSaveStatus','readMainlineMemory','memorySource','phoneToMainline','eventBridge','saveContextSettings','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themePreset','themeCustomColors','themeSaveColors','themeWallpaperPreview','themeDesktopEffect','themeBindWallpaper',
         'diagnostics', 'diagnosticState', 'copyDiagnostics', 'clearDiagnostics',
         'messages','messageActions','quotedPreview','quotedText','cancelQuote','emojiPanel','morePanel','chatImageInput','timeJumpPanel','timeJumpHint','timeJumpCurrent','timeJumpAmount','timeJumpUnit','timeJumpApply','timeJumpClose','paymentPanel','paymentTitle','paymentKind','paymentAmount','paymentNote','paymentBalance','paymentClose','paymentSend','input', 'generate', 'send', 'launcher']
         .map(key => [key, key === 'launcher' ? floating : root.querySelector(`[data-lp="${key}"]`)]));
@@ -5858,6 +5884,16 @@ function mount() {
         if(filePickerReturning()){finishFilePicker();return;}
         closePhone();
     });
+    // Handle inputs created dynamically after mount (群星 avatars).
+    root.addEventListener('click',event=>{
+      if(event.target?.matches?.('input[type="file"]'))beginFilePicker();
+    },true);
+    root.addEventListener('cancel',event=>{
+      if(event.target?.matches?.('input[type="file"]')){event.stopPropagation();finishFilePicker();}
+    },true);
+    root.addEventListener('change',event=>{
+      if(event.target?.matches?.('input[type="file"]'))finishFilePicker();
+    },true);
     for(const input of root.querySelectorAll('input[type="file"]')) {
         input.addEventListener('click',beginFilePicker);
         input.addEventListener('cancel',event=>{event.stopPropagation();finishFilePicker();});
@@ -5934,6 +5970,7 @@ function mount() {
     nodes.themeResetWallpaper.addEventListener('click',resetWallpaper);
     nodes.themePreset.addEventListener('change',()=>changeTheme({palette:nodes.themePreset.value}));
     nodes.themeSaveColors.addEventListener('click',saveThemeColors);
+    nodes.themeBindWallpaper.addEventListener('change',()=>toggleThemeWallpaperBinding(nodes.themeBindWallpaper.checked));
     nodes.themeDesktopEffect.addEventListener('change',()=>{changeTheme({desktopEffect:nodes.themeDesktopEffect.value});desktopVisual(desktopPage);});
     // All default icons use the same single-color line style.
     nodes.floatingLauncher.addEventListener('change', event => setFloatLauncherEnabled(event.target.checked));
