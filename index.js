@@ -1,5 +1,5 @@
 /**
- * GujiGuji v0.11.0: a modular phone shell with isolated per-chat context.
+ * GujiGuji v0.12.0: a modular phone shell with isolated per-chat context.
  * No direct host-module imports; uses only the documented context surface.
  */
 
@@ -2484,7 +2484,7 @@ function weiboStoryContext(){
 async function loadWeiboController(){
  if(weiboController)return weiboController;
  if(weiboLoadPromise)return weiboLoadPromise;
- weiboLoadPromise=import('./weibo.js?v=0.11.0').then(module=>{
+ weiboLoadPromise=import('./weibo.js?v=0.12.0').then(module=>{
   weiboController=module.createWeiboModule({
    context,getNodes:()=>nodes,readRootData,writeData,readData,phoneGenerate,
    selectedCharacter,currentPersona,stripModelReasoning,publishPhoneAppEvent,
