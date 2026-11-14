@@ -3947,10 +3947,11 @@ async function handlePaymentAction(paymentId,action) {
 }
 function paymentReplyInstructions(data,contactId) {
     const pending=walletState(data).transfers.filter(tx=>tx.status==='pending'&&tx.from==='user'&&tx.contactId===contactId).slice(-4);
-    if(!pending.length)return '';
-    return '\n【可以自主决定的待处理转账／红包】\n'+pending.map(tx=>
+    const notes=['【手机交易】你可以自主决定是否发送转账或红包；不必为了剧情强行送礼。只有确实决定发出时，才在角色回复末尾单独写 [[PAYMENT_SEND:transfer:200.00]] 或 [[PAYMENT_SEND:redpacket:20.00]]，数字换成实际金额，且一次最多一笔。标记不展示给 user。'];
+    if(pending.length)notes.push('【待你决定的收款】\n'+pending.map(tx=>
         tx.id+'：'+walletTransferLabel(tx)+' ¥'+walletMoney(tx.amountCents)).join('\n')+
-        '\n你可以接受、拒绝或暂时不处理。只有确实决定收下时，在回复末尾独立写 [[PAYMENT_ACCEPT:编号]]；决定拒收时写 [[PAYMENT_DECLINE:编号]]。编号必须与上方一致；不处理就不要写标记。标记不会展示给对方。';
+        '\n可收下、拒收或暂时不处理。收下时在末尾写 [[PAYMENT_ACCEPT:编号]]；拒收写 [[PAYMENT_DECLINE:编号]]。编号必须与上方一致；不处理就不写。');
+    return notes.join('\n');
 }
 function applyPaymentModelTags(data,reply,contactId) {
     const actions=[];
@@ -3970,6 +3971,22 @@ function applyPaymentModelTags(data,reply,contactId) {
     return cleaned;
 }
 
+function applyCharacterPaymentSendTag(data,reply,contactId) {
+    let created=null;
+    const text=String(reply||'').replace(/\[\[PAYMENT_SEND:(transfer|redpacket):(\d+(?:\.\d{1,2})?)\]\]/gi,
+        (_,kind,amount)=>{
+            if(created)return '';
+            try{
+                const cents=walletCents(amount);
+                // The character can create an offer, but the user must choose to
+                // accept before the recipient balance changes.
+                created=walletCreateTransfer(data,{kind:kind.toLowerCase(),from:'contact',
+                    contactId,amountCents:cents,origin:'character'});
+            }catch(error){recordActivity('角色发送转账',String(error?.message||error),'error');}
+            return '';
+        }).trim();
+    return {text,created};
+}
 function toggleChatTools(type) {
     if(!nodes)return;
     if(nodes.timeJumpPanel)nodes.timeJumpPanel.hidden=true;
@@ -4235,11 +4252,16 @@ async function runReply(ctx, char, data, session, existingJob = null) {
         const rawReply = typeof result === 'string' ? result.trim() : '';
         const reply=stripModelReasoning(rawReply);
         if(!reply)throw new Error(rawReply?'模型仅返回思考内容，未生成可发送的角色消息，请重试。':'模型返回了空消息或不支持的回复类型。');
-        const visibleReply=applyPaymentModelTags(data,reply,activeContactId);
-        if(!visibleReply)throw new Error('模型没有返回可发送的角色消息');
-        const phoneMessages = parseStickerReply(visibleReply,data,catalog);
+        const afterReceipt=applyPaymentModelTags(data,reply,activeContactId);
+        const paymentResult=applyCharacterPaymentSendTag(data,afterReceipt,activeContactId);
+        if(!paymentResult.text)throw new Error('模型没有返回可发送的角色消息');
+        const phoneMessages = parseStickerReply(paymentResult.text,data,catalog);
         if (!phoneMessages.length) throw new Error('角色消息为空');
         for (const message of phoneMessages) appendPhoneMessage(data,'character',resolvePhonePlaceholders(message.text,ctx,char),message);
+        if(paymentResult.created){
+            const bubble=appendPhoneMessage(data,'character',paymentResult.created.kind==='redpacket'?'[红包]':'[转账]');
+            bubble.paymentId=paymentResult.created.id;
+        }
         await writeData(ctx, data);
         recordActivity('生成成功', '已保存 ' + phoneMessages.length + ' 条角色消息', 'success');
         if (sameSession(session)) setStatus('已收到回复。');
