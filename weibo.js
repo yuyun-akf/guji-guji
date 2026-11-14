@@ -189,40 +189,69 @@ export function createWeiboModule(api) {
    b.append(el('strong','',String(i+1)),el('span','',t.title),el('small','',t.category||''));parent.append(b);
   });
  }
+
  function renderMine(n){
   const q=data(),wrap=n.weiboMe;wrap.replaceChildren();
-  const profile=el('div','lp-wb-profile');
-  profile.append(avatar(q.profile.avatar,q.profile.nickname));
-  const txt=el('div');txt.append(el('strong','',q.profile.nickname),el('small','',q.profile.handle||'尚未设置群星 ID'),
-    el('small','',q.profile.bio||'可以在个人资料中编辑简介'));
-  profile.append(txt);wrap.append(profile);
-  wrap.append(el('div','lp-wb-stats','粉丝 '+q.profile.followers+'　·　关注 '+q.following.length+'　·　动态 '+q.posts.filter(p=>p.actions?.owned).length));
-  const menu=el('div','lp-wb-me-menu');
-  for(const [key,label] of [['mine','我的动态'],['interactions','我的互动'],['following','关注列表'],['profile','个人资料'],['settings','群星设置']]){
-   const b=control(label,'subview',key,state.subview===key);menu.append(b);
-  }wrap.append(menu);
+  const names={mine:'我的动态',interactions:'我的互动',following:'关注列表',profile:'个人资料',settings:'群星设置'};
+  if(!state.subview){
+   const profile=el('div','lp-wb-profile');
+   profile.append(avatar(q.profile.avatar,q.profile.nickname));
+   const txt=el('div');txt.append(el('strong','',q.profile.nickname),
+    el('small','',q.profile.handle||'尚未设置群星 ID'),
+    el('small','',q.profile.bio||'点击个人资料修改账号信息'));
+   profile.append(txt);wrap.append(profile);
+   wrap.append(el('div','lp-wb-stats','粉丝 '+q.profile.followers+'　·　关注 '+q.following.length+
+    '　·　动态 '+q.posts.filter(p=>p.actions?.owned).length));
+   const menu=el('div','lp-wb-me-menu');
+   for(const [key,label] of Object.entries(names)){
+    const item=control(label,'subview',key);
+    item.append(el('span','lp-wb-menu-arrow','›'));menu.append(item);
+   }
+   wrap.append(menu);return;
+  }
+  const bar=el('div','lp-wb-subpage-bar');
+  bar.append(control('‹ 返回','backMe'),el('strong','',names[state.subview]||'群星'));
+  wrap.append(bar);
   if(state.subview==='settings')renderSettings(wrap,q);
   else if(state.subview==='profile')renderProfile(wrap,q);
   else if(state.subview==='following'){
-   wrap.append(heading('关注列表','取消关注不会抹掉账号历史'));
-   q.accounts.filter(a=>q.following.includes(a.id)).forEach(a=>{
-    const line=el('div','lp-wb-account-line');line.append(avatar(a.avatar,a.name),el('span','',a.name+' '+(a.handle||'')));
-    const b=control('取消关注','unfollowAccount',a.id);line.append(b);wrap.append(line);
-   });
-  }else {
+   wrap.append(heading('关注列表','取消关注不删除已经保存的账号资料'));
+   const list=q.accounts.filter(a=>q.following.includes(a.id));
+   for(const a of list){
+    const line=el('div','lp-wb-account-line');
+    line.append(avatar(a.avatar,a.name),el('span','',a.name+' '+(a.handle||'')),
+      control('取消关注','unfollowAccount',a.id));wrap.append(line);
+   }
+   if(!list.length)wrap.append(el('p','lp-wb-empty','还没有关注任何账号'));
+  }else{
    const arr=state.subview==='interactions'?allPosts().filter(p=>isSaved(actionState(p))):
     q.posts.filter(p=>p.actions?.owned);
-   wrap.append(heading(state.subview==='interactions'?'我的互动':'我的动态'));
    for(const p of arr.slice().reverse())wrap.append(card(p,false));
    if(!arr.length)wrap.append(el('p','lp-wb-empty','暂无内容'));
   }
  }
+
  const field=(parent,label,name,value='',type='text')=>{
   const row=el('label','lp-wb-field');row.append(el('span','',label));
   const input=document.createElement('input');input.type=type;input.dataset.wbField=name;
   if(type==='checkbox')input.checked=Boolean(value);else input.value=String(value??'');
   row.append(input);parent.append(row);return input;
  };
+
+ function avatarPicker(parent,label,name,src='',initial=''){
+  const row=el('label','lp-wb-avatar-picker');
+  row.append(el('span','lp-wb-avatar-picker-title',label));
+  const view=el('div','lp-wb-avatar-picker-view');
+  const preview=avatar(src,initial||label);
+  preview.dataset.wbAvatarPreview=name;view.append(preview);
+  view.append(el('span','lp-wb-avatar-picker-hint','点击选择相册图片 · 可预览后保存'));
+  row.append(view);
+  const input=document.createElement('input');
+  input.type='file';input.accept='image/png,image/jpeg,image/webp';
+  input.dataset.wbField=name;input.setAttribute('aria-label',label);
+  row.append(input);parent.append(row);
+  return input;
+ }
  function renderProfile(parent,q){
   parent.append(heading('编辑个人资料'));
   const form=el('div','lp-wb-editor');
@@ -230,7 +259,7 @@ export function createWeiboModule(api) {
   field(form,'群星 ID','ownerHandle',q.profile.handle);
   field(form,'个人简介','ownerBio',q.profile.bio);
   field(form,'粉丝数量（故事设定）','ownerFollowers',q.profile.followers,'number');
-  field(form,'头像图片','ownerAvatar','', 'file').accept='image/*';
+  avatarPicker(form,'更换我的群星头像','ownerAvatar',state.avatarOwnerDraft||q.profile.avatar,q.profile.nickname);
   form.append(control('保存个人资料','saveProfile'));parent.append(form);
  }
  function renderSettings(parent,q){
