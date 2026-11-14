@@ -530,9 +530,11 @@ if(type==='subview'){state.subview=id;state.editing='';render();nodes().weiboMe.
   const alias={feed:'home',hot:'discover',saved:'me'};
   t=alias[t]||t;
   if(['home','discover','nearby','compose','me'].includes(t)){
+   if(t!==state.tab)feedback('');
    if(t==='me'&&state.tab==='me')state.subview='';
     if(t!=='me')state.subview='';
     state.tab=t;state.detail='';state.topic=null;render();
+    if(nodes()?.weiboFeed?.parentElement)nodes().weiboFeed.parentElement.scrollTop=0;
    if((t==='home'||t==='discover')&&!state.attempted.world){state.attempted.world=true;void generate('home');}
    if(t==='nearby'&&!state.attempted.nearby){state.attempted.nearby=true;void generate('nearby');}
   }
