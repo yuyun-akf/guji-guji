@@ -371,10 +371,10 @@ test('modal entirely outside the viewport produces a visible diagnostic error', 
 test('diagnostic bootstrap is the manifest entry and exposes lifecycle hooks', () => {
     const manifest = JSON.parse(readFileSync(resolve(testRoot, '../manifest.json'), 'utf8'));
     const bootstrap = readFileSync(resolve(testRoot, '../bootstrap.js'), 'utf8');
-    assert.equal(manifest.version, '0.8.17');
+    assert.equal(manifest.version, '0.8.18');
     assert.equal(manifest.minimum_client_version, '1.18.0');
     assert.equal(manifest.js, 'bootstrap.js');
-    assert.match(bootstrap, /import\('\.\/index\.js\?v=0\.8\.17'\)/);
+    assert.match(bootstrap, /import\('\.\/index\.js\?v=0\.8\.18'\)/);
     assert.match(bootstrap, /export function onActivate\(/);
     assert.match(bootstrap, /export function onEnable\(/);
     assert.match(bootstrap, /export function onDisable\(/);
@@ -1064,4 +1064,59 @@ test('photos outside the 24-message context are reported as excluded without pre
     assert.equal(prompt.length,24);
     const count=vm.runInContext('phoneRequestImageCount',sandbox)(prompt);
     assert.equal(count,0,'old photos outside the 24-message window must not be falsely reported as sent');
+});
+
+test('story jump arithmetic handles minute, hour and calendar day boundaries',()=>{
+    const shift=vm.runInContext('shiftStoryClock',sandbox);
+    const cases=[
+        ['2025-12-17T19:00',5,'minutes','2025-12-17T19:05'],
+        ['2025-12-17T19:00',15,'minutes','2025-12-17T19:15'],
+        ['2025-12-17T19:00',3,'hours','2025-12-17T22:00'],
+        ['2025-12-17T23:50',30,'minutes','2025-12-18T00:20'],
+        ['2025-12-31T23:40',2,'hours','2026-01-01T01:40'],
+        ['2025-12-17T19:00',3,'days','2025-12-20T19:00'],
+    ];
+    for(const [base,value,unit,expected] of cases)
+        assert.equal(shift(base,value,unit),expected);
+    for(const [n,unit] of [[0,'days'],[-1,'hours'],[1.5,'minutes'],[366,'days'],['oops','minutes'],[1,'years']])
+        assert.throws(()=>shift('2025-12-17T19:00',n,unit),/时间跨度/);
+    const html=makeUI().innerHTML;
+    for(const attribute of ['timeJumpPanel','timeJumpHint','timeJumpAmount','timeJumpUnit','timeJumpApply','timeJumpClose'])
+        assert.ok(html.includes('data-lp="'+attribute+'"'));
+    assert.ok(html.includes('data-chat-tool="time"'));
+    assert.ok(html.includes('data-jump-unit="days"'));
+});
+test('time jump is persisted and applies to next message only; prior timestamps stay intact',async()=>{
+    const ctx={characterId:0,groupId:null,chatId:'time-test',characters:[{name:'宁肆锦',avatar:'a.png'}],
+        chatMetadata:{st_little_phone_v1:{...newData(),storyTime:'2025-12-17T19:00',
+            messages:[{id:'old',from:'character',text:'开了开了',storyTime:'2025-12-17T19:00'}],
+            friendship:{state:'friends'}}},saveMetadata:async()=>{}};
+    const fixture={timeJumpPanel:{hidden:false},morePanel:{hidden:false},
+        timeJumpHint:{hidden:true,textContent:''},timeJumpCurrent:{textContent:''},notices:[]};
+    const scope={console,Date,structuredClone,fixture,setInterval:()=>1,clearInterval:()=>{},
+        window:{SillyTavern:{getContext:()=>ctx}}};
+    vm.createContext(scope);
+    vm.runInContext(source+`
+        nodes=fixture;mounted=true;activeScreen='chat';
+        render=()=>{};updateBusy=()=>{};recordActivity=()=>{};
+        setStatus=value=>fixture.notices.push(value);
+        globalThis.jump=jumpStoryTime;
+        globalThis.getData=readData;
+        globalThis.append=appendPhoneMessage;
+        globalThis.next=nextMessageStoryTime;
+        globalThis.updateJump=updateTimeJumpUI;`,scope);
+    await scope.jump(3,'hours');
+    const data=scope.getData(ctx);
+    assert.equal(data.storyTime,'2025-12-17T22:00');
+    assert.equal(data.messages[0].storyTime,'2025-12-17T19:00');
+    assert.equal(scope.next(data),'2025-12-17T22:00');
+    assert.equal(fixture.timeJumpPanel.hidden,true);
+    scope.updateJump(data);
+    assert.equal(fixture.timeJumpHint.hidden,false);
+    assert.match(fixture.timeJumpHint.textContent,/22:00/);
+    const user=scope.append(data,'user','几小时后上线了');
+    assert.equal(user.storyTime,'2025-12-17T22:00');
+    const reply=scope.append(data,'character','来了');
+    assert.equal(reply.storyTime,'2025-12-17T22:01');
+    assert.match(fixture.notices.at(-1),/下一条消息/);
 });
