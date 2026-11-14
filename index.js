@@ -4323,12 +4323,16 @@ async function runReply(ctx, char, data, session, existingJob = null) {
         const rawReply = typeof result === 'string' ? result.trim() : '';
         const reply=stripModelReasoning(rawReply);
         if(!reply)throw new Error(rawReply?'模型仅返回思考内容，未生成可发送的角色消息，请重试。':'模型返回了空消息或不支持的回复类型。');
+        const beforeStatuses=walletState(data).transfers.map(tx=>tx.id+':'+tx.status);
         const afterReceipt=applyPaymentModelTags(data,reply,activeContactId);
+        const receiptChanged=walletState(data).transfers.some((tx,i)=>beforeStatuses[i]!==tx.id+':'+tx.status);
         const paymentResult=applyCharacterPaymentSendTag(data,afterReceipt,activeContactId);
-        if(!paymentResult.text)throw new Error('模型没有返回可发送的角色消息');
-        const phoneMessages = parseStickerReply(paymentResult.text,data,catalog);
-        if (!phoneMessages.length) throw new Error('角色消息为空');
+        const phoneMessages=paymentResult.text?parseStickerReply(paymentResult.text,data,catalog):[];
+        if(!phoneMessages.length&&!paymentResult.created&&!receiptChanged)
+            throw new Error('模型没有返回可发送的角色消息');
         for (const message of phoneMessages) appendPhoneMessage(data,'character',resolvePhonePlaceholders(message.text,ctx,char),message);
+        if(receiptChanged&&!phoneMessages.length&&!paymentResult.created)
+            data.messages.push(makeMessage('system','对方已处理交易',data.storyTime));
         if(paymentResult.created){
             const bubble=appendPhoneMessage(data,'character',paymentResult.created.kind==='redpacket'?'[红包]':'[转账]');
             bubble.paymentId=paymentResult.created.id;
