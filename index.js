@@ -1410,10 +1410,14 @@ async function syncMainlinePayments(ctx=context()) {
             if(walletInvalidateMainlinePayment(root,tx))invalidated++;
         }
         for(const item of observed.values()){
-            const existing=wallet.transfers.find(tx=>tx.id===item.id);
-            if(existing)continue;
-            // Do not revive invalidated transactions from another branch automatically.
-            const payment=walletCreateTransfer(root,{...item,storyTime:root.storyTime||localDateTime()});
+            const active=wallet.transfers.find(tx=>tx.sourceKey===item.sourceKey&&
+                !['invalidated','conflict'].includes(tx.status));
+            if(active)continue;
+            // Restoring a prior swipe creates a fresh pending offer rather than
+            // reusing a settled/reversed ledger ID or automatically re-accepting.
+            const revisions=wallet.transfers.filter(tx=>tx.sourceKey===item.sourceKey).length;
+            const id=revisions?item.id+':rev'+revisions:item.id;
+            const payment=walletCreateTransfer(root,{...item,id,storyTime:root.storyTime||localDateTime()});
             const thread=walletThread(root,payment.contactId);
             thread.storyTime=root.storyTime;
             const message=appendPhoneMessage(thread,'character',payment.kind==='redpacket'?'[红包]':'[转账]');
