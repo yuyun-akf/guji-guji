@@ -91,7 +91,9 @@ export function createWeiboModule(api) {
   const arr=[],trends=[];
   try{
    for(let i=0;i<2;i++){
-    const response=await api.phoneGenerate(context(),{systemPrompt:'只输出合法 JSON，不输出分析。',prompt:[{role:'user',content:prompt(5,zone,topic,i===0)}]},api.readData(context()));
+    let response;
+    try{response=await api.phoneGenerate(context(),{systemPrompt:'只输出合法 JSON，不输出分析。',prompt:[{role:'user',content:prompt(5,zone,topic,i===0)}]},api.readData(context()));}
+    catch(e){if(!arr.length)throw e;api.recordError('群星部分刷新',e);break;}
     if(session!==scope()||token!==state.token)return;
     const parsed=parse(response);
     arr.push(...(Array.isArray(parsed.posts)?parsed.posts:[]).map(p=>normalize(p,zone)).filter(Boolean).slice(0,5));
@@ -100,7 +102,8 @@ export function createWeiboModule(api) {
     }
    }
    if(arr.length<3)throw Error('有效内容不足，请重新刷新');
-   state.posts[zone==='nearby'?'nearby':'home']=arr;
+   const slot=zone==='nearby'?'nearby':'home';
+   state.posts[slot]=[...state.posts[slot],...arr].slice(-80);
    if(trends.length){if(zone==='nearby')state.nearbyTrends=trends;else state.trends=trends;}
    await mutate(q=>{
     if(trends.length){if(zone==='nearby')q.nearbyTrends=trends;else q.trends=trends;}
