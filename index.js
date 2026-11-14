@@ -1391,7 +1391,7 @@ async function syncMainlinePayments(ctx=context()) {
     if(bridgeSyncWorking){bridgeNeedsSync=true;return {status:'busy'};}
     if(!selectedCharacter(ctx)||!ctx?.chatMetadata||!Array.isArray(ctx.chat))return {status:'unavailable'};
     if(!contextSettings(readRootData(ctx)).eventBridge||socialConfig(readRootData(ctx)).phoneInPast)return {status:'disabled'};
-    if(busy){bridgeNeedsSync=true;return {status:'busy'};}
+    if(busy||relationSyncWorking){bridgeNeedsSync=true;return {status:'busy'};}
     bridgeSyncWorking=true;
     const session={metadata:ctx.chatMetadata,characterId:ctx.characterId,chatId:ctx.chatId};
     try{
@@ -3888,6 +3888,7 @@ function renderWallet(ctx=context()) {
 }
 async function saveWalletBalance() {
     if(!mounted||busy||!selectedCharacter(context()))return;
+    if(bridgeSyncWorking||relationSyncWorking)return setStatus('正在同步故事记录，请稍后重试','error');
     const ctx=context(),session=captureSession(ctx);
     const root=structuredClone(readRootData(ctx));
     try{
@@ -3922,6 +3923,7 @@ function openPaymentForm(kind='transfer') {
 }
 async function sendPhonePayment() {
     if(!mounted||busy||!selectedCharacter(context()))return;
+    if(bridgeSyncWorking||relationSyncWorking)return setStatus('正在同步故事记录，请稍后重试','error');
     const ctx=context(),session=captureSession(ctx);
     const contactId=activeContactId;
     if(friendshipState(readData(ctx,contactId))!=='friends')
@@ -3951,6 +3953,7 @@ async function sendPhonePayment() {
 }
 async function handlePaymentAction(paymentId,action) {
     if(!mounted||busy||!selectedCharacter(context()))return;
+    if(bridgeSyncWorking||relationSyncWorking)return setStatus('正在同步故事记录，请稍后重试','error');
     const ctx=context(),session=captureSession(ctx);
     const root=structuredClone(readRootData(ctx)),payment=walletState(root).transfers.find(tx=>tx.id===paymentId);
     if(!payment||payment.status!=='pending')return setStatus('这笔交易已处理');
