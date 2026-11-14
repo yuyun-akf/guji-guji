@@ -371,10 +371,10 @@ test('modal entirely outside the viewport produces a visible diagnostic error', 
 test('diagnostic bootstrap is the manifest entry and exposes lifecycle hooks', () => {
     const manifest = JSON.parse(readFileSync(resolve(testRoot, '../manifest.json'), 'utf8'));
     const bootstrap = readFileSync(resolve(testRoot, '../bootstrap.js'), 'utf8');
-    assert.equal(manifest.version, '0.8.18');
+    assert.equal(manifest.version, '0.8.19');
     assert.equal(manifest.minimum_client_version, '1.18.0');
     assert.equal(manifest.js, 'bootstrap.js');
-    assert.match(bootstrap, /import\('\.\/index\.js\?v=0\.8\.18'\)/);
+    assert.match(bootstrap, /import\('\.\/index\.js\?v=0\.8\.19'\)/);
     assert.match(bootstrap, /export function onActivate\(/);
     assert.match(bootstrap, /export function onEnable\(/);
     assert.match(bootstrap, /export function onDisable\(/);
@@ -1119,4 +1119,71 @@ test('time jump is persisted and applies to next message only; prior timestamps 
     const reply=scope.append(data,'character','来了');
     assert.equal(reply.storyTime,'2025-12-17T22:01');
     assert.match(fixture.notices.at(-1),/下一条消息/);
+});
+
+test('calendar has five real views and a separate explicit story-time action',()=>{
+    const html=makeUI().innerHTML;
+    for(const view of ['year','month','week','day','agenda'])
+        assert.ok(html.includes('data-calendar-view="'+view+'"'));
+    for(const key of ['calendarHeading','calendarGrid','calendarSelected','calendarSelectedTime',
+        'calendarSaveTime','calendarRealToday','calendarStoryToday','calendarExactSave'])
+        assert.ok(html.includes('data-lp="'+key+'"'));
+    assert.doesNotMatch(source,/nodes\.time\.addEventListener\('change',\s*saveStoryTime\)/);
+    assert.match(source,/nodes\.calendarSaveTime\.addEventListener\('click'/);
+});
+test('calendar month dates and lunar labels work across month and leap year boundaries',()=>{
+    const calendar=vm.runInContext('phoneCalendarMonthGrid',sandbox);
+    const shift=vm.runInContext('phoneCalendarShift',sandbox);
+    const lunar=vm.runInContext('phoneCalendarLunar',sandbox);
+    const cells=calendar(2026,11);
+    assert.equal(cells.length,35);
+    assert.equal(cells[0].iso,'2026-11-01');
+    assert.equal(cells.at(-1).iso,'2026-12-05');
+    assert.equal(shift('2024-01-31',1,'months'),'2024-02-29');
+    assert.equal(shift('2024-02-29',1,'years'),'2025-02-28');
+    assert.equal(shift('2026-11-15',1,'days'),'2026-11-16');
+    assert.throws(()=>shift('2026-02-30',1,'days'),/无效/);
+    assert.ok(typeof lunar('2026-11-15')==='string');
+});
+test('calendar dates are browse-only until Save and prior message dates remain unchanged',async()=>{
+    class Fake {
+        constructor(tag='div'){this.tagName=tag;this.textContent='';this.value='';this.dataset={};
+            this.children=[];this.attrs={};this.classList={add:()=>{},toggle:()=>{}};}
+        append(...values){this.children.push(...values);}
+        replaceChildren(...values){this.children=values;}
+        setAttribute(k,v){this.attrs[k]=v;}
+        querySelectorAll(){return this.children.filter(x=>x.tagName==='button');}
+    }
+    const fixture={calendarGrid:new Fake(),calendarHeading:new Fake(),calendarViews:new Fake(),
+        calendarSelected:new Fake(),calendarSummary:new Fake(),calendarSelectedTime:new Fake(),time:new Fake()};
+    for(const view of ['year','month','week','day','agenda']){
+        const button=new Fake('button');button.dataset.calendarView=view;fixture.calendarViews.append(button);
+    }
+    const ctx={characterId:0,chatId:'calendar-story',groupId:null,
+        characters:[{name:'宁肆锦',avatar:'avatar.png'}],
+        chatMetadata:{st_little_phone_v1:{...newData(),storyTime:'2026-11-15T18:50',
+            messages:[{id:'old',from:'user',text:'聊天',storyTime:'2026-11-15T18:50'}],
+            friendship:{state:'friends'}}},saveMetadata:async()=>{}};
+    const scope={console,Date,Intl,structuredClone,fixture,
+        document:{createElement:tag=>new Fake(tag)},window:{SillyTavern:{getContext:()=>ctx}}};
+    vm.createContext(scope);
+    vm.runInContext(source+`
+        nodes=fixture;mounted=true;activeScreen='calendar';render=()=>{};recordActivity=()=>{};setStatus=()=>{};
+        globalThis.cal={phoneCalendarReset,renderPhoneCalendar,phoneCalendarSelect,
+            state:phoneCalendarState,readData,saveCalendarSelectedTime};`,scope);
+    scope.cal.phoneCalendarReset(scope.cal.readData(ctx));
+    scope.cal.renderPhoneCalendar();
+    assert.equal(fixture.calendarHeading.textContent,'2026 年 11 月');
+    assert.equal(fixture.calendarGrid.children[1].children.length,35);
+    scope.cal.phoneCalendarSelect('2026-11-20');
+    assert.equal(scope.cal.readData(ctx).storyTime,'2026-11-15T18:50');
+    for(const view of ['year','week','day','agenda']){
+        scope.cal.state.view=view;scope.cal.renderPhoneCalendar();
+        assert.ok(fixture.calendarGrid.children.length>0);
+    }
+    scope.cal.state.view='month';scope.cal.renderPhoneCalendar();
+    fixture.calendarSelectedTime.value='23:35';
+    await scope.cal.saveCalendarSelectedTime();
+    assert.equal(scope.cal.readData(ctx).storyTime,'2026-11-20T23:35');
+    assert.equal(scope.cal.readData(ctx).messages[0].storyTime,'2026-11-15T18:50');
 });
