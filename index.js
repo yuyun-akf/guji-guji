@@ -325,7 +325,7 @@ function phoneLockSettings(ctx=context()) {
 }
 async function phonePinDigest(pin,salt){
  if(!/^\d{4,6}$/.test(String(pin||'')))throw new Error('密码须为 4～6 位数字');
- if(!globalThis.crypto?.subtle)throw new Error('当前浏览器不支持安全密码存储，请检查安全环境');
+ if(!globalThis.crypto?.subtle)return 'fallback:'+phoneStableHash(salt+':'+pin+':phone');
  const bytes=new TextEncoder().encode(salt+':'+pin);
  const hash=await crypto.subtle.digest('SHA-256',bytes);
  return Array.from(new Uint8Array(hash),byte=>byte.toString(16).padStart(2,'0')).join('');
@@ -338,7 +338,9 @@ async function phoneUnlock(){
   if(!lock.hash){
    const repeat=nodes.lockRepeat.value;
    if(pin!==repeat)throw new Error('两次输入的密码不一致');
-   const salt=Array.from(crypto.getRandomValues(new Uint8Array(12)),byte=>byte.toString(16).padStart(2,'0')).join('');
+   const random=globalThis.crypto?.getRandomValues?.(new Uint8Array(12));
+   const salt=random?Array.from(random,byte=>byte.toString(16).padStart(2,'0')).join(''):
+     Date.now().toString(36)+Math.random().toString(36);
    const hash=await phonePinDigest(pin,salt);
    if(!ctx?.extensionSettings||typeof ctx.saveSettingsDebounced!=='function')throw new Error('无法保存解锁设置');
    (ctx.extensionSettings[SETTINGS_KEY]||={}).lock={enabled:true,salt,hash};
