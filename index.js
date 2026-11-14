@@ -384,6 +384,28 @@ function moveDesktopApp(key,offset){
  [order[from],order[to]]=[order[to],order[from]];
  saveDesktopOrder(order);
 }
+function storyScenePreview(ctx,data){
+ const explicit=data.storyScene||{};
+ let location=typeof explicit.location==='string'?explicit.location.trim().slice(0,40):'';
+ let weather=typeof explicit.weather==='string'?explicit.weather.trim().slice(0,30):'';
+ // Read only explicitly labeled narrative metadata, never a guessed real-world
+ // position or device GPS. Absence of a label means no weather/location widget.
+ const recent=Array.isArray(ctx?.chat)?ctx.chat.slice(-35).reverse():[];
+ for(const message of recent){
+  if(location&&weather)break;
+  const text=String(message?.mes||message?.text||'').slice(0,2000);
+  if(!location){
+   const match=/(?:当前地点|剧情地点|所在地点)[：:]\s*([^\n，。;；]{2,35})/.exec(text);
+   if(match)location=match[1].trim();
+  }
+  if(!weather){
+   const match=/(?:当前天气|剧情天气)[：:]\s*([^\n，。;；]{1,30})/.exec(text);
+   if(match)weather=match[1].trim();
+  }
+ }
+ return {location,weather};
+}
+
 function renderDesktop(){
  if(!nodes?.homePages)return;
  const order=desktopOrder();
@@ -416,9 +438,9 @@ function renderDesktop(){
  const time=String(data.storyTime||localDateTime());
  nodes.homeTime.textContent=time.slice(11,16);
  nodes.homeDate.textContent=time.slice(0,10).replaceAll('-',' / ');
- const scene=data.storyScene||{};
- const loc=typeof scene.location==='string'?scene.location.trim().slice(0,40):'';
- const weather=typeof scene.weather==='string'?scene.weather.trim().slice(0,30):'';
+ const scene=storyScenePreview(context(),data);
+ const loc=scene.location;
+ const weather=scene.weather;
  nodes.homeScene.textContent=[loc,weather].filter(Boolean).join(' · ');
  nodes.homeScene.hidden=!loc&&!weather;
 }
@@ -472,7 +494,7 @@ async function tickStoryClock({onOpen=false,onClose=false}={}){
  const rate=prefs.mode==='custom'?prefs.rate:1;
  const clock=rootData.clock||{};
  // Once paused, reset the anchor without catching up for time spent outside.
- if(onOpen&&!allowsClosed&&!clock.openAtLastTick){
+ if(onOpen&&!allowsClosed){
    clock.lastRealMs=Date.now();clock.openAtLastTick=true;
  }
  const next=advanceStoryMinutes(rootData.storyTime||localDateTime(),clock,Date.now(),active,rate);
@@ -494,7 +516,7 @@ async function tickStoryClock({onOpen=false,onClose=false}={}){
 }
 async function savePhoneClockPrefs(){
  const ctx=context();if(!ctx?.extensionSettings||typeof ctx.saveSettingsDebounced!=='function')return;
- const mode=nodes.clockMode.value,rate=Number(nodes.clockRate.value);
+ const mode=nodes.clockMode.value,rate=mode==='custom'?Number(nodes.clockRate.value):1;
  if(!['always','open','custom'].includes(mode)||!Number.isFinite(rate)||rate<.1||rate>120)
    return setStatus('请选择有效的时间流速','error');
  (ctx.extensionSettings[SETTINGS_KEY]||={}).clock={mode,rate,continueClosed:nodes.clockContinueClosed.checked};
