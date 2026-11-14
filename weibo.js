@@ -277,6 +277,37 @@ export function createWeiboModule(api) {
    parent.append(line);
   }
   parent.append(control('＋ 新建角色账号','newAccount'));
+   const scanner=el('div','lp-wb-scanner');
+   scanner.append(heading('从故事资料检测账号','读取角色卡与关联世界书，仅展示候选；勾选并确认后才会保存'));
+   field(scanner,'额外世界书名称（选填）','scanWorldName',state.scanWorldName||'');
+   scanner.append(control(state.scanLoading?'正在检测…':'检测角色与世界书','scanAccounts'));
+   if(state.scanMessage)scanner.append(el('p','lp-wb-scan-message',state.scanMessage));
+   if(state.candidates.length){
+    scanner.append(heading('待确认账号（'+state.candidates.length+'）','编辑身份信息后勾选，未勾选的不会创建账号'));
+    state.candidates.forEach((candidate,index)=>{
+     const existing=q.accounts.find(a=>a.name===candidate.name);
+     const row=el('div','lp-wb-candidate');row.dataset.wbCandidate=String(index);
+     const title=el('label','lp-wb-candidate-title');
+     const choose=document.createElement('input');choose.type='checkbox';choose.dataset.wbChoose=String(index);
+     title.append(choose,el('strong','',candidate.name),el('small','',existing?'已有账号 · 可更新':'新候选'));
+     row.append(title,el('small','lp-wb-candidate-source','来源：'+candidate.source));
+     const detail=el('details','lp-wb-candidate-reference');
+     detail.append(el('summary','','查看检测到的角色资料'),el('p','',candidate.reference||'暂无进一步资料'));
+     row.append(detail);
+     for(const [key,label,value,type] of [
+      ['name','账号名称',existing?.name||candidate.name,'text'],
+      ['handle','群星 ID',existing?.handle||candidate.handle||'','text'],
+      ['kind','身份类型',existing?.kind||candidate.kind||'角色','text'],
+      ['bio','公开简介（请自行审阅）',existing?.bio||candidate.bio||'','text'],
+      ['publicFigure','公众人物',existing?.publicFigure||candidate.publicFigure||false,'checkbox']]){
+       const item=field(row,label,'candidate-'+index+'-'+key,value,type);
+       item.dataset.wbCandidateField=key;
+     }
+     scanner.append(row);
+    });
+    scanner.append(control('保存勾选的账号','saveCandidates'));
+   }
+   parent.append(scanner);
   const active=q.accounts.find(a=>a.id===state.editing)||{};
   if(state.editing==='new'||active.id){
    const form=el('div','lp-wb-editor');form.append(heading(active.id?'编辑账号':'新增账号'));
@@ -286,7 +317,7 @@ export function createWeiboModule(api) {
    field(form,'身份类型（角色／NPC／媒体／粉丝）','accountKind',active.kind||'角色');
    field(form,'是否为公众人物','accountPublic',active.publicFigure||false,'checkbox');
    field(form,'粉丝数量','accountFollowers',active.followers||0,'number');
-   field(form,'账号头像图片','accountAvatar','', 'file').accept='image/*';
+   avatarPicker(form,'更换角色账号头像','accountAvatar',state.avatarDraft||active.avatar||'',active.name||'角色');
    form.append(control('保存角色账号','saveAccount'));parent.append(form);
   }
  }
