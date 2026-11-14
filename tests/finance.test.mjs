@@ -178,3 +178,35 @@ test('interface exposes account, receipt and sync settings with no out-of-story 
     assert.match(source,/data-chat-tool="redpacket"/);
     assert.doesNotMatch(source,/故事里的虚拟支付应用/);
 });
+
+test('returning to an earlier story swipe revives a new pending transfer with a new ledger ID',async()=>{
+    const ctx={characterId:0,groupId:null,chatId:'swipe-story',
+        characters:[{name:'林知远',avatar:'role-avatar.png'}],
+        chat:[{is_user:false,mes:'我给你转了200元',swipe_id:0}],
+        chatMetadata:{st_little_phone_v1:story()},saveMetadata:async()=>{}};
+    const api=harness(ctx);
+    await api.syncMainlinePayments(ctx);
+    const original=api.readRootData(ctx).wallet.transfers[0].id;
+    ctx.chat[0]={is_user:false,mes:'我准备给你转200元',swipe_id:1};
+    await api.syncMainlinePayments(ctx);
+    assert.equal(api.readRootData(ctx).wallet.transfers[0].status,'invalidated');
+    ctx.chat[0]={is_user:false,mes:'我给你转了200元',swipe_id:0};
+    const resumed=await api.syncMainlinePayments(ctx);
+    const transfers=api.readRootData(ctx).wallet.transfers;
+    assert.equal(resumed.created,1);
+    assert.equal(transfers.length,2);
+    assert.equal(transfers[1].status,'pending');
+    assert.notEqual(original,transfers[1].id);
+    assert.equal(api.walletState(api.readRootData(ctx)).balanceCents,0);
+});
+test('wallet changes and future order adapters publish stable deduplicated story events',()=>{
+    const api=harness(),data=story();
+    api.walletAdjustBalance(data,100000);
+    api.walletChargeOrder(data,{orderId:'order-42',category:'takeout',amountCents:3200,shop:'晚饭'});
+    const count=data.storyEvents.length;
+    api.walletChargeOrder(data,{orderId:'order-42',category:'takeout',amountCents:3200,shop:'晚饭'});
+    assert.equal(data.storyEvents.length,count);
+    assert.equal(data.storyEvents.filter(event=>event.type==='takeout.paid').length,1);
+    assert.match(api.mainlineStructuredEvents(data),/已付款/);
+    assert.doesNotMatch(api.mainlineStructuredEvents(data),/余额调整/);
+});
