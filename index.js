@@ -1,5 +1,5 @@
 /**
- * GujiGuji v0.8.18: a modular phone shell with isolated per-chat context.
+ * GujiGuji v0.8.19: a modular phone shell with isolated per-chat context.
  * No direct host-module imports; uses only the documented context surface.
  */
 
@@ -842,6 +842,173 @@ function nextMessageStoryTime(data,minutes=1) {
     const time=new Date(latest.storyTime).getTime();
     return Number.isFinite(time)?formatStoryTime(new Date(time+Math.max(1,minutes)*60000)):cursor;
 }
+
+const phoneCalendarState={view:'month',selected:'',initialized:false};
+const PHONE_CALENDAR_VIEWS=new Set(['year','month','week','day','agenda']);
+const PHONE_CALENDAR_WEEK=['日','一','二','三','四','五','六'];
+const PHONE_CALENDAR_FESTIVALS={'01-01':'元旦','02-14':'情人节','03-08':'妇女节','05-01':'劳动节','06-01':'儿童节','10-01':'国庆节','12-25':'圣诞节'};
+function phoneCalendarISO(value){
+    const year=String(value?.getFullYear?.()||'').padStart(4,'0');
+    return year+'-'+String(value.getMonth()+1).padStart(2,'0')+'-'+String(value.getDate()).padStart(2,'0');
+}
+function phoneCalendarDate(iso){
+    const match=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso||''));
+    if(!match)return null;
+    const [year,month,day]=match.slice(1).map(Number);
+    if(year<100||year>9999||month<1||month>12||day<1||day>31)return null;
+    const date=new Date(year,month-1,day,12);
+    return phoneCalendarISO(date)===iso?date:null;
+}
+function phoneCalendarShift(iso,amount,unit='days'){
+    const date=phoneCalendarDate(iso);
+    if(!date||!Number.isInteger(amount)||Math.abs(amount)>3650)throw new Error('无效的日历日期');
+    if(unit==='days')date.setDate(date.getDate()+amount);
+    else if(unit==='months'||unit==='years'){
+        const day=date.getDate();
+        date.setDate(1);
+        if(unit==='months')date.setMonth(date.getMonth()+amount);
+        else date.setFullYear(date.getFullYear()+amount);
+        const last=new Date(date.getFullYear(),date.getMonth()+1,0,12).getDate();
+        date.setDate(Math.min(day,last));
+    }else throw new Error('无效的日历单位');
+    return phoneCalendarISO(date);
+}
+function phoneCalendarLunar(iso){
+    const date=phoneCalendarDate(iso);
+    if(!date||typeof Intl==='undefined')return '';
+    try{
+        const parts=new Intl.DateTimeFormat('zh-CN-u-ca-chinese',{month:'long',day:'numeric'}).formatToParts(date);
+        const month=parts.find(part=>part.type==='month')?.value||'';
+        const day=Number(parts.find(part=>part.type==='day')?.value);
+        if(!Number.isInteger(day)||day<1||day>30)return '';
+        if(day===1)return month;
+        const numerals=['','一','二','三','四','五','六','七','八','九','十'];
+        return day<=10?'初'+numerals[day]:day<20?'十'+numerals[day-10]:day===20?'二十':day<30?'廿'+numerals[day-20]:'三十';
+    }catch{return '';}
+}
+function phoneCalendarMonthGrid(year,month){
+    const first=new Date(year,month-1,1,12);
+    if(first.getFullYear()!==year||first.getMonth()!==month-1)return [];
+    const firstSunday=new Date(year,month-1,1-first.getDay(),12);
+    const total=Math.ceil((first.getDay()+new Date(year,month,0,12).getDate())/7)*7;
+    return Array.from({length:total},(_,i)=>{
+        const date=new Date(firstSunday);date.setDate(firstSunday.getDate()+i);
+        const iso=phoneCalendarISO(date);
+        return {iso,date,day:date.getDate(),inside:date.getMonth()===month-1};
+    });
+}
+function phoneCalendarReset(data) {
+    const storyDate=String(data?.storyTime||localDateTime()).slice(0,10);
+    phoneCalendarState.selected=phoneCalendarDate(storyDate)?storyDate:localDateTime().slice(0,10);
+    phoneCalendarState.view='month';
+    phoneCalendarState.initialized=true;
+}
+function phoneCalendarEvents(data,date){
+    return (Array.isArray(data?.messages)?data.messages:[]).filter(message=>
+        ['user','character'].includes(message?.from) && String(message.storyTime||'').slice(0,10)===date);
+}
+function phoneCalendarSelect(iso,view=null){
+    if(!phoneCalendarDate(iso))return;
+    phoneCalendarState.selected=iso;
+    if(view&&PHONE_CALENDAR_VIEWS.has(view))phoneCalendarState.view=view;
+    renderPhoneCalendar();
+}
+function phoneCalendarNavigate(direction){
+    const view=phoneCalendarState.view;
+    const unit=view==='year'?'years':view==='day'?'days':view==='week'?'days':'months';
+    const count=view==='week'?7*direction:direction;
+    phoneCalendarSelect(phoneCalendarShift(phoneCalendarState.selected,count,unit));
+}
+function renderPhoneCalendar(){
+    if(!nodes?.calendarGrid||!selectedCharacter(context()))return;
+    const data=readData(context());
+    if(!phoneCalendarState.initialized)phoneCalendarReset(data);
+    const selected=phoneCalendarState.selected,date=phoneCalendarDate(selected);
+    if(!date)return;
+    const storyDate=String(data.storyTime||localDateTime()).slice(0,10);
+    const today=localDateTime().slice(0,10);
+    const view=phoneCalendarState.view;
+    nodes.calendarHeading.textContent=view==='year'?String(date.getFullYear())+' 年':
+        date.getFullYear()+' 年 '+String(date.getMonth()+1).padStart(2,'0')+' 月';
+    for(const button of nodes.calendarViews.querySelectorAll('button[data-calendar-view]')){
+        button.classList.toggle('lp-calendar-current-view',button.dataset.calendarView===view);
+        button.setAttribute('aria-pressed',String(button.dataset.calendarView===view));
+    }
+    nodes.calendarGrid.replaceChildren();
+    nodes.calendarGrid.dataset.view=view;
+    const addDay=(iso,inside=true)=>{
+        const day=phoneCalendarDate(iso);
+        const button=document.createElement('button');
+        button.type='button';button.className='lp-calendar-day';
+        if(!inside)button.classList.add('lp-calendar-outside');
+        if(iso===selected)button.classList.add('lp-calendar-selected');
+        if(iso===today)button.classList.add('lp-calendar-today');
+        if(iso===storyDate)button.classList.add('lp-calendar-story-day');
+        button.dataset.calendarDate=iso;
+        button.setAttribute('aria-label',iso+'，周'+PHONE_CALENDAR_WEEK[day.getDay()]);
+        button.setAttribute('aria-pressed',String(iso===selected));
+        const number=document.createElement('span');number.className='lp-calendar-number';number.textContent=day.getDate();
+        const label=document.createElement('small');label.textContent=PHONE_CALENDAR_FESTIVALS[iso.slice(5)]||phoneCalendarLunar(iso);
+        if(PHONE_CALENDAR_FESTIVALS[iso.slice(5)])label.classList.add('lp-calendar-festival');
+        button.append(number,label);
+        if(phoneCalendarEvents(data,iso).length){const dot=document.createElement('i');dot.className='lp-calendar-dot';dot.setAttribute('aria-hidden','true');button.append(dot);}
+        return button;
+    };
+    if(view==='year'){
+        const year=document.createElement('div');year.className='lp-calendar-years';
+        for(let month=1;month<=12;month++){
+            const item=document.createElement('button');item.type='button';item.dataset.calendarMonth=String(month);
+            item.textContent=month+' 月';
+            if(date.getMonth()+1===month)item.classList.add('lp-calendar-month-active');
+            year.append(item);
+        }
+        nodes.calendarGrid.append(year);
+    }else if(view==='month'||view==='week'){
+        const weekday=document.createElement('div');weekday.className='lp-calendar-weekdays';
+        for(const day of PHONE_CALENDAR_WEEK){const text=document.createElement('span');text.textContent=day;weekday.append(text);}
+        const grid=document.createElement('div');grid.className='lp-calendar-days';
+        let days;
+        if(view==='month')days=phoneCalendarMonthGrid(date.getFullYear(),date.getMonth()+1);
+        else {
+            const sunday=phoneCalendarShift(selected,-date.getDay());
+            days=Array.from({length:7},(_,i)=>({iso:phoneCalendarShift(sunday,i),inside:true}));
+        }
+        for(const item of days)grid.append(addDay(item.iso,item.inside));
+        nodes.calendarGrid.append(weekday,grid);
+    }else if(view==='day'){
+        const card=document.createElement('div');card.className='lp-calendar-day-focus';
+        card.textContent=selected+' · 星期'+PHONE_CALENDAR_WEEK[date.getDay()]+' · '+phoneCalendarLunar(selected);
+        nodes.calendarGrid.append(card);
+    }else{
+        const list=document.createElement('div');list.className='lp-calendar-agenda';
+        const all=(data.messages||[]).filter(message=>['user','character'].includes(message.from)&&
+            String(message.storyTime||'').slice(0,7)===selected.slice(0,7));
+        const dates=[...new Set(all.map(item=>String(item.storyTime).slice(0,10)))].sort();
+        if(!dates.length){const empty=document.createElement('p');empty.textContent='本月暂无手机聊天记录';list.append(empty);}
+        for(const day of dates){
+            const button=document.createElement('button');button.type='button';
+            button.dataset.calendarDate=day;button.textContent=day+' · '+phoneCalendarEvents(data,day).length+' 条手机消息';
+            list.append(button);
+        }
+        nodes.calendarGrid.append(list);
+    }
+    const detailDate=selected+' · 星期'+PHONE_CALENDAR_WEEK[date.getDay()];
+    const lunar=phoneCalendarLunar(selected);
+    const count=phoneCalendarEvents(data,selected).length;
+    nodes.calendarSelected.textContent=detailDate+(lunar?' · 农历 '+lunar:'')+
+        (selected===storyDate?' · 当前故事日期':'');
+    nodes.calendarSummary.textContent=count?'这一天有 '+count+' 条手机聊天消息':'这一天暂无手机聊天消息';
+    nodes.calendarSelectedTime.value=String(data.storyTime||localDateTime()).slice(11,16);
+    nodes.time.value=selected+'T'+nodes.calendarSelectedTime.value;
+}
+async function saveCalendarSelectedTime(){
+    if(!selectedCharacter(context())||busy)return;
+    const hour=nodes.calendarSelectedTime.value;
+    if(!/^\d\d:\d\d$/.test(hour))return setStatus('请先选择有效时间','error');
+    nodes.time.value=phoneCalendarState.selected+'T'+hour;
+    await saveStoryTime();
+}
+
 function storyHourLabel(time) {
     const match=String(time||'').match(/T(\d\d):/);
     if(!match)return '时间不明';
@@ -1555,6 +1722,10 @@ function setScreen(screen) {
     nodes.title.textContent = screen === 'chat' ? contactDisplayName(context()) : titles[screen];
     nodes.chatMenu.hidden = screen !== 'chat';
     if (screen === 'diagnostics') renderDiagnostics();
+    if (screen === 'calendar'){
+        if(previous!=='calendar')phoneCalendarReset(readData(context()));
+        renderPhoneCalendar();
+    }
     if (screen === 'me') { renderPersona(context()); renderStickerLibrary(); loadAutonomyUI(context()); }
     if (screen === 'discover') renderMoments(context());
     if (screen === 'discover' && previous !== 'discover' && unreadMoments(readRootData(context())))
@@ -3464,7 +3635,7 @@ function render() {
     nodes.homeCharacter.textContent = primary ? resolvePhonePlaceholders('与 {{char}} 的故事',ctx,primary) : '等待进入角色存档';
     nodes.npcRelation.placeholder=resolvePhonePlaceholders('如：{{char}}的母亲、{{user}}的同学',ctx,primary);
     nodes.homeTime.textContent = (data?.storyTime || localDateTime()).replace('T', ' ');
-    nodes.time.value = data?.storyTime || localDateTime();
+    if(activeScreen!=='calendar')nodes.time.value = data?.storyTime || localDateTime();
     if(data)updateTimeJumpUI(data);
     updateApiInfo();
     renderFriendship(data);
@@ -3514,7 +3685,8 @@ async function saveStoryTime() {
     try {
         await writeData(ctx, data);
         if (sameSession(session)) {
-            setStatus('手机时间已保存。它不会自动改动正文时间。');
+            if(activeScreen==='calendar')phoneCalendarState.selected=time.slice(0,10);
+            setStatus('故事时间已保存为 '+time.replace('T',' ')+'；历史消息不变，也不会改动正文时间。');
             render();
         }
     } catch (error) {
@@ -3876,7 +4048,7 @@ function makeUI() {
         <button type="button" class="lp-inline-notification" data-lp="inlineNotification" aria-label="打开新消息" hidden></button>
         <section class="lp-screen lp-home" data-lp-screen="home" aria-label="手机桌面">
           <div class="lp-home-hero">
-            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.8.18</div>
+            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.8.19</div>
             <div class="lp-home-time" data-lp="homeTime">故事时间</div>
             <div class="lp-home-character" data-lp="homeCharacter">等待进入角色存档</div>
           </div>
@@ -4210,13 +4382,42 @@ function makeUI() {
           <div class="lp-picker-rows" data-lp="worldEntries"></div>
           <button type="button" class="lp-settings-link" data-lp="saveWorldPicker">保存选择并返回设置</button>
         </section>
-        <section class="lp-screen lp-settings" data-lp-screen="calendar" aria-label="日历" hidden>
-          <h2>当前故事时间</h2>
-          <div class="lp-timebar">
-            <label for="lp-story-time">日期与时间</label>
-            <input id="lp-story-time" type="datetime-local" data-lp="time" aria-label="小手机故事时间" />
+        <section class="lp-screen lp-calendar-screen" data-lp-screen="calendar" aria-label="故事日历" hidden>
+          <div class="lp-calendar-top">
+            <button type="button" data-lp="calendarPrev" aria-label="上一个时间范围">‹</button>
+            <strong data-lp="calendarHeading">故事日历</strong>
+            <button type="button" data-lp="calendarNext" aria-label="下一个时间范围">›</button>
           </div>
-          <p>当前角色 · 当前聊天存档</p>
+          <div class="lp-calendar-views" data-lp="calendarViews" role="group" aria-label="日历视图">
+            <button type="button" data-calendar-view="year">年</button>
+            <button type="button" data-calendar-view="month">月</button>
+            <button type="button" data-calendar-view="week">周</button>
+            <button type="button" data-calendar-view="day">日</button>
+            <button type="button" data-calendar-view="agenda">日程</button>
+          </div>
+          <div class="lp-calendar-grid" data-lp="calendarGrid" aria-live="polite"></div>
+          <div class="lp-calendar-selected-detail">
+            <strong data-lp="calendarSelected">选中日期</strong>
+            <span data-lp="calendarSummary">查看日期与手机聊天时间线</span>
+            <div class="lp-calendar-shortcuts">
+              <button type="button" data-lp="calendarStoryToday">回到剧情日</button>
+              <button type="button" data-lp="calendarRealToday">现实今天</button>
+            </div>
+          </div>
+          <div class="lp-calendar-time-editor">
+            <strong>设定故事时间</strong>
+            <p>浏览和选中日期不会改变剧情；只有点击保存才会更新手机故事时间。</p>
+            <div class="lp-calendar-time-actions">
+              <label for="lp-calendar-time">所选日期的时间</label>
+              <input type="time" id="lp-calendar-time" data-lp="calendarSelectedTime" aria-label="所选日期的故事时间" />
+              <button type="button" data-lp="calendarSaveTime">设为故事时间</button>
+            </div>
+            <details>
+              <summary>精确输入日期与时间</summary>
+              <input id="lp-story-time" type="datetime-local" data-lp="time" aria-label="小手机故事时间" />
+              <button type="button" data-lp="calendarExactSave">保存精确时间</button>
+            </details>
+          </div>
         </section>
         <section class="lp-screen lp-settings" data-lp-screen="theme" aria-label="主题" hidden>
           <h2>手机壁纸</h2>
@@ -4292,7 +4493,7 @@ function mount() {
     floating.hidden = !floatLauncherEnabled();
     document.body.append(floating);
     nodes = Object.fromEntries(['title', 'subtitle', 'back', 'close', 'time',
-        'homeTime', 'homeCharacter', 'homeLogCount', 'homeUnreadCount','notification','inlineNotification',
+        'homeTime', 'homeCharacter', 'homeLogCount', 'homeUnreadCount','notification','inlineNotification','calendarPrev','calendarNext','calendarHeading','calendarViews','calendarGrid','calendarSelected','calendarSummary','calendarSelectedTime','calendarStoryToday','calendarRealToday','calendarSaveTime','calendarExactSave',
         'momentsPost', 'momentsText', 'momentsFeed', 'momentFeedback','momentsPreview','momentImageUpload','momentRemovePhoto','myAvatarUpload','myAvatarFallback','myAvatarStatus','myIdentity', 'myAvatar', 'myPersona', 'autoMessagesMode','autoMessagesDays','autoMomentsMode','autoMomentsDays','relationAutoSync','phoneInPast','characterRequests','momentInteractions','autonomyStatus','autonomyFeedback','saveAutonomy','rescanRelations','testAutonomy', 'stickerUpload','stickerPackUpload', 'stickerStatus', 'stickerLibrary',
         'friendLabel', 'friendActions','profileAvatar','profileName','profileDescription','contactEvidence','contactExchange','contactLinks','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcScanState','npcCandidates','npcSaveCandidates','storyPeopleList','viewPrimaryContact','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','avatarUserFile','resetCharAvatar','resetUserAvatar',
@@ -4354,7 +4555,30 @@ function mount() {
         const button = event.target.closest('button[data-lp-open]');
         if (button && root.contains(button)) setScreen(button.dataset.lpOpen);
     });
-    nodes.time.addEventListener('change', saveStoryTime);
+    nodes.calendarPrev.addEventListener('click',()=>phoneCalendarNavigate(-1));
+    nodes.calendarNext.addEventListener('click',()=>phoneCalendarNavigate(1));
+    nodes.calendarViews.addEventListener('click',event=>{
+        const button=event.target.closest('button[data-calendar-view]');
+        if(button&&PHONE_CALENDAR_VIEWS.has(button.dataset.calendarView)){
+            phoneCalendarState.view=button.dataset.calendarView;
+            renderPhoneCalendar();
+        }
+    });
+    nodes.calendarGrid.addEventListener('click',event=>{
+        const month=event.target.closest('button[data-calendar-month]');
+        if(month){
+            const selected=phoneCalendarDate(phoneCalendarState.selected);
+            const target=new Date(selected.getFullYear(),Number(month.dataset.calendarMonth)-1,
+                Math.min(selected.getDate(),new Date(selected.getFullYear(),Number(month.dataset.calendarMonth),0).getDate()),12);
+            phoneCalendarSelect(phoneCalendarISO(target),'month');return;
+        }
+        const day=event.target.closest('button[data-calendar-date]');
+        if(day)phoneCalendarSelect(day.dataset.calendarDate);
+    });
+    nodes.calendarStoryToday.addEventListener('click',()=>phoneCalendarSelect(String(readData(context()).storyTime||localDateTime()).slice(0,10)));
+    nodes.calendarRealToday.addEventListener('click',()=>phoneCalendarSelect(localDateTime().slice(0,10)));
+    nodes.calendarSaveTime.addEventListener('click',()=>void saveCalendarSelectedTime());
+    nodes.calendarExactSave.addEventListener('click',()=>void saveStoryTime());
     nodes.presetSource.addEventListener('change', onPresetSourceChange);
     nodes.worldBookList.addEventListener('change',event=>{if(event.target?.dataset?.worldBook)onWorldBookChange(event.target);});
     nodes.presetSearch.addEventListener('input',()=>filterPicker('preset'));
