@@ -127,9 +127,10 @@ export function createWeiboModule(api) {
   const acct=actor(p),top=el('div','lp-wb-head'),author=el('div','lp-wb-author');
   author.append(el('strong','',p.author),el('small','',((acct?.handle||p.handle)||'@群星用户')+' · '+(p.category||'日常')));
   top.append(avatar(acct?.avatar||p.avatar,p.author),author);
-  const q=data();if(!p.actions?.owned&&!q.following.includes(p.authorId)){
+  const q=data(),stableId=acct?.id||p.authorId;
+  if(!p.actions?.owned&&!q.following.includes(stableId)){
    const follow=control('＋ 关注','follow',p.id);follow.classList.add('lp-wb-follow');top.append(follow);
-  }else if(q.following.includes(p.authorId)){top.append(control('已关注','unfollow',p.id,true));}
+  }else if(q.following.includes(stableId)){top.append(control('已关注','unfollow',p.id,true));}
   box.append(top,el('p','lp-wb-text',p.text));
   const comments=el('div','lp-wb-comments');
   for(const c of (detailed?(p.comments||[]):(p.comments||[]).slice(0,3))){
