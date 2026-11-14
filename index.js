@@ -4324,7 +4324,7 @@ function walletRenderCard(ctx,message) {
    ?(transfer.note||'恭喜发财')
    :'¥'+walletMoney(transfer.amountCents);
  const detail=document.createElement('small');
- detail.textContent=transfer.kind==='redpacket'?'微信红包 · '+walletStatusLabel(transfer.status):
+ detail.textContent=transfer.kind==='redpacket'?'红包 · '+walletStatusLabel(transfer.status):
    (transfer.note||'转账')+' · '+walletStatusLabel(transfer.status);
  content.append(top,detail);head.append(glyph,content);card.append(head);
  const foot=document.createElement('div');foot.className='lp-payment-foot';
@@ -4652,7 +4652,8 @@ function locationCard(text){
  const matched=/^\[分享位置\]\s*(.*)$/s.exec(String(text||''));
  if(!matched)return null;
  const card=document.createElement('div');card.className='lp-location-card';
- const icon=document.createElement('span');icon.className='lp-location-symbol';icon.textContent='⌖';icon.setAttribute('aria-hidden','true');
+ const icon=document.createElement('span');icon.className='lp-location-symbol';icon.setAttribute('aria-hidden','true');
+ icon.innerHTML='<svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg>';
  const main=document.createElement('div');main.className='lp-location-copy';
  const title=document.createElement('strong');title.textContent=matched[1].trim()||'分享的位置';
  const subtitle=document.createElement('small');subtitle.textContent='位置分享';
