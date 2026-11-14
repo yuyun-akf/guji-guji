@@ -4118,7 +4118,8 @@ function walletRenderCard(ctx,message) {
     const transfer=walletState(readRootData(ctx)).transfers.find(item=>item.id===message.paymentId);
     if(!transfer)return null;
     const card=document.createElement('div');
-    card.className='lp-payment-card '+(transfer.kind==='redpacket'?'lp-payment-redpacket':'lp-payment-transfer');
+    card.className='lp-payment-card '+(transfer.kind==='redpacket'?'lp-payment-redpacket':'lp-payment-transfer')+
+        (transfer.status==='pending'?' lp-payment-pending':' lp-payment-finished');
     const title=document.createElement('strong');title.textContent=walletTransferLabel(transfer);
     const amount=document.createElement('span');amount.className='lp-payment-amount';
     amount.textContent=transfer.kind==='redpacket'&&transfer.from==='contact'&&transfer.status==='pending'
@@ -4132,7 +4133,7 @@ function walletRenderCard(ctx,message) {
         const buttons=document.createElement('div');buttons.className='lp-payment-actions';
         const options=transfer.from==='contact'
             ?[['accept',transfer.kind==='redpacket'?'拆红包':'收款'],['decline','拒收']]
-            :[['cancel','撤回']];
+            :[];
         for(const [action,label] of options){
             const button=document.createElement('button');button.type='button';button.textContent=label;
             button.dataset.paymentAction=action;button.dataset.paymentId=transfer.id;
@@ -4181,10 +4182,12 @@ function renderWallet(ctx=context()) {
         row.append(textBox,amount);
         if(tx.status==='pending'){
             const button=document.createElement('button');button.type='button';
-            button.dataset.paymentAction=tx.from==='contact'?'accept':'cancel';
-            button.dataset.paymentId=tx.id;
-            button.textContent=tx.from==='contact'?(tx.kind==='redpacket'?'拆红包':'收款'):'撤回';
-            button.className='lp-wallet-pending-button';row.append(button);
+            if(tx.from==='contact'){
+                button.dataset.paymentAction='accept';
+                button.dataset.paymentId=tx.id;
+                button.textContent=tx.kind==='redpacket'?'拆红包':'收款';
+                button.className='lp-wallet-pending-button';row.append(button);
+            }
         }
         nodes.walletPending.append(row);
     }
@@ -4270,8 +4273,8 @@ async function handlePaymentAction(paymentId,action) {
     const root=structuredClone(readRootData(ctx)),payment=walletState(root).transfers.find(tx=>tx.id===paymentId);
     if(!payment||payment.status!=='pending')return setStatus('这笔交易已处理');
     if(payment.from==='contact'&&!['accept','decline'].includes(action))return;
-    if(payment.from==='user'&&action!=='cancel')return;
-    const next=action==='accept'?'accepted':action==='decline'?'declined':'cancelled';
+    if(payment.from==='user')return;
+    const next=action==='accept'?'accepted':'declined';
     const job=startBusy('wallet');
     try{
         walletSettleTransfer(root,paymentId,next);
@@ -4358,6 +4361,7 @@ async function jumpStoryTime(amount,unit='minutes') {
     catch(error){setStatus(error.message,'error');return;}
     const previous=data.storyTime||localDateTime();
     data.storyTime=next;
+    data.clock={...(data.clock||{}),lastRealMs:Date.now(),remainderMs:0,openAtLastTick:root?.classList.contains('lp-open')};
     const job=startBusy('time');
     try{
         await writeData(ctx,data);
@@ -4422,7 +4426,7 @@ function renderMessages(data) {
         const body=document.createElement('div');
         body.className='lp-message-body';
         const bubble=document.createElement('div');
-        bubble.className='lp-bubble';
+        bubble.className='lp-bubble'+(message.paymentId?' lp-payment-shell':'');
         bubble.textContent=visibleStickerText(message,context(),contactCharacter(context()));
         if(message.paymentId){
             const paymentCard=walletRenderCard(context(),message);
@@ -4561,6 +4565,7 @@ async function saveStoryTime() {
     }
     const data = structuredClone(readData(ctx));
     data.storyTime = time;
+    data.clock={...(data.clock||{}),lastRealMs:Date.now(),remainderMs:0,openAtLastTick:root?.classList.contains('lp-open')};
     try {
         await writeData(ctx, data);
         if (sameSession(session)) {
