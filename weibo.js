@@ -64,6 +64,7 @@ export function createWeiboModule(api){
     }
    }
    if(where!==scope()||token!==state.token)return;
+   if(hot.length<10)throw Error('热搜有效话题不足 10 条，请手动刷新重试');
    state.posts=posts;state.trends=hot;state.tab='feed';state.detail='';
    nodes().weiboFeedback.textContent='已更新 10 条微博';
    api.recordActivity('微博刷新','新生成 10 条，未互动帖子不持久保存','success');
