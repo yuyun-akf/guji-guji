@@ -1085,9 +1085,22 @@ function initialFriendState(ctx,id=PRIMARY_CONTACT_ID) {
     const paragraphs=(ptext+'\n'+charText).split(/\n|[。！？]/).filter(v=>v.includes(name)&&v.length<1000);
     return knownOldFriend(info)||paragraphs.some(knownOldFriend);
 }
-function classifyStoryFriendEvent(text,name,primary=false) {
+function classifyStoryFriendEvent(text,name,primary=false,speaker='') {
     const chunks=String(text||'').slice(0,14000).split(/[。！？!?\n]/).map(v=>v.trim()).filter(Boolean);
     for(const clause of chunks){
+        if(primary&&speaker==='character'){
+            if(/我(?:刚刚|刚才|已经|刚)?(?:给你|向你)(?:发了|发送了|发出|提交了)(?:一条|一个|个)?好友申请/.test(clause)&&
+                !/(?:没|如果|准备|打算|想|以后|要不要|假如|计划)/.test(clause.slice(0,18)))
+                return {state:'incoming',evidence:clause};
+            if(/我(?:已经|刚刚|刚才)?(?:接受|同意|通过)(?:了)?你(?:的)?好友申请/.test(clause))
+                return {state:'friends',evidence:clause};
+            if(/(?:我们|咱们)(?:已经|刚刚|刚才)?(?:加上了|加了|成为了|是)好友/.test(clause))
+                return {state:'friends',evidence:clause};
+        }
+        if(primary&&speaker==='user'){
+            if(/我(?:已经|刚刚|刚才)?(?:接受|同意|通过)(?:了)?你(?:的)?好友申请/.test(clause))
+                return {state:'friends',evidence:clause};
+        }
         if(!clause.includes(name)&&!(primary&&clause.includes('{{char}}')))continue;
         if(/(?:没有|没|尚未|还没|拒绝|假如|如果|打算|准备|想要|可能|也许|未曾|不会|不能)/.test(clause.slice(0,22)))continue;
         if(/(?:互(?:相)?加(?:了)?(?:微信|好友)|成为(?:了)?(?:微信|手机)好友|通过(?:了)?(?:对方|他|她)?(?:的)?好友申请|已添加.*好友|扫码后互相通过)/.test(clause))return {state:'friends',evidence:clause};
@@ -1096,7 +1109,7 @@ function classifyStoryFriendEvent(text,name,primary=false) {
     return null;
 }
 async function syncStoryRelationships(ctx=context(),force=false) {
-    if(relationSyncWorking||autonomousWorking||busy)return {status:'busy'};
+    if(relationSyncWorking||bridgeSyncWorking||autonomousWorking||busy)return {status:'busy'};
     if(!selectedCharacter(ctx)||!ctx?.chatMetadata)return {status:'unavailable'};
     const root=readRootData(ctx),options=socialConfig(root);
     if(!options.relationSync)return {status:'disabled'};
@@ -1116,16 +1129,21 @@ async function syncStoryRelationships(ctx=context(),force=false) {
         for(const id of [PRIMARY_CONTACT_ID,...work.contacts.map(c=>c.id)]){
             const previous=readData(ctx,id),state=friendshipState(previous);
             const convo=id===PRIMARY_CONTACT_ID?work:(work.conversations[id]||={messages:[],friendship:{state:'stranger'}});
-            if(state!=='stranger')continue;
-            if(first&&initialFriendState(ctx,id)) {
+            if(state==='blocked'||state==='friends')continue;
+            if(state==='stranger'&&first&&initialFriendState(ctx,id)) {
                 convo.friendship={state:'friends'};
                 (convo.friendEvents||=[]).push({at:new Date().toISOString(),state:'friends',notice:'初始化：设定中有明确的长期既有关系'});
                 modified=true;changes++;continue;
             }
             const name=getContactInfo(ctx,id).name;
             for(const entry of messages.slice(starting)){
-                const ev=classifyStoryFriendEvent(messageText(entry),name,id===PRIMARY_CONTACT_ID);
+                const speaker=entry?.is_user===true?'user':entry?.is_user===false?'character':'';
+                const ev=classifyStoryFriendEvent(messageText(entry),name,id===PRIMARY_CONTACT_ID,speaker);
                 if(!ev)continue;
+                if(state!=='stranger'&&ev.state!=='friends')continue;
+                // An accepted request requires a first-person, completed action.
+                if(state!=='stranger'&&id===PRIMARY_CONTACT_ID&&speaker==='user'&&
+                    !/我(?:已经|刚刚|刚才)?(?:接受|同意|通过)/.test(ev.evidence))continue;
                 convo.friendship={state:ev.state};
                 (convo.friendEvents||=[]).push({at:new Date().toISOString(),state:ev.state,notice:'主线事件：'+ev.evidence.slice(0,140)});
                 modified=true;changes++;
@@ -1574,7 +1592,8 @@ function walletExpireTransfers(data) {
 // Reserved for future shopping/takeout modules: one payment authorization and one
 // settled ledger row for each unique order ID. No separate app balance.
 function walletChargeOrder(data,{orderId,amountCents,shop,category='shopping'}) {
-    if(!orderId||!['shopping','takeout','service'].includes(category))throw new Error('订单类型无效');
+    if(!orderId||!['shopping','takeout','service'].includes(category)||
+        !Number.isSafeInteger(amountCents)||amountCents<=0)throw new Error('订单金额或类型无效');
     return walletApplyEntry(data,{id:'order:'+category+':'+orderId,amountCents:-amountCents,
         label:String(shop||'订单付款').slice(0,100),kind:category,relatedId:orderId});
 }
@@ -5286,8 +5305,7 @@ function mount() {
     mounted = true;
     if (autonomousTicker)clearInterval(autonomousTicker);
     autonomousTicker=setInterval(()=>{
-        void syncStoryRelationships(context());
-        void syncMainlinePayments(context());
+        void (async()=>{await syncMainlinePayments(context());await syncStoryRelationships(context());})();
         void tickAutonomousActivity();void tickMomentInteractions();void maybeAutoFriendRequest(context());
     },60000);
     renderDiagnostics();
@@ -5305,8 +5323,7 @@ function mount() {
             statusKind = 'info';
             syncMainlinePrompt(context());
             render();
-            void syncStoryRelationships(context());
-            void syncMainlinePayments(context());
+            void (async()=>{await syncMainlinePayments(context());await syncStoryRelationships(context());})();
             void tickAutonomousActivity();
             void tickMomentInteractions();
         };
@@ -5320,13 +5337,16 @@ function mount() {
             'MESSAGE_DELETED','MESSAGE_SWIPED','GENERATION_ENDED'];
         for(const name of names){
             const event=ctx.event_types[name];if(!event)continue;
-            const handler=()=>{void syncMainlinePayments(context());};
+            const handler=()=>{void (async()=>{
+                await syncMainlinePayments(context());
+                await syncStoryRelationships(context());
+            })();};
             ctx.eventSource.on(event,handler);
             bridgeListeners.push({source:ctx.eventSource,event,handler});
         }
     }
     syncMainlinePrompt(ctx);
-    void syncMainlinePayments(ctx);
+    void (async()=>{await syncMainlinePayments(ctx);await syncStoryRelationships(ctx);})();
     render();
     scheduleLauncherProbe('初始化后');
 }
