@@ -1854,7 +1854,7 @@ function walletMoney(cents) {
 function walletOperationId(prefix='wallet') {
     return prefix+':'+Date.now().toString(36)+':'+Math.random().toString(36).slice(2,11);
 }
-function walletApplyEntry(data,{id,amountCents,label,kind,contactId='',storyTime='',relatedId=''}) {
+function walletApplyEntry(data,{id,amountCents,label,kind,contactId='',storyTime='',relatedId='',counterpartyName='',note=''}) {
     const wallet=walletEnsure(data);
     if(!id||typeof id!=='string')throw new Error('账单编号缺失');
     const existing=wallet.ledger.find(item=>item.id===id);
@@ -1866,7 +1866,7 @@ function walletApplyEntry(data,{id,amountCents,label,kind,contactId='',storyTime
         throw new Error(amountCents<0?'余额不足，无法付款':'余额超出上限');
     wallet.balanceCents=next;
     const entry={id,amountCents,balanceAfterCents:next,label:String(label||'交易').slice(0,120),
-        kind:String(kind||'payment'),contactId,relatedId,storyTime:storyTime||data.storyTime||localDateTime()};
+        kind:String(kind||'payment'),contactId,relatedId,counterpartyName:String(counterpartyName||'').slice(0,80),note:String(note||'').slice(0,120),storyTime:storyTime||data.storyTime||localDateTime()};
     wallet.ledger.push(entry);
     return entry;
 }
@@ -1894,6 +1894,15 @@ function walletThread(data,contactId) {
     if(!data.conversations||!data.conversations[contactId])throw new Error('找不到联系人会话');
     return data.conversations[contactId];
 }
+function walletCounterparty(data,contactId){
+ const info=(data.contacts||[]).find(c=>c.id===contactId);
+ if(info)return String(info.remark||info.name||'').trim().slice(0,80);
+ if(contactId===PRIMARY_CONTACT_ID){
+  const char=selectedCharacter(context());
+  return String(data.primaryRemark||getCharacterName(char)||'').trim().slice(0,80);
+ }
+ return '';
+}
 function walletCreateTransfer(data,{id=walletOperationId('payment'),kind='transfer',from='user',
     contactId=PRIMARY_CONTACT_ID,amountCents,note='',origin='phone',sourceIndex=null,sourceHash='',sourceKey='',storyTime=''}) {
     const wallet=walletEnsure(data);
@@ -1903,12 +1912,14 @@ function walletCreateTransfer(data,{id=walletOperationId('payment'),kind='transf
     if(!Number.isSafeInteger(amountCents)||amountCents<1||amountCents>PHONE_WALLET_MAX_CENTS)
         throw new Error('转账金额错误');
     const time=storyTime||data.storyTime||localDateTime();
+    if(kind==='redpacket'&&amountCents>20000)throw new Error('单个红包最多 ¥200.00');
+    const counterpartyName=walletCounterparty(data,contactId);
     if(from==='user'){
         walletApplyEntry(data,{id:'reserve:'+id,amountCents:-amountCents,
             label:(kind==='redpacket'?'发红包':'转账')+' · '+note.slice(0,60),
-            kind,contactId,storyTime:time,relatedId:id});
+            kind,contactId,counterpartyName,note,storyTime:time,relatedId:id});
     }
-    const payment={id,kind,from,contactId,amountCents,note:String(note||'').slice(0,120),
+    const payment={id,kind,from,contactId,counterpartyName,amountCents,note:String(note||'').slice(0,120),
         status:'pending',origin,sourceIndex,sourceHash,sourceKey,storyTime:time};
     wallet.transfers.push(payment);
     walletEvent(data,{id:'evt:'+id,type:kind+'.created',
@@ -1926,11 +1937,11 @@ function walletSettleTransfer(data,id,nextStatus,{origin='phone'}={}) {
     if(nextStatus==='accepted'){
         if(payment.from==='contact')walletApplyEntry(data,{id:'receive:'+id,amountCents:payment.amountCents,
             label:'收到'+(payment.kind==='redpacket'?'红包':'转账'),
-            kind:payment.kind,contactId:payment.contactId,relatedId:id});
+            kind:payment.kind,contactId:payment.contactId,counterpartyName:payment.counterpartyName||walletCounterparty(data,payment.contactId),note:payment.note,relatedId:id});
     }else if(payment.from==='user'){
         walletApplyEntry(data,{id:'refund:'+id,amountCents:payment.amountCents,
             label:(payment.kind==='redpacket'?'红包':'转账')+'退款',
-            kind:'refund',contactId:payment.contactId,relatedId:id});
+            kind:'refund',contactId:payment.contactId,counterpartyName:payment.counterpartyName||walletCounterparty(data,payment.contactId),note:payment.note,relatedId:id});
     }
     payment.status=nextStatus;
     walletEvent(data,{id:'evt:'+id+':'+nextStatus,type:payment.kind+'.'+nextStatus,
@@ -1951,7 +1962,7 @@ function walletInvalidateMainlinePayment(data,payment) {
             return true;
         }
         walletApplyEntry(data,{id:'reverse:'+payment.id,amountCents:-payment.amountCents,
-            label:'剧情修改 · 交易冲正',kind:'reversal',contactId:payment.contactId,relatedId:payment.id});
+            label:'剧情修改 · 交易冲正',kind:'reversal',contactId:payment.contactId,counterpartyName:payment.counterpartyName||walletCounterparty(data,payment.contactId),note:payment.note,relatedId:payment.id});
     }
     payment.status='invalidated';
     walletEvent(data,{id:'evt:'+payment.id+':invalidated',type:'payment.invalidated',
@@ -4234,35 +4245,62 @@ function walletStatusLabel(status) {
     return ({pending:'待领取',accepted:'已收款',declined:'已拒收',cancelled:'已撤回',expired:'已过期',
         invalidated:'已失效',conflict:'待核对'})[status]||'';
 }
+
 function walletRenderCard(ctx,message) {
-    const transfer=walletState(readRootData(ctx)).transfers.find(item=>item.id===message.paymentId);
-    if(!transfer)return null;
-    const card=document.createElement('div');
-    card.className='lp-payment-card '+(transfer.kind==='redpacket'?'lp-payment-redpacket':'lp-payment-transfer')+
-        (transfer.status==='pending'?' lp-payment-pending':' lp-payment-finished');
-    const title=document.createElement('strong');title.textContent=walletTransferLabel(transfer);
-    const amount=document.createElement('span');amount.className='lp-payment-amount';
-    amount.textContent=transfer.kind==='redpacket'&&transfer.from==='contact'&&transfer.status==='pending'
-        ?'恭喜发财':'¥ '+walletMoney(transfer.amountCents);
-    if(transfer.kind==='redpacket'&&transfer.status==='accepted'&&transfer.id===lastOpenedRedpacketId)
-        card.classList.add('lp-payment-opened');
-    const note=document.createElement('small');note.textContent=transfer.note||(transfer.kind==='redpacket'?'恭喜发财':'转账');
-    const state=document.createElement('em');state.textContent=walletStatusLabel(transfer.status);
-    card.append(title,amount,note,state);
-    if(transfer.status==='pending'){
-        const buttons=document.createElement('div');buttons.className='lp-payment-actions';
-        const options=transfer.from==='contact'
-            ?[['accept',transfer.kind==='redpacket'?'拆红包':'收款'],['decline','拒收']]
-            :[];
-        for(const [action,label] of options){
-            const button=document.createElement('button');button.type='button';button.textContent=label;
-            button.dataset.paymentAction=action;button.dataset.paymentId=transfer.id;
-            button.disabled=busy;buttons.append(button);
-        }
-        card.append(buttons);
-    }
-    return card;
+ const transfer=walletState(readRootData(ctx)).transfers.find(item=>item.id===message.paymentId);
+ if(!transfer)return null;
+ const pending=transfer.status==='pending',accepted=transfer.status==='accepted';
+ const card=document.createElement('div');
+ card.className='lp-payment-card '+(transfer.kind==='redpacket'?'lp-payment-redpacket':'lp-payment-transfer')+
+   (pending?' lp-payment-pending':accepted?' lp-payment-finished':' lp-payment-expired');
+ const head=document.createElement('div');head.className='lp-payment-main';
+ const glyph=document.createElement('span');glyph.className='lp-payment-glyph';glyph.setAttribute('aria-hidden','true');
+ glyph.textContent=pending?(transfer.kind==='redpacket'?'✉':'⇄'):accepted?'✓':'—';
+ const content=document.createElement('div');content.className='lp-payment-copy';
+ const top=document.createElement('strong');
+ top.textContent=transfer.kind==='redpacket'
+   ?(transfer.note||'恭喜发财')
+   :'¥'+walletMoney(transfer.amountCents);
+ const detail=document.createElement('small');
+ detail.textContent=transfer.kind==='redpacket'?'微信红包 · '+walletStatusLabel(transfer.status):
+   (transfer.note||'转账')+' · '+walletStatusLabel(transfer.status);
+ content.append(top,detail);head.append(glyph,content);card.append(head);
+ const foot=document.createElement('div');foot.className='lp-payment-foot';
+ const label=document.createElement('span');label.textContent=walletTransferLabel(transfer);
+ foot.append(label);
+ if(pending&&transfer.from==='contact'){
+  const buttons=document.createElement('div');buttons.className='lp-payment-actions';
+  for(const [action,text] of [['accept',transfer.kind==='redpacket'?'拆红包':'收款'],['decline','拒收']]){
+   const button=document.createElement('button');button.type='button';button.textContent=text;
+   button.dataset.paymentAction=action;button.dataset.paymentId=transfer.id;
+   button.disabled=busy;buttons.append(button);
+  }foot.append(buttons);
+ }else{
+  const status=document.createElement('span');status.textContent=walletStatusLabel(transfer.status);
+  foot.append(status);
+ }
+ card.append(foot);
+ if(transfer.kind==='redpacket'&&accepted&&transfer.id===lastOpenedRedpacketId)card.classList.add('lp-payment-opened');
+ return card;
 }
+function walletLedgerDisplay(ctx,entry,wallet){
+ const transfer=wallet.transfers.find(tx=>tx.id===entry.relatedId)||null;
+ const name=entry.counterpartyName||transfer?.counterpartyName||
+  walletCounterparty(readRootData(ctx),entry.contactId||transfer?.contactId);
+ const kind=transfer?.kind||entry.kind;
+ const refund=entry.kind==='refund'||entry.kind==='reversal';
+ const received=entry.amountCents>0&&!refund&&entry.kind!=='adjustment';
+ let label=entry.label||'交易';
+ if(kind==='redpacket'||kind==='transfer'){
+  const kindName=kind==='redpacket'?'红包':'转账';
+  if(refund)label=kindName+'退款'+(name?' · '+name:'');
+  else if(name)label=(received?'收到':'转给')+name+'的'+kindName;
+  else label=received?'收到'+kindName:'发出'+kindName;
+ }
+ const note=entry.note||transfer?.note||'';
+ return {label,note};
+}
+
 function renderWallet(ctx=context()) {
     if(!nodes?.walletBalance)return;
     const rootData=readRootData(ctx),wallet=walletState(rootData);
@@ -4277,14 +4315,17 @@ function renderWallet(ctx=context()) {
     for(const entry of ledger){
         const row=document.createElement('div');row.className='lp-wallet-bill';
         const textBox=document.createElement('div');
-        const label=document.createElement('strong');label.textContent=entry.label;
-        const time=document.createElement('small');time.textContent=String(entry.storyTime||'').replace('T',' ');
+        const detail=walletLedgerDisplay(ctx,entry,wallet);
+        const label=document.createElement('strong');label.textContent=detail.label;
+        const time=document.createElement('small');
+        time.textContent=(detail.note?'备注：'+detail.note+' · ':'')+String(entry.storyTime||'').replace('T',' ');
         textBox.append(label,time);
         const value=document.createElement('span');
         value.textContent=(entry.amountCents>0?'+':'−')+'¥'+walletMoney(Math.abs(entry.amountCents));
         if(entry.amountCents>0)value.className='lp-wallet-positive';
         row.append(textBox,value);nodes.walletBills.append(row);
     }
+
     const pending=wallet.transfers.filter(tx=>tx.status==='pending'||tx.status==='conflict').slice(-30).reverse();
     if(!pending.length){
         const empty=document.createElement('p');empty.className='lp-wallet-empty';empty.textContent='暂无待处理交易';
@@ -4294,7 +4335,7 @@ function renderWallet(ctx=context()) {
         const row=document.createElement('div');row.className='lp-wallet-bill';
         const textBox=document.createElement('div');
         const title=document.createElement('strong');
-        title.textContent=(tx.from==='user'?'发出':'收到')+walletTransferLabel(tx);
+        title.textContent=(tx.from==='user'?'发给':'来自')+(tx.counterpartyName||walletCounterparty(rootData,tx.contactId)||'联系人')+'的'+walletTransferLabel(tx);
         const time=document.createElement('small');
         time.textContent=walletStatusLabel(tx.status)+' · '+String(tx.storyTime||'').replace('T',' ');
         textBox.append(title,time);
@@ -4311,15 +4352,7 @@ function renderWallet(ctx=context()) {
         }
         nodes.walletPending.append(row);
     }
-    if(nodes.bridgeEvents){
-        nodes.bridgeEvents.replaceChildren();
-        for(const event of (rootData.storyEvents||wallet.events).slice(-30).reverse()){
-            const item=document.createElement('div');item.className='lp-wallet-event';
-            item.textContent=String(event.storyTime||'').replace('T',' ')+' · '+event.detail;
-            nodes.bridgeEvents.append(item);
-        }
-        if(!(rootData.storyEvents||wallet.events).length)nodes.bridgeEvents.textContent='暂无事件记录';
-    }
+
 }
 async function saveWalletBalance() {
     if(!mounted||busy||!selectedCharacter(context()))return;
@@ -4366,6 +4399,7 @@ async function sendPhonePayment() {
     try{
         const amountCents=walletCents(nodes.paymentAmount.value);
         const kind=nodes.paymentKind.value;
+        if(kind==='redpacket'&&amountCents>20000)throw new Error('单个红包金额不能超过 ¥200.00');
         if(!PHONE_PAYMENT_KINDS.has(kind))throw new Error('请选择转账或红包');
         const root=structuredClone(readRootData(ctx));
         const payment=walletCreateTransfer(root,{kind,amountCents,contactId,
@@ -4443,6 +4477,7 @@ function applyCharacterPaymentSendTag(data,reply,contactId) {
             if(created)return '';
             try{
                 const cents=walletCents(amount);
+                if(kind==='redpacket'&&cents>20000)throw new Error('红包最多 ¥200');
                 // The character can create an offer, but the user must choose to
                 // accept before the recipient balance changes.
                 created=walletCreateTransfer(data,{kind:kind.toLowerCase(),from:'contact',
