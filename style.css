@@ -1642,3 +1642,55 @@
  content:'';position:absolute;top:-4px;right:-9px;width:8px;height:8px;
  border-radius:50%;background:#f54b5b;
 }
+
+/* v0.8.18: inline story-time jumps, reachable from chat's existing + menu. */
+#st-little-phone-root .lp-time-jump-panel[hidden],
+#st-little-phone-root .lp-time-jump-hint[hidden]{display:none!important;}
+#st-little-phone-root .lp-time-jump-hint{
+  flex:0 0 auto;padding:6px 12px;background:#eee7f4;color:#665076;
+  font-size:12px;text-align:center;border-top:1px solid #dfd5e8;
+}
+#st-little-phone-root .lp-time-jump-panel{
+  display:flex;flex:0 0 auto;flex-direction:column;gap:9px;
+  padding:11px 12px 10px;overflow-y:auto;max-height:min(44vh,340px);
+  background:#faf7fd;border-top:1px solid #e7dded;color:#4d4059;
+  -webkit-overflow-scrolling:touch;
+}
+#st-little-phone-root .lp-time-jump-head{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+}
+#st-little-phone-root .lp-time-jump-head strong{font-size:14px;}
+#st-little-phone-root .lp-time-jump-head button{
+  font-size:22px;line-height:1;width:32px;height:30px;
+  background:transparent;color:#745d82;border:0;border-radius:8px;
+}
+#st-little-phone-root .lp-time-jump-current{font-size:12px;color:#796a86;}
+#st-little-phone-root .lp-time-jump-shortcuts{
+  display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;
+}
+#st-little-phone-root .lp-time-jump-shortcuts button{
+  min-height:36px;padding:5px 3px;font:inherit;font-size:12px;white-space:nowrap;
+  color:#654f77;border:1px solid #e5d7ef;border-radius:9px;background:#fff;
+}
+#st-little-phone-root .lp-time-jump-custom{
+  display:flex;align-items:center;gap:6px;min-width:0;
+}
+#st-little-phone-root .lp-time-jump-custom label{font-size:12px;white-space:nowrap;}
+#st-little-phone-root .lp-time-jump-custom input{
+  flex:1 1 70px;width:72px;min-width:45px;max-width:120px;
+  min-height:36px;padding:4px 7px;border:1px solid #ded4e6;
+  border-radius:8px;background:#fff;color:#493c53;font-size:14px;
+}
+#st-little-phone-root .lp-time-jump-custom select{
+  flex:0 0 65px;width:65px;min-height:36px;padding:4px 1px;
+  border:1px solid #ded4e6;border-radius:8px;background:#fff;
+  color:#493c53;font-size:12px;
+}
+#st-little-phone-root .lp-time-jump-custom button{
+  flex:0 0 52px;min-height:36px;border:0;border-radius:8px;
+  background:#a58cc4;color:#fff;font-size:12px;
+}
+#st-little-phone-root .lp-time-jump-panel p{
+  margin:0;font-size:11px;line-height:1.5;color:#85758f;
+}
+#st-little-phone-root .lp-time-jump-panel button:disabled{opacity:.5;cursor:not-allowed;}
