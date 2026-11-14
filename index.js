@@ -61,6 +61,9 @@ let viewportListener = null;
 let autonomousTicker = null;
 let autonomousWorking = false;
 let relationSyncWorking = false;
+let bridgeSyncWorking=false;
+let bridgeNeedsSync=false;
+const bridgeListeners=[];
 let autoRequestWorking = false;
 let momentImageDraft = '';
 let pickerState = null;
@@ -1303,6 +1306,118 @@ function shortText(value, maxLength = CHARACTER_TEXT_LIMIT) {
 const PHONE_WALLET_MAX_CENTS=100000000000;
 const PHONE_PAYMENT_KINDS=new Set(['transfer','redpacket']);
 const PHONE_PAYMENT_STATES=new Set(['pending','accepted','declined','cancelled','expired','invalidated','conflict']);
+
+function phoneStableHash(text) {
+    let hash=2166136261;
+    for(let i=0;i<text.length;i++){hash^=text.charCodeAt(i);hash=Math.imul(hash,16777619);}
+    return (hash>>>0).toString(36);
+}
+function chineseYuanNumber(value) {
+    const digits={'零':0,'〇':0,'一':1,'二':2,'两':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9};
+    const units={'十':10,'百':100,'千':1000,'万':10000};
+    let total=0,section=0,digit=0;
+    for(const ch of String(value||'')){
+        if(Object.hasOwn(digits,ch))digit=digits[ch];
+        else if(ch==='万'){section=(section+digit)*10000;total+=section;section=0;digit=0;}
+        else if(Object.hasOwn(units,ch)){const unit=units[ch];section+=(digit||1)*unit;digit=0;}
+        else return null;
+    }
+    return total+section+digit;
+}
+function mainlineAmountCents(value) {
+    const str=String(value||'').trim();
+    if(/^\d+(?:\.\d{1,2})?$/.test(str)){
+        try{return walletCents(str);}catch{return 0;}
+    }
+    if(/^[零〇一二两三四五六七八九十百千万]+$/.test(str)){
+        const yuan=chineseYuanNumber(str);
+        return Number.isSafeInteger(yuan)&&yuan>0&&yuan<=10000000?yuan*100:0;
+    }
+    return 0;
+}
+function detectMainlinePayment(message,index) {
+    if(!message||message.is_user===true||message.is_system===true||message.is_user===undefined)return null;
+    const raw=stripModelReasoning(messageText(message));
+    if(!raw||raw.length>18000)return null;
+    const amount='(\\d{1,9}(?:\\.\\d{1,2})?|[零〇一二两三四五六七八九十百千万]{1,14})';
+    const clauses=raw.split(/[。！？!?\n；;]/).map(s=>s.trim()).filter(Boolean);
+    for(const clause of clauses){
+        if(clause.length>400)continue;
+        // Explicitly completed action only; suggestions, quoted hypotheticals
+        // and plans never create money. Do not inspect user messages.
+        if(/(?:没|没有|未|尚未|还没|不会|不想|打算|准备|计划|考虑|要不要|如果|假如|等会|等下|明天|下次|以后|可以|可能).{0,14}(?:给你|向你|转账|转了|发红包)/.test(clause))continue;
+        if(/(?:假设|比如|例如|梦见|做梦|演戏|截图|消息记录|提到|说过|问你|你说|如果)/.test(clause.slice(0,65)))continue;
+        if(!/(?:给你|向你|转给你)/.test(clause))continue;
+        const patterns=[
+            {kind:'transfer',regex:new RegExp('(?:给你|向你|转给你)(?:刚刚|已经|刚才)?(?:转了|转账(?:了)?|转过去(?:了)?|打了|打款(?:了)?)(?:一笔)?\\s*[¥￥]?' +amount+'\\s*(?:块钱|块|元)?')},
+            {kind:'redpacket',regex:new RegExp('(?:给你|向你)(?:发了|发来|发过去了|发送了)(?:一个|个)?\\s*[¥￥]?'+amount+'\\s*(?:块钱|块|元)?(?:的)?红包')},
+            {kind:'redpacket',regex:new RegExp('(?:给你|向你)(?:发了|发来|发过去了|发送了)(?:一个|个)?红包(?:，|：|:)?\\s*[¥￥]?'+amount+'\\s*(?:块钱|块|元)?')}
+        ];
+        for(const pattern of patterns){
+            const match=pattern.regex.exec(clause);
+            if(!match)continue;
+            const amountCents=mainlineAmountCents(match[1]);
+            if(!amountCents)continue;
+            const hash=phoneStableHash(raw+':'+(message.swipe_id??'0'));
+            const key='mainline:'+index+':'+hash+':'+pattern.kind;
+            return {id:key,sourceKey:key,sourceIndex:index,sourceHash:hash,
+                amountCents,kind:pattern.kind,from:'contact',contactId:PRIMARY_CONTACT_ID,
+                note:'',origin:'mainline',evidence:match[0]};
+        }
+    }
+    return null;
+}
+async function syncMainlinePayments(ctx=context()) {
+    if(bridgeSyncWorking){bridgeNeedsSync=true;return {status:'busy'};}
+    if(!selectedCharacter(ctx)||!ctx?.chatMetadata||!Array.isArray(ctx.chat))return {status:'unavailable'};
+    if(!contextSettings(readRootData(ctx)).eventBridge||socialConfig(readRootData(ctx)).phoneInPast)return {status:'disabled'};
+    if(busy){bridgeNeedsSync=true;return {status:'busy'};}
+    bridgeSyncWorking=true;
+    const session={metadata:ctx.chatMetadata,characterId:ctx.characterId,chatId:ctx.chatId};
+    try{
+        const all=ctx.chat,start=Math.max(0,all.length-300);
+        const observed=new Map();
+        for(let i=start;i<all.length;i++){
+            const found=detectMainlinePayment(all[i],i);
+            if(found)observed.set(found.sourceKey,found);
+        }
+        const root=structuredClone(readRootData(ctx));
+        const wallet=walletEnsure(root);
+        let created=0,invalidated=0;
+        for(const tx of wallet.transfers){
+            if(tx.origin!=='mainline'||tx.sourceIndex<start||tx.status==='invalidated'||tx.status==='conflict')continue;
+            if(observed.has(tx.sourceKey))continue;
+            if(walletInvalidateMainlinePayment(root,tx))invalidated++;
+        }
+        for(const item of observed.values()){
+            const existing=wallet.transfers.find(tx=>tx.id===item.id);
+            if(existing)continue;
+            // Do not revive invalidated transactions from another branch automatically.
+            const payment=walletCreateTransfer(root,{...item,storyTime:root.storyTime||localDateTime()});
+            const thread=walletThread(root,payment.contactId);
+            const message=appendPhoneMessage(thread,'character',payment.kind==='redpacket'?'[红包]':'[转账]');
+            message.paymentId=payment.id;
+            created++;
+        }
+        if(!created&&!invalidated)return {status:'unchanged'};
+        if(ctx.chatMetadata!==session.metadata||ctx.characterId!==session.characterId||
+            ctx.chatId!==session.chatId)return {status:'changed'};
+        await writeData(ctx,{...root,__contactId:PRIMARY_CONTACT_ID});
+        recordActivity('正文事件同步',`新增待收款 ${created} 笔；因正文修改核对 ${invalidated} 笔。`,'success');
+        if(created&&mounted)showPhoneAlert(getCharacterName(selectedCharacter(ctx))+' 发来新消息','chat',PRIMARY_CONTACT_ID);
+        if(mounted)render();
+        return {status:'done',created,invalidated};
+    }catch(error){recordError('同步正文交易事件',error);return {status:'error'};}
+    finally{
+        bridgeSyncWorking=false;
+        if(bridgeNeedsSync){
+            bridgeNeedsSync=false;
+            // Avoid a sync-recursion loop on one temporarily unavailable event.
+            if(typeof setTimeout==='function')setTimeout(()=>{void syncMainlinePayments(context());},200);
+        }
+    }
+}
+
 function walletState(data) {
     const saved=data?.wallet;
     return {
@@ -1472,9 +1587,24 @@ function contextSettings(data) {
         readMainlineMemory:data?.config?.readMainlineMemory !== false,
         memorySource:['auto','gaga','baibai','trace','off'].includes(data?.config?.memorySource) ? data.config.memorySource : 'auto',
         phoneToMainline:data?.config?.phoneToMainline === true,
+        eventBridge:data?.config?.eventBridge !== false,
     };
 }
 
+function mainlineStructuredEvents(rootData){
+    const cfg=contextSettings(rootData),social=socialConfig(rootData);
+    if(!cfg.eventBridge||social.phoneInPast)return '';
+    const wallet=walletState(rootData);
+    const events=wallet.events.filter(item=>item.origin!=='mainline'&&
+        /^(?:transfer|redpacket)\.(?:created|accepted|declined|cancelled|expired)$/.test(item.type))
+        .slice(-12).map(item=>item.storyTime+' · '+item.detail);
+    const friends=(rootData.friendEvents||[]).filter(e=>e&&
+        /你已|你同意|你拒绝|你撤回|玩家/.test(String(e.notice||'')))
+        .slice(-6).map(e=>(e.storyTime||'')+' · 好友状态更新：'+FRIEND_LABELS[e.to]);
+    const facts=[...events,...friends].filter(Boolean);
+    return facts.length?'【咕叽咕机已确认的事件】\n'+facts.join('\n')+
+        '\n以上是手机中已经完成的事件，不代表 user 还要重复操作。角色仅知道自己参与或已被告知的部分。':'';
+}
 function mainlineHistory(rootData) {
     const threads=[{name:'主角色',messages:rootData.messages || []},
         ...(rootData.contacts || []).map(contact=>({name:contact.remark || contact.name || 'NPC',
@@ -1493,8 +1623,12 @@ function mainlineHistory(rootData) {
 function syncMainlinePrompt(ctx) {
     if(typeof ctx?.setExtensionPrompt!=='function')return false;
     const data=readRootData(ctx);
-    const enabled=extensionEnabled && Boolean(selectedCharacter(ctx)) && contextSettings(data).phoneToMainline;
-    const prompt=enabled ? mainlineHistory(data) : '';
+    const enabled=extensionEnabled && Boolean(selectedCharacter(ctx));
+    const cfg=contextSettings(data);
+    const segments=[];
+    if(enabled&&cfg.phoneToMainline)segments.push(mainlineHistory(data));
+    if(enabled)segments.push(mainlineStructuredEvents(data));
+    const prompt=segments.filter(Boolean).join('\n\n');
     try {
         ctx.setExtensionPrompt(MAINLINE_PROMPT_ID,prompt,ctx.extension_prompt_types?.IN_CHAT ?? 1,0,false,0);
         if(prompt!==lastMainlinePreview){
@@ -1519,6 +1653,7 @@ function loadContextSettings(ctx=context()) {
     nodes.readMainlineMemory.checked=cfg.readMainlineMemory;
     nodes.memorySource.value=cfg.memorySource;
     nodes.phoneToMainline.checked=cfg.phoneToMainline;
+    if(nodes.eventBridge)nodes.eventBridge.checked=cfg.eventBridge;
 }
 
 async function saveContextSettings() {
@@ -1526,7 +1661,8 @@ async function saveContextSettings() {
     if(!selectedCharacter(ctx) || busy)return;
     const data=structuredClone(readRootData(ctx));
     data.config={...(data.config||{}),readMainlineMemory:nodes.readMainlineMemory.checked,
-        memorySource:nodes.memorySource.value,phoneToMainline:nodes.phoneToMainline.checked};
+        memorySource:nodes.memorySource.value,phoneToMainline:nodes.phoneToMainline.checked,
+        eventBridge:nodes.eventBridge.checked};
     try {
         await writeData(ctx,{...data,__contactId:PRIMARY_CONTACT_ID});
         loadContextSettings(ctx);
