@@ -4175,10 +4175,11 @@ function openMessageActions(id,anchor=null){
  if(busy||!nodes?.messageActions)return;
  selectedMessageId=id;
  nodes.messageActions.hidden=false;
- const target=anchor||nodes.messages.querySelector('[data-message-id="'+CSS.escape(String(id))+'"] .lp-bubble');
- if(!target)return;
+ const target=anchor||[...nodes.messages.querySelectorAll('[data-message-id]')]
+  .find(row=>row.dataset.messageId===String(id))?.querySelector('.lp-bubble');
+ if(!target)return closeMessageActions();
  const r=target.getBoundingClientRect(),menu=nodes.messageActions;
- const availableWidth=window.innerWidth||document.documentElement.clientWidth;
+ const availableWidth=window.visualViewport?.width||window.innerWidth||document.documentElement.clientWidth;
  const availableHeight=window.visualViewport?.height||window.innerHeight;
  const width=menu.offsetWidth||265,height=menu.offsetHeight||120;
  const left=Math.max(8,Math.min(availableWidth-width-8,r.left+r.width/2-width/2));
@@ -4190,12 +4191,16 @@ function closeMessageActions(){
  if(nodes?.messageActions)nodes.messageActions.hidden=true;
 }
 function attachMessageHold(bubble,id){
+ let px=0,py=0;
  const stop=()=>{if(messageHoldTimer)clearTimeout(messageHoldTimer);messageHoldTimer=null;};
  bubble.addEventListener('pointerdown',e=>{
   if(e.pointerType!=='touch'&&e.pointerType!=='pen')return;
-  stop();messageHoldTimer=setTimeout(()=>{messageHoldTimer=null;openMessageActions(id,bubble);},470);
+  stop();px=e.clientX;py=e.clientY;
+  messageHoldTimer=setTimeout(()=>{messageHoldTimer=null;openMessageActions(id,bubble);},470);
  },{passive:true});
- bubble.addEventListener('pointermove',e=>{if(Math.abs(e.movementX)>6||Math.abs(e.movementY)>6)stop();},{passive:true});
+ bubble.addEventListener('pointermove',e=>{
+  if(Math.abs(e.clientX-px)>9||Math.abs(e.clientY-py)>9)stop();
+ },{passive:true});
  for(const type of ['pointerup','pointercancel','pointerleave'])bubble.addEventListener(type,stop,{passive:true});
  bubble.addEventListener('contextmenu',event=>{event.preventDefault();stop();openMessageActions(id,bubble);});
 }
