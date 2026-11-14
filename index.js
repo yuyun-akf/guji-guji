@@ -1934,13 +1934,17 @@ function buildPrompt(data,ctx=null,char=null) {
     return cleanPhoneHistory(data.messages).slice(-CONTEXT_MESSAGE_LIMIT)
         .filter(message => typeof message.text === 'string' && ['user', 'character'].includes(message.from)
             && (message.from==='user'||message.text.trim()||message.image))
-        .map(message => ({
+        .map(message => {
+            const payment=message.paymentId?walletState(data).transfers.find(tx=>tx.id===message.paymentId):null;
+            const paymentText=payment?'['+walletTransferLabel(payment)+' ¥'+walletMoney(payment.amountCents)+
+                ' · '+walletStatusLabel(payment.status)+(payment.note?' · '+payment.note:'')+']':message.text;
+            return ({
             role: message.from === 'character' ? 'assistant' : 'user',
             content: !message.sticker && message.image && typeof message.image==='string' && /^data:image\/(?:jpeg|png|webp);base64,/.test(message.image)
               ? [{type:'text',text:resolvePhonePlaceholders((message.replyQuote?'[引用：'+message.replyQuote+']\n':'')+(message.text||'')+'（请根据图片中实际可见内容回复，不要虚构看不到的细节）',ctx,char)},
                  {type:'image_url',image_url:{url:message.image,detail:'auto'}}]
-              : resolvePhonePlaceholders((message.replyQuote?'[引用：'+message.replyQuote+']\n':'')+message.text,ctx,char),
-        }));
+              : resolvePhonePlaceholders((message.replyQuote?'[引用：'+message.replyQuote+']\n':'')+paymentText,ctx,char),
+        });});
 }
 
 function setStatus(message, kind = 'info') {
@@ -2028,6 +2032,7 @@ function setScreen(screen) {
     nodes.title.textContent = screen === 'chat' ? contactDisplayName(context()) : titles[screen];
     nodes.chatMenu.hidden = screen !== 'chat';
     if (screen === 'diagnostics') renderDiagnostics();
+    if (screen === 'wallet')renderWallet(context());
     if (screen === 'calendar'){
         if(previous!=='calendar')phoneCalendarReset(readData(context()));
         renderPhoneCalendar();
@@ -3761,6 +3766,199 @@ async function sendImageFile(file) {
         if(sameSession(session))await sendUserMessage('[图片]',encoded);
     }catch(error){if(sameSession(session))setStatus(recordError('发送照片',error),'error');}
 }
+
+function walletTransferLabel(transfer) {
+    return transfer.kind==='redpacket'?'红包':'转账';
+}
+function walletStatusLabel(status) {
+    return ({pending:'待领取',accepted:'已收款',declined:'已拒收',cancelled:'已撤回',expired:'已过期',
+        invalidated:'已失效',conflict:'待核对'})[status]||'';
+}
+function walletRenderCard(ctx,message) {
+    const transfer=walletState(readRootData(ctx)).transfers.find(item=>item.id===message.paymentId);
+    if(!transfer)return null;
+    const card=document.createElement('div');
+    card.className='lp-payment-card '+(transfer.kind==='redpacket'?'lp-payment-redpacket':'lp-payment-transfer');
+    const title=document.createElement('strong');title.textContent=walletTransferLabel(transfer);
+    const amount=document.createElement('span');amount.className='lp-payment-amount';amount.textContent='¥ '+walletMoney(transfer.amountCents);
+    const note=document.createElement('small');note.textContent=transfer.note||(transfer.kind==='redpacket'?'恭喜发财':'转账');
+    const state=document.createElement('em');state.textContent=walletStatusLabel(transfer.status);
+    card.append(title,amount,note,state);
+    if(transfer.status==='pending'){
+        const buttons=document.createElement('div');buttons.className='lp-payment-actions';
+        const options=transfer.from==='contact'
+            ?[['accept','收款'],['decline','拒收']]
+            :[['cancel','撤回']];
+        for(const [action,label] of options){
+            const button=document.createElement('button');button.type='button';button.textContent=label;
+            button.dataset.paymentAction=action;button.dataset.paymentId=transfer.id;
+            button.disabled=busy;buttons.append(button);
+        }
+        card.append(buttons);
+    }
+    return card;
+}
+function renderWallet(ctx=context()) {
+    if(!nodes?.walletBalance)return;
+    const rootData=readRootData(ctx),wallet=walletState(rootData);
+    nodes.walletBalance.textContent=walletMoney(wallet.balanceCents);
+    nodes.walletBills.replaceChildren();
+    nodes.walletPending.replaceChildren();
+    const ledger=wallet.ledger.slice(-70).reverse();
+    if(!ledger.length){
+        const empty=document.createElement('p');empty.className='lp-wallet-empty';
+        empty.textContent='暂无账单';nodes.walletBills.append(empty);
+    }
+    for(const entry of ledger){
+        const row=document.createElement('div');row.className='lp-wallet-bill';
+        const textBox=document.createElement('div');
+        const label=document.createElement('strong');label.textContent=entry.label;
+        const time=document.createElement('small');time.textContent=String(entry.storyTime||'').replace('T',' ');
+        textBox.append(label,time);
+        const value=document.createElement('span');
+        value.textContent=(entry.amountCents>0?'+':'−')+'¥'+walletMoney(Math.abs(entry.amountCents));
+        if(entry.amountCents>0)value.className='lp-wallet-positive';
+        row.append(textBox,value);nodes.walletBills.append(row);
+    }
+    const pending=wallet.transfers.filter(tx=>tx.status==='pending'||tx.status==='conflict').slice(-30).reverse();
+    if(!pending.length){
+        const empty=document.createElement('p');empty.className='lp-wallet-empty';empty.textContent='暂无待处理交易';
+        nodes.walletPending.append(empty);
+    }
+    for(const tx of pending){
+        const row=document.createElement('div');row.className='lp-wallet-bill';
+        const textBox=document.createElement('div');
+        const title=document.createElement('strong');
+        title.textContent=(tx.from==='user'?'发出':'收到')+walletTransferLabel(tx);
+        const time=document.createElement('small');
+        time.textContent=walletStatusLabel(tx.status)+' · '+String(tx.storyTime||'').replace('T',' ');
+        textBox.append(title,time);
+        const amount=document.createElement('span');amount.textContent='¥'+walletMoney(tx.amountCents);
+        row.append(textBox,amount);
+        if(tx.status==='pending'){
+            const button=document.createElement('button');button.type='button';
+            button.dataset.paymentAction=tx.from==='contact'?'accept':'cancel';
+            button.dataset.paymentId=tx.id;
+            button.textContent=tx.from==='contact'?'收款':'撤回';
+            button.className='lp-wallet-pending-button';row.append(button);
+        }
+        nodes.walletPending.append(row);
+    }
+    if(nodes.bridgeEvents){
+        nodes.bridgeEvents.replaceChildren();
+        for(const event of wallet.events.slice(-30).reverse()){
+            const item=document.createElement('div');item.className='lp-wallet-event';
+            item.textContent=String(event.storyTime||'').replace('T',' ')+' · '+event.detail;
+            nodes.bridgeEvents.append(item);
+        }
+        if(!wallet.events.length)nodes.bridgeEvents.textContent='暂无事件记录';
+    }
+}
+async function saveWalletBalance() {
+    if(!mounted||busy||!selectedCharacter(context()))return;
+    const ctx=context(),session=captureSession(ctx);
+    const root=structuredClone(readRootData(ctx));
+    try{
+        const target=walletCents(nodes.walletAdjustInput.value,true);
+        const previous=walletState(root).balanceCents;
+        if(previous===target){setStatus('余额没有变化');return;}
+        walletAdjustBalance(root,target);
+        const job=startBusy('wallet');
+        try{
+            await writeData(ctx,{...root,__contactId:PRIMARY_CONTACT_ID});
+            if(sameSession(session)){
+                nodes.walletAdjustInput.value='';
+                setStatus('余额已更新：¥'+walletMoney(target));
+                renderWallet(ctx);
+            }
+        }finally{finishBusy(job);if(mounted)render();}
+    }catch(error){setStatus(recordError('修改余额',error),'error');}
+}
+function openPaymentForm(kind='transfer') {
+    if(!nodes?.paymentPanel||!selectedCharacter(context()))return;
+    if(busy)return setStatus('当前正在处理其他操作','error');
+    if(!PHONE_PAYMENT_KINDS.has(kind))return;
+    nodes.morePanel.hidden=true;
+    nodes.emojiPanel.hidden=true;
+    if(nodes.timeJumpPanel)nodes.timeJumpPanel.hidden=true;
+    nodes.paymentPanel.hidden=false;
+    nodes.paymentKind.value=kind;
+    nodes.paymentTitle.textContent=kind==='redpacket'?'发送红包':'发起转账';
+    nodes.paymentAmount.value='';
+    nodes.paymentNote.value='';
+    nodes.paymentBalance.textContent='可用余额 ¥'+walletMoney(walletState(readRootData(context())).balanceCents);
+}
+async function sendPhonePayment() {
+    if(!mounted||busy||!selectedCharacter(context()))return;
+    const ctx=context(),session=captureSession(ctx);
+    const contactId=activeContactId;
+    if(friendshipState(readData(ctx,contactId))!=='friends')
+        return setStatus('请先添加对方为好友','error');
+    try{
+        const amountCents=walletCents(nodes.paymentAmount.value);
+        const kind=nodes.paymentKind.value;
+        if(!PHONE_PAYMENT_KINDS.has(kind))throw new Error('请选择转账或红包');
+        const root=structuredClone(readRootData(ctx));
+        const payment=walletCreateTransfer(root,{kind,amountCents,contactId,
+            note:nodes.paymentNote.value.trim(),from:'user',origin:'phone'});
+        const thread=walletThread(root,contactId);
+        const msg=appendPhoneMessage(thread,'user',kind==='redpacket'?'[红包]':'[转账]');
+        msg.paymentId=payment.id;
+        const job=startBusy('wallet');
+        try{
+            await writeData(ctx,{...root,__contactId:PRIMARY_CONTACT_ID});
+            if(sameSession(session)){
+                nodes.paymentPanel.hidden=true;
+                setStatus(walletTransferLabel(payment)+'已发出');
+                recordActivity('发送交易',walletTransferLabel(payment)+' ¥'+walletMoney(amountCents),'success');
+            }
+        }finally{finishBusy(job);if(mounted)render();}
+    }catch(error){setStatus(recordError('发送转账或红包',error),'error');}
+}
+async function handlePaymentAction(paymentId,action) {
+    if(!mounted||busy||!selectedCharacter(context()))return;
+    const ctx=context(),session=captureSession(ctx);
+    const root=structuredClone(readRootData(ctx)),payment=walletState(root).transfers.find(tx=>tx.id===paymentId);
+    if(!payment||payment.status!=='pending')return setStatus('这笔交易已处理');
+    if(payment.from==='contact'&&!['accept','decline'].includes(action))return;
+    if(payment.from==='user'&&action!=='cancel')return;
+    const next=action==='accept'?'accepted':action==='decline'?'declined':'cancelled';
+    const job=startBusy('wallet');
+    try{
+        walletSettleTransfer(root,paymentId,next);
+        await writeData(ctx,{...root,__contactId:PRIMARY_CONTACT_ID});
+        if(sameSession(session)){
+            const done=walletTransferLabel(payment)+' · '+walletStatusLabel(next);
+            setStatus(done);recordActivity('交易处理',done,'success');
+        }
+    }catch(error){if(sameSession(session))setStatus(recordError('处理交易',error),'error');}
+    finally{finishBusy(job);if(mounted)render();}
+}
+function paymentReplyInstructions(data,contactId) {
+    const pending=walletState(data).transfers.filter(tx=>tx.status==='pending'&&tx.from==='user'&&tx.contactId===contactId).slice(-4);
+    if(!pending.length)return '';
+    return '\n【可以自主决定的待处理转账／红包】\n'+pending.map(tx=>
+        tx.id+'：'+walletTransferLabel(tx)+' ¥'+walletMoney(tx.amountCents)).join('\n')+
+        '\n你可以接受、拒绝或暂时不处理。只有确实决定收下时，在回复末尾独立写 [[PAYMENT_ACCEPT:编号]]；决定拒收时写 [[PAYMENT_DECLINE:编号]]。编号必须与上方一致；不处理就不要写标记。标记不会展示给对方。';
+}
+function applyPaymentModelTags(data,reply,contactId) {
+    const actions=[];
+    const cleaned=String(reply||'').replace(/\[\[PAYMENT_(ACCEPT|DECLINE):([a-z0-9:._-]+)\]\]/gi,
+        (_,verb,id)=>{
+            const tx=walletState(data).transfers.find(item=>item.id===id);
+            if(tx&&tx.from==='user'&&tx.contactId===contactId&&tx.status==='pending')
+                actions.push({id,status:verb.toUpperCase()==='ACCEPT'?'accepted':'declined'});
+            return '';
+        }).trim();
+    const used=new Set();
+    for(const action of actions){
+        if(used.has(action.id))continue;
+        used.add(action.id);
+        walletSettleTransfer(data,action.id,action.status,{origin:'character'});
+    }
+    return cleaned;
+}
+
 function toggleChatTools(type) {
     if(!nodes)return;
     if(nodes.timeJumpPanel)nodes.timeJumpPanel.hidden=true;
@@ -3807,11 +4005,8 @@ function startChatTool(action) {
     if(action==='location'){
         const location=window.prompt('输入故事中的地点');
         if(location?.trim()){nodes.input.value='[分享位置] '+location.trim().slice(0,160);nodes.input.focus();}
-    } else if(action==='transfer'){
-        const amount=window.prompt('剧情内转账金额（虚拟金额，不涉及真实支付）');
-        if(amount!==null && /^\d+(?:\.\d{1,2})?$/.test(amount)&&Number(amount)>0){
-            nodes.input.value='[剧情转账] 向'+contactDisplayName(context())+'转账 '+amount+' 元（虚拟情节）';nodes.input.focus();
-        }
+    } else if(action==='transfer'||action==='redpacket'){
+        openPaymentForm(action);
     } else if(action==='call'){
         nodes.input.value='[剧情语音通话邀请] 方便接电话吗？';nodes.input.focus();
     } else if(action==='time'){
@@ -3857,6 +4052,10 @@ function renderMessages(data) {
         const bubble=document.createElement('div');
         bubble.className='lp-bubble';
         bubble.textContent=visibleStickerText(message,context(),contactCharacter(context()));
+        if(message.paymentId){
+            const paymentCard=walletRenderCard(context(),message);
+            if(paymentCard){bubble.textContent='';bubble.append(paymentCard);}
+        }
         if(message.replyQuote){const quote=document.createElement('div');quote.className='lp-inline-quote';quote.textContent=resolvePhonePlaceholders(message.replyQuote,context(),contactCharacter(context()));bubble.prepend(quote);}
         if(message.image){const picture=document.createElement('img');picture.className='lp-chat-image';picture.src=message.image;picture.alt=message.sticker?'表情包图片':'聊天图片';bubble.append(picture);}
         const stamp=document.createElement('small');
@@ -3937,6 +4136,7 @@ function render() {
     renderContactLinks(ctx);
     renderChatLists(ctx,char,data);
     renderMoments(ctx);
+    renderWallet(ctx);
     nodes.subtitle.textContent = char ? '故事中的小手机 · 独立聊天' : '请先选择单人角色存档';
     nodes.homeCharacter.textContent = primary ? resolvePhonePlaceholders('与 {{char}} 的故事',ctx,primary) : '等待进入角色存档';
     nodes.npcRelation.placeholder=resolvePhonePlaceholders('如：{{char}}的母亲、{{user}}的同学',ctx,primary);
@@ -4007,7 +4207,8 @@ async function runReply(ctx, char, data, session, existingJob = null) {
     recordActivity('开始生成', '已将当前手机对话交给酒馆生成接口，正在等待模型返回。');
     try {
         const catalog=stickerLibrary(ctx);
-        const systemPrompt = [await composePhonePrompt(ctx, char, data), messageStylePrompt(data), stickerPrompt(catalog)].filter(Boolean).join('\n\n');
+        const systemPrompt = [await composePhonePrompt(ctx, char, data), messageStylePrompt(data), stickerPrompt(catalog),
+            paymentReplyInstructions(data,activeContactId)].filter(Boolean).join('\n\n');
         recordActivity('生成配置','使用当前酒馆连接'+(ctx?.mainApi?' · '+ctx.mainApi:'')+'；手机历史 '+buildPrompt(data).length+' 条；当前手机预设 '+(configuredPhonePreset(data)||'未选择')+'；启用世界书 '+selectedWorldBookNames(data).length+' 本。实际注入数请看「注入预览」，包含自动继承的原版启用条目。');
         const phoneHistory=buildPrompt(data,ctx,char);
         const count=phoneRequestImageCount(phoneHistory);
@@ -4021,7 +4222,9 @@ async function runReply(ctx, char, data, session, existingJob = null) {
         const rawReply = typeof result === 'string' ? result.trim() : '';
         const reply=stripModelReasoning(rawReply);
         if(!reply)throw new Error(rawReply?'模型仅返回思考内容，未生成可发送的角色消息，请重试。':'模型返回了空消息或不支持的回复类型。');
-        const phoneMessages = parseStickerReply(reply,data,catalog);
+        const visibleReply=applyPaymentModelTags(data,reply,activeContactId);
+        if(!visibleReply)throw new Error('模型没有返回可发送的角色消息');
+        const phoneMessages = parseStickerReply(visibleReply,data,catalog);
         if (!phoneMessages.length) throw new Error('角色消息为空');
         for (const message of phoneMessages) appendPhoneMessage(data,'character',resolvePhonePlaceholders(message.text,ctx,char),message);
         await writeData(ctx, data);
