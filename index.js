@@ -9,6 +9,7 @@ const PRIMARY_CONTACT_ID = 'primary';
 const MOMENT_USER_ID = 'user';
 let activeContactId = PRIMARY_CONTACT_ID;
 let selectedMessageId = null;
+let lastOpenedRedpacketId='';
 let quotedMessageId = null;
 let npcCandidates = [];
 let npcScanSession = null;
@@ -3857,14 +3858,18 @@ function walletRenderCard(ctx,message) {
     const card=document.createElement('div');
     card.className='lp-payment-card '+(transfer.kind==='redpacket'?'lp-payment-redpacket':'lp-payment-transfer');
     const title=document.createElement('strong');title.textContent=walletTransferLabel(transfer);
-    const amount=document.createElement('span');amount.className='lp-payment-amount';amount.textContent='¥ '+walletMoney(transfer.amountCents);
+    const amount=document.createElement('span');amount.className='lp-payment-amount';
+    amount.textContent=transfer.kind==='redpacket'&&transfer.from==='contact'&&transfer.status==='pending'
+        ?'恭喜发财':'¥ '+walletMoney(transfer.amountCents);
+    if(transfer.kind==='redpacket'&&transfer.status==='accepted'&&transfer.id===lastOpenedRedpacketId)
+        card.classList.add('lp-payment-opened');
     const note=document.createElement('small');note.textContent=transfer.note||(transfer.kind==='redpacket'?'恭喜发财':'转账');
     const state=document.createElement('em');state.textContent=walletStatusLabel(transfer.status);
     card.append(title,amount,note,state);
     if(transfer.status==='pending'){
         const buttons=document.createElement('div');buttons.className='lp-payment-actions';
         const options=transfer.from==='contact'
-            ?[['accept','收款'],['decline','拒收']]
+            ?[['accept',transfer.kind==='redpacket'?'拆红包':'收款'],['decline','拒收']]
             :[['cancel','撤回']];
         for(const [action,label] of options){
             const button=document.createElement('button');button.type='button';button.textContent=label;
@@ -3916,7 +3921,7 @@ function renderWallet(ctx=context()) {
             const button=document.createElement('button');button.type='button';
             button.dataset.paymentAction=tx.from==='contact'?'accept':'cancel';
             button.dataset.paymentId=tx.id;
-            button.textContent=tx.from==='contact'?'收款':'撤回';
+            button.textContent=tx.from==='contact'?(tx.kind==='redpacket'?'拆红包':'收款'):'撤回';
             button.className='lp-wallet-pending-button';row.append(button);
         }
         nodes.walletPending.append(row);
@@ -4010,6 +4015,10 @@ async function handlePaymentAction(paymentId,action) {
         walletSettleTransfer(root,paymentId,next);
         await writeData(ctx,{...root,__contactId:PRIMARY_CONTACT_ID});
         if(sameSession(session)){
+            if(payment.kind==='redpacket'&&payment.from==='contact'&&next==='accepted'){
+                lastOpenedRedpacketId=payment.id;
+                setTimeout(()=>{if(lastOpenedRedpacketId===payment.id)lastOpenedRedpacketId='';},900);
+            }
             const done=walletTransferLabel(payment)+' · '+walletStatusLabel(next);
             setStatus(done);recordActivity('交易处理',done,'success');
         }
