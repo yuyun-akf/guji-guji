@@ -2434,14 +2434,18 @@ function renderDiagnostics() {
     }
 }
 
+function weiboStoryContext(){
+ const c=context();
+ return (c?.chat||[]).slice(-16).map(m=>String(m?.mes||m?.text||'').slice(0,350)).join('\n').slice(-3200);
+}
 async function loadWeiboController(){
  if(weiboController)return weiboController;
  if(weiboLoadPromise)return weiboLoadPromise;
- weiboLoadPromise=import('./weibo.js?v=0.10.0').then(module=>{
+ weiboLoadPromise=import('./weibo.js?v=0.11.0').then(module=>{
   weiboController=module.createWeiboModule({
    context,getNodes:()=>nodes,readRootData,writeData,readData,phoneGenerate,
    selectedCharacter,currentPersona,stripModelReasoning,publishPhoneAppEvent,
-   recordActivity,recordError
+   recordActivity,recordError,storyContext:weiboStoryContext
   });return weiboController;
  }).catch(error=>{
   if(nodes?.weiboFeedback)nodes.weiboFeedback.textContent='群星加载失败：'+String(error.message||error);
@@ -2484,10 +2488,9 @@ function setScreen(screen) {
         root.querySelectorAll('.lp-tabbar button[data-lp-open]').forEach(button=>button.classList.toggle('lp-tab-active',button.dataset.lpOpen===screen));
     }
     if (screen === 'settings' && screen !== previous) {
-        loadPhoneApiUI();loadPhoneMessageStyle();loadContextSettings();loadPhoneClockPrefs();
-        renderDesktopSort();void populateConfigLists();
+        loadPhoneApiUI();loadPhoneMessageStyle();loadContextSettings();loadPhoneClockPrefs();void populateConfigLists();
     }
-    if (screen === 'theme') applyTheme();
+    if (screen === 'theme') {applyTheme();renderDesktopSort();}
     if (screen === 'discoverNpc' && screen !== previous) {populateNpcWorldSelect();renderNpcCandidates();}
     if (screen === 'presetPicker') {nodes.presetSearch.value=''; showPresetEntries();}
     if (screen === 'worldPicker') {nodes.worldSearch.value=''; void showWorldEntries();}
@@ -4955,6 +4958,8 @@ function openPhone() {
         syncPhoneViewport();
         nodes.launcher.setAttribute('aria-label', '隐藏咕叽咕机');
         securityUnlocked=!phoneLockSettings().enabled;
+        lockSetupStep=0;
+        if(nodes?.lockPin){nodes.lockPin.value='';nodes.lockRepeat.value='';}
         setScreen(securityUnlocked?'home':'lock');
         render();
         void tickStoryClock({onOpen:true});
@@ -5635,16 +5640,16 @@ function mount() {
     floating.hidden = !floatLauncherEnabled();
     document.body.append(floating);
     nodes = Object.fromEntries(['title', 'subtitle', 'back', 'close', 'time',
-        'homeTime','homeDate','homeScene','homePages','homeDots','homeSwipe','homeEdit','homeCharacter','homeLogCount','homeUnreadCount',
-        'lockTime','lockDate','lockPin','lockRepeat','lockRepeatRow','lockIntro','lockFeedback','lockAction','lockExit','homeExit',
-        'weiboGenerate','weiboFeedback','weiboFeed','weiboHot','weiboDetail','weiboTabs','weiboComposeText','weiboPublish','weiboDetailBack',
+        'homeTime','homeDate','homeScene','homePages','homeDots','homeSwipe','homeHotSearch','homeCharacter','homeLogCount','homeUnreadCount',
+        'lockTime','lockDate','lockPin','lockRepeat','lockDots','lockKeypad','lockIntro','lockFeedback','lockAction','lockExit','homeExit','lockOldPin','lockNewPin','lockConfirmPin','lockChangePin','lockChangeFeedback',
+        'weiboGenerate','weiboFeedback','weiboFeed','weiboHot','weiboNearby','weiboCompose','weiboMe','weiboDetail','weiboTabs','weiboComposeText','weiboPublish','weiboDetailBack',
         'desktopSortList','clockMode','clockRate','clockContinueClosed','clockCustomFields','clockSave','lockEnabled','lockSaveEnabled','notification','inlineNotification','calendarPrev','calendarNext','calendarHeading','calendarViews','calendarGrid','calendarSelected','calendarSummary','calendarSelectedTime','calendarStoryToday','calendarRealToday','calendarSaveTime','calendarExactSave',
         'momentsPost', 'momentsText', 'momentsFeed', 'momentFeedback','momentsPreview','momentImageUpload','momentRemovePhoto','myAvatarUpload','myAvatarFallback','myAvatarStatus','myIdentity', 'myAvatar', 'myPersona', 'autoMessagesMode','autoMessagesDays','autoMomentsMode','autoMomentsDays','relationAutoSync','phoneInPast','characterRequests','momentInteractions','autonomyStatus','autonomyFeedback','saveAutonomy','rescanRelations','testAutonomy', 'stickerUpload','stickerPackUpload', 'stickerStatus', 'stickerLibrary',
         'friendLabel', 'friendActions','profileAvatar','profileName','profileDescription','contactEvidence','contactExchange','contactLinks','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcScanState','npcCandidates','npcSaveCandidates','storyPeopleList','viewPrimaryContact','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','avatarUserFile','resetCharAvatar','resetUserAvatar',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
         'walletBalance','walletPending','walletBills','walletAdjustInput','walletSaveBalance','walletToChat','walletStatus','bridgeEvents',
-        'presetSource','presetInfo','presetEntries','worldBookList','worldSelectionSummary','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','saveSelections','savePresetPicker','saveWorldPicker','selectionSaveStatus','readMainlineMemory','memorySource','phoneToMainline','eventBridge','saveContextSettings','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper',
+        'presetSource','presetInfo','presetEntries','worldBookList','worldSelectionSummary','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','saveSelections','savePresetPicker','saveWorldPicker','selectionSaveStatus','readMainlineMemory','memorySource','phoneToMainline','eventBridge','saveContextSettings','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themePreset','themeCustomColors','themeSaveColors','themeWallpaperPreview',
         'diagnostics', 'diagnosticState', 'copyDiagnostics', 'clearDiagnostics',
         'messages','messageActions','quotedPreview','quotedText','cancelQuote','emojiPanel','morePanel','chatImageInput','timeJumpPanel','timeJumpHint','timeJumpCurrent','timeJumpAmount','timeJumpUnit','timeJumpApply','timeJumpClose','paymentPanel','paymentTitle','paymentKind','paymentAmount','paymentNote','paymentBalance','paymentClose','paymentSend','input', 'generate', 'send', 'launcher']
         .map(key => [key, key === 'launcher' ? floating : root.querySelector(`[data-lp="${key}"]`)]));
@@ -5653,7 +5658,8 @@ function mount() {
     nodes.lockAction.addEventListener('click',()=>void phoneUnlock());
     nodes.lockExit.addEventListener('click',closePhone);
     nodes.homeExit.addEventListener('click',closePhone);
-    for(const field of [nodes.lockPin,nodes.lockRepeat])field.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();void phoneUnlock();}});
+    nodes.lockKeypad.addEventListener('click',e=>{const b=e.target.closest('[data-lock-digit]');if(b)lockDigit(b.dataset.lockDigit);});
+    nodes.lockChangePin.addEventListener('click',()=>void changePhonePin());
     nodes.homeSwipe.addEventListener('touchstart',e=>{desktopTouchX=e.touches?.[0]?.clientX??null;},{passive:true});
     nodes.homeSwipe.addEventListener('touchend',e=>{
         if(desktopTouchX===null)return;
@@ -5664,22 +5670,21 @@ function mount() {
     nodes.homeDots.addEventListener('click',e=>{
         const b=e.target.closest('[data-desktop-page]');if(b)switchDesktopPage(Number(b.dataset.desktopPage));
     });
-    nodes.homeEdit.addEventListener('click',()=>{
-        setScreen('settings');nodes.desktopSortList.scrollIntoView?.({behavior:'smooth',block:'start'});
-    });
+    nodes.homeHotSearch.addEventListener('click',()=>{setScreen('weibo');void loadWeiboController().then(w=>w?.selectTab('discover'));});
     nodes.desktopSortList.addEventListener('click',e=>{
         const b=e.target.closest('[data-desktop-move]');if(b)moveDesktopApp(b.dataset.desktopKey,Number(b.dataset.desktopMove));
     });
     nodes.clockMode.addEventListener('change',()=>{nodes.clockCustomFields.hidden=nodes.clockMode.value!=='custom';});
     nodes.clockSave.addEventListener('click',()=>void savePhoneClockPrefs());
     nodes.lockSaveEnabled.addEventListener('click',()=>void savePhoneLockEnabled());
-    nodes.weiboGenerate.addEventListener('click',()=>void loadWeiboController().then(w=>w?.generate()));
+    nodes.weiboGenerate.addEventListener('click',()=>void loadWeiboController().then(w=>w?.generate(weiboController?.state.tab==='nearby'?'nearby':'home')));
     nodes.weiboPublish.addEventListener('click',()=>void loadWeiboController().then(w=>w?.publish()));
     nodes.weiboDetailBack.addEventListener('click',()=>weiboController?.back());
     nodes.weiboTabs.addEventListener('click',e=>{
         const b=e.target.closest('[data-weibo-tab]');if(b)weiboController?.selectTab(b.dataset.weiboTab);
     });
     root.addEventListener('click',e=>{if(e.target.closest('[data-wb-action],[data-wb-topic]'))weiboController?.handleClick(e);});
+    root.addEventListener('change',e=>{if(e.target.closest('[data-wb-field="accountAvatar"],[data-wb-field="ownerAvatar"]'))weiboController?.handleFile(e);});
     nodes.launcher.addEventListener('click', event => {
         if(draggedClick(event)){event.preventDefault?.();return;}
         const opening = !root.classList.contains('lp-open');
@@ -5773,7 +5778,9 @@ function mount() {
     nodes.worldEntries.addEventListener('change', event => { if (event.target?.dataset?.configKind) onConfigChange(event.target); });
     nodes.themeFont.addEventListener('change', () => changeTheme({font:nodes.themeFont.value}));
     nodes.themeWallpaper.addEventListener('change', e => loadWallpaper(e.target.files?.[0]));
-    nodes.themeResetWallpaper.addEventListener('click', () => changeTheme({wallpaper:''}));
+    nodes.themeResetWallpaper.addEventListener('click',resetWallpaper);
+    nodes.themePreset.addEventListener('change',()=>changeTheme({palette:nodes.themePreset.value}));
+    nodes.themeSaveColors.addEventListener('click',saveThemeColors);
     // All default icons use the same single-color line style.
     nodes.floatingLauncher.addEventListener('change', event => setFloatLauncherEnabled(event.target.checked));
     nodes.send.addEventListener('click',send);
@@ -5880,6 +5887,7 @@ function mount() {
     autonomousTicker=setInterval(()=>{
         void (async()=>{await syncMainlinePayments(context());await syncStoryRelationships(context());})();
         void tickAutonomousActivity();void tickMomentInteractions();void maybeAutoFriendRequest(context());
+        void weiboController?.tick();
     },60000);
     renderDiagnostics();
     const ctx = context();
