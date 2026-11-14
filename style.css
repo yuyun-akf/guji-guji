@@ -1,9 +1,9 @@
 #st-little-phone-root {
-  --lp-ink: #363042;
+  --lp-ink: #35568a;
   --lp-soft-ink: #777082;
-  --lp-border: #e8dfea;
-  --lp-lilac: #a48cc8;
-  --lp-paper: #fffbff;
+  --lp-border: #e0e8f2;
+  --lp-lilac: #8b9bc1;
+  --lp-paper: #e0e8f2;
   position: fixed;
   inset: 0;
   z-index: 2147483000;
@@ -24,7 +24,7 @@
 #st-little-phone-root button:focus-visible,
 #st-little-phone-root input:focus-visible,
 #st-little-phone-root textarea:focus-visible {
-  outline: 2px solid #6e4da4;
+  outline: 2px solid #35568a;
   outline-offset: 2px;
 }
 
@@ -48,7 +48,7 @@
   background: var(--lp-paper);
   border: 1px solid var(--lp-border);
   border-radius: 22px;
-  box-shadow: 0 14px 42px #24172e66;
+  box-shadow: 0 14px 42px #35568a66;
   pointer-events: auto;
 }
 
@@ -67,7 +67,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 15px 16px 12px;
-  background: linear-gradient(145deg, #f9f4ff, #eee8fb);
+  background: linear-gradient(145deg, #e0e8f2, #e0e8f2);
   border-bottom: 1px solid var(--lp-border);
 }
 
@@ -81,10 +81,10 @@
   width: 34px;
   height: 34px;
   padding: 0;
-  border: 1px solid #e7dced;
+  border: 1px solid #e0e8f2;
   border-radius: 11px;
   background: #ffffffb8;
-  color: #6f568c;
+  color: #35568a;
   font-size: 28px;
   line-height: 1;
   cursor: pointer;
@@ -101,19 +101,19 @@
   gap: 15px;
   padding: 16px 14px 18px;
   overflow-y: auto;
-  background: linear-gradient(160deg, #faf2ff 0%, #f5f2fc 48%, #fffafd 100%);
+  background: linear-gradient(160deg, #e0e8f2 0%, #e0e8f2 48%, #f1d6d6 100%);
 }
 
 #st-little-phone-root .lp-home-hero {
   padding: 21px 17px;
-  border: 1px solid #efdef7;
+  border: 1px solid #e0e8f2;
   border-radius: 23px;
-  background: linear-gradient(135deg, #f1dff7 0%, #dce9fb 100%);
-  box-shadow: 0 8px 23px #7361931c;
+  background: linear-gradient(135deg, #e0e8f2 0%, #dce9fb 100%);
+  box-shadow: 0 8px 23px #35568a1c;
 }
 
 #st-little-phone-root .lp-home-greeting {
-  color: #71578f;
+  color: #35568a;
   font-size: 12px;
   letter-spacing: .3px;
 }
@@ -122,20 +122,20 @@
   margin-top: 11px;
   font-size: clamp(20px, 5vw, 27px);
   font-weight: 750;
-  color: #423754;
+  color: #35568a;
   overflow-wrap: anywhere;
 }
 
 #st-little-phone-root .lp-home-character {
   margin-top: 8px;
-  color: #635473;
+  color: #35568a;
   font-size: 12px;
 }
 
 #st-little-phone-root .lp-home-summary {
   padding-left: 3px;
   font-size: 12px;
-  color: #83738c;
+  color: #8b9bc1;
 }
 
 #st-little-phone-root .lp-app-grid {
@@ -155,7 +155,7 @@
   border: 0;
   border-radius: 13px;
   background: transparent;
-  color: #463950;
+  color: #35568a;
   font: inherit;
   font-size: 12px;
   text-align: center;
@@ -163,19 +163,19 @@
 }
 
 #st-little-phone-root .lp-app-tile:active {
-  background: #b8a4d12e;
+  background: #8b9bc12e;
 }
 
 #st-little-phone-root .lp-app-tile small {
   font-size: 10px;
-  color: #8b8195;
+  color: #8b9bc1;
   overflow-wrap: anywhere;
 }
-#st-little-phone-root .lp-app-tile small.lp-has-unread{color:#d93d65;font-weight:700;}
+#st-little-phone-root .lp-app-tile small.lp-has-unread{color:#e39f9f;font-weight:700;}
 #st-little-phone-root .lp-unread-badge{display:inline-grid;place-items:center;min-width:21px;height:21px;padding:0 5px;border-radius:12px;background:#ee4a62;color:white;font-size:11px;font-weight:700;margin-left:auto;}
-#st-little-phone-root .lp-notification{position:fixed;top:max(18px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);max-width:min(350px,88vw);border:1px solid #ddc7ed;border-radius:15px;padding:12px 18px;background:#fffbff;color:#604675;box-shadow:0 7px 25px #35234d55;z-index:2147483600;pointer-events:auto;cursor:pointer;font:inherit;}
+#st-little-phone-root .lp-notification{position:fixed;top:max(18px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);max-width:min(350px,88vw);border:1px solid #8b9bc1;border-radius:15px;padding:12px 18px;background:#e0e8f2;color:#35568a;box-shadow:0 7px 25px #35568a55;z-index:2147483600;pointer-events:auto;cursor:pointer;font:inherit;}
 #st-little-phone-root .lp-notification[hidden]{display:none!important;}
-#st-little-phone-root .lp-inline-notification{flex:0 0 auto;display:block;width:100%;padding:9px 13px;border:0;background:#e9d9f7;color:#593c74;font-size:12px;text-align:left;cursor:pointer;}
+#st-little-phone-root .lp-inline-notification{flex:0 0 auto;display:block;width:100%;padding:9px 13px;border:0;background:#e0e8f2;color:#35568a;font-size:12px;text-align:left;cursor:pointer;}
 #st-little-phone-root .lp-inline-notification[hidden]{display:none!important;}
 
 #st-little-phone-root .lp-app-icon {
@@ -184,10 +184,10 @@
   width: clamp(49px, 15vw, 60px);
   height: clamp(49px, 15vw, 60px);
   margin-bottom: 3px;
-  border: 1px solid #ece2f0;
+  border: 1px solid #e0e8f2;
   border-radius: 17px;
-  background: #fffdfedb;
-  box-shadow: 0 6px 14px #4e3d6830;
+  background: #f1d6d6db;
+  box-shadow: 0 6px 14px #35568a30;
   font-size: 29px;
 }
 
@@ -222,8 +222,8 @@
 
 #st-little-phone-root .lp-chat-contact {
   padding: 8px 13px;
-  color: #78648c;
-  background: #fcf8ff;
+  color: #35568a;
+  background: #e0e8f2;
   border-bottom: 1px solid var(--lp-border);
   font-size: 12px;
 }
@@ -285,7 +285,7 @@
   flex: 0 0 auto;
   padding: 5px 12px 8px;
   border-bottom: 1px solid var(--lp-border);
-  background: #fcf9ff;
+  background: #e0e8f2;
 }
 
 #st-little-phone-root .lp-friend-main {
@@ -298,7 +298,7 @@
 
 #st-little-phone-root .lp-friend-label {
   font-size: 12px;
-  color: #715a94;
+  color: #35568a;
   font-weight: 600;
 }
 
@@ -315,9 +315,9 @@
 #st-little-phone-root .lp-friend-actions button,
 #st-little-phone-root .lp-friend-editor button,
 #st-little-phone-root .lp-diagnostic-head button {
-  border: 1px solid #d9c9e6;
+  border: 1px solid #8b9bc1;
   background: #fff;
-  color: #70568c;
+  color: #35568a;
   font: inherit;
   font-size: 11px;
   border-radius: 8px;
@@ -367,7 +367,7 @@
   min-height: 20px;
   min-width: 0;
   font-size: 11px;
-  color: #79639a;
+  color: #8b9bc1;
   overflow-wrap: anywhere;
 }
 
@@ -377,11 +377,11 @@
 
 #st-little-phone-root .lp-diagnostic-toggle {
   flex: 0 0 auto;
-  border: 1px solid #dcd0ec;
+  border: 1px solid #e0e8f2;
   border-radius: 9px;
-  background: #f5edfc;
+  background: #e0e8f2;
   padding: 5px 9px;
-  color: #7d668c;
+  color: #35568a;
   font: inherit;
   font-size: 11px;
   font-weight: 650;
@@ -396,24 +396,24 @@
 
 #st-little-phone-root .lp-activity {
   padding: 5px 14px;
-  color: #6d578b;
-  background: #f2eafb;
+  color: #35568a;
+  background: #e0e8f2;
   font-size: 12px;
 }
 
 #st-little-phone-root .lp-diagnostics {
   gap: 10px;
   padding: 13px;
-  color: #594e66;
-  background: #fbf9fe;
+  color: #35568a;
+  background: #e0e8f2;
 }
 
 #st-little-phone-root .lp-diagnostic-state {
   flex: 0 0 auto;
   padding: 11px;
-  border: 1px solid #e6daee;
+  border: 1px solid #e0e8f2;
   border-radius: 12px;
-  background: #f2edfa;
+  background: #e0e8f2;
   font-size: 12px;
   font-weight: 600;
   overflow-wrap: anywhere;
@@ -432,7 +432,7 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 0 10px;
-  border: 1px solid #ebe1f1;
+  border: 1px solid #e0e8f2;
   background: #fff;
   border-radius: 12px;
   font-size: 11px;
@@ -457,10 +457,10 @@
 #st-little-phone-root .lp-clear-logs,
 #st-little-phone-root .lp-settings-link {
   padding: 10px 13px;
-  border: 1px solid #e0d3ea;
+  border: 1px solid #e0e8f2;
   border-radius: 11px;
   background: #fff;
-  color: #735690;
+  color: #35568a;
   font: inherit;
   font-size: 12px;
   cursor: pointer;
@@ -470,7 +470,7 @@
   gap: 10px;
   overflow-y: auto;
   padding: 17px 14px;
-  background: #fffbff;
+  background: #e0e8f2;
 }
 
 #st-little-phone-root .lp-settings h2 {
@@ -480,7 +480,7 @@
 
 #st-little-phone-root .lp-settings p {
   margin: 0;
-  color: #85758c;
+  color: #8b9bc1;
   font-size: 12px;
 }
 
@@ -491,7 +491,7 @@
 
 #st-little-phone-root .lp-settings-status {
   min-height: 18px;
-  color: #76618c;
+  color: #35568a;
   font-size: 12px;
 }
 
@@ -508,7 +508,7 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 12px 13px 18px;
-  background: linear-gradient(#fffaff, #f8f6fb);
+  background: linear-gradient(#e0e8f2, #e0e8f2);
 }
 
 #st-little-phone-root .lp-empty {
@@ -541,7 +541,7 @@
   padding: 10px 13px;
   max-width: 100%;
   color: var(--lp-ink);
-  border: 1px solid #e9e1ed;
+  border: 1px solid #e0e8f2;
   border-radius: 16px 16px 16px 4px;
   background: #fff;
   font-size: 14px;
@@ -551,8 +551,8 @@
 }
 
 #st-little-phone-root .lp-mine .lp-bubble {
-  background: #e7def5;
-  border-color: #d9cbef;
+  background: #e0e8f2;
+  border-color: #e0e8f2;
   border-radius: 16px 16px 4px 16px;
 }
 
@@ -566,7 +566,7 @@
 #st-little-phone-root .lp-system .lp-bubble {
   padding: 6px 10px;
   border: none;
-  background: #ece7ee;
+  background: #e0e8f2;
   color: #746b78;
   border-radius: 9px;
   font-size: 11px;
@@ -575,8 +575,8 @@
 #st-little-phone-root .lp-typing {
   padding: 7px 10px;
   border-radius: 12px;
-  background: #f0eaf5;
-  color: #76618c;
+  background: #e0e8f2;
+  color: #35568a;
   font-size: 12px;
   animation: lp-typing-pulse 1.4s ease-in-out infinite;
 }
@@ -590,7 +590,7 @@
 }
 
 #st-little-phone-root .lp-message-time {
-  color: #988da1;
+  color: #8b9bc1;
   font-size: 10px;
   padding: 0 4px;
 }
@@ -616,7 +616,7 @@
   padding: 9px 11px;
   background: #fff;
   color: var(--lp-ink);
-  border: 1px solid #e0d6e5;
+  border: 1px solid #e0e8f2;
   border-radius: 12px;
   font: inherit;
 }
@@ -627,7 +627,7 @@
   padding: 0 14px;
   border: 0;
   border-radius: 12px;
-  background: #927bbe;
+  background: #8b9bc1;
   color: white;
   font-weight: 600;
   font-size: 13px;
@@ -648,14 +648,14 @@
   padding: 10px 12px;
   border: 1px solid var(--lp-border);
   border-radius: 12px;
-  background: #f6f1fa;
+  background: #e0e8f2;
   cursor: pointer;
 }
 
 #st-little-phone-root .lp-entry-option input {
   width: 17px;
   height: 17px;
-  accent-color: #927bbe;
+  accent-color: #8b9bc1;
 }
 #st-little-phone-root .lp-settings-hint {
   margin: 2px 0 10px;
@@ -665,11 +665,11 @@
   line-height: 1.6;
 }
 #st-little-phone-root .lp-worldbook-list{display:grid;gap:7px;padding:7px 0 11px;max-height:250px;overflow-y:auto;}
-#st-little-phone-root .lp-book-option{display:flex;gap:10px;align-items:center;padding:10px 11px;border:1px solid var(--lp-border);border-radius:10px;background:#f8f4fb;overflow-wrap:anywhere;}
-#st-little-phone-root .lp-book-option input{flex:0 0 17px;width:17px;height:17px;accent-color:#9e7cbd;}
-#st-little-phone-root .lp-worldbook-summary{font-size:12px;color:#756582;padding:7px 3px;line-height:1.5;}
-#st-little-phone-root .lp-worldbook-group{margin:12px 0 20px;padding:9px;border:1px solid var(--lp-border);border-radius:12px;background:#fbf8fc;}
-#st-little-phone-root .lp-worldbook-group h3{font-size:14px;margin:4px 5px 10px;color:#675078;}
+#st-little-phone-root .lp-book-option{display:flex;gap:10px;align-items:center;padding:10px 11px;border:1px solid var(--lp-border);border-radius:10px;background:#e0e8f2;overflow-wrap:anywhere;}
+#st-little-phone-root .lp-book-option input{flex:0 0 17px;width:17px;height:17px;accent-color:#8b9bc1;}
+#st-little-phone-root .lp-worldbook-summary{font-size:12px;color:#35568a;padding:7px 3px;line-height:1.5;}
+#st-little-phone-root .lp-worldbook-group{margin:12px 0 20px;padding:9px;border:1px solid var(--lp-border);border-radius:12px;background:#e0e8f2;}
+#st-little-phone-root .lp-worldbook-group h3{font-size:14px;margin:4px 5px 10px;color:#35568a;}
 
 #gujiguji-wand-entry .gujiguji-wand-button {
   width: 100%;
@@ -681,7 +681,7 @@
 }
 
 #gujiguji-wand-entry .gujiguji-wand-button:focus-visible {
-  outline: 2px solid #927bbe;
+  outline: 2px solid #8b9bc1;
   outline-offset: 2px;
 }
 
@@ -715,7 +715,7 @@
   border-radius: 20px;
   background: transparent;
   box-shadow: none;
-  color: #7c65aa;
+  color: #8b9bc1;
   cursor: grab;
   pointer-events: auto;
   touch-action: none;
@@ -726,18 +726,18 @@
 }
 #gujiguji-floating-launcher .lp-launcher-art,
 #gujiguji-floating-launcher .lp-launcher-art svg { display: block; width: 48px; height: 48px; pointer-events: none; }
-#gujiguji-floating-launcher .lp-launcher-art { filter: drop-shadow(0 3px 3px #53406b38); }
+#gujiguji-floating-launcher .lp-launcher-art { filter: drop-shadow(0 3px 3px #35568a38); }
 #gujiguji-floating-launcher[data-dragging="true"] { cursor: grabbing; }
-#gujiguji-floating-launcher[data-dragging="true"] .lp-launcher-art { filter: drop-shadow(0 5px 5px #53406b66); }
+#gujiguji-floating-launcher[data-dragging="true"] .lp-launcher-art { filter: drop-shadow(0 5px 5px #35568a66); }
 #gujiguji-floating-launcher[hidden] { display: none !important; }
 #gujiguji-extension-settings { margin: 7px 0; }
 #gujiguji-extension-settings .gujiguji-host-controls { padding: 10px; }
 #gujiguji-extension-settings .gujiguji-host-controls .menu_button { width: 100%; margin-bottom: 11px; }
 #gujiguji-extension-settings .gujiguji-host-controls .checkbox_label { display: flex; align-items: center; gap: 8px; }
 #gujiguji-extension-settings .gujiguji-host-controls small { display: block; margin-top: 8px; opacity: .8; line-height: 1.5; }
-#st-little-phone-root .lp-sticker-more { grid-column: 1 / -1; width: 100%; padding: 9px; border: 1px solid #ded0ea; border-radius: 9px; background: #f7f1fb; color: #6b5384; cursor: pointer; }
+#st-little-phone-root .lp-sticker-more { grid-column: 1 / -1; width: 100%; padding: 9px; border: 1px solid #e0e8f2; border-radius: 9px; background: #e0e8f2; color: #35568a; cursor: pointer; }
 #st-little-phone-root .lp-home {
-  background-image: var(--lp-wallpaper), linear-gradient(160deg,#faf2ff,#f5f2fc 50%,#fffafd);
+  background-image: var(--lp-wallpaper), linear-gradient(160deg,#e0e8f2,#e0e8f2 50%,#f1d6d6);
   background-position: center;
   background-size: cover;
 }
@@ -761,7 +761,7 @@
 #st-little-phone-root .lp-settings-card {
   border:1px solid var(--lp-border);
   border-radius:10px; padding:12px;
-  background:#f7f2fb;
+  background:#e0e8f2;
   color:var(--lp-ink);
   font-size:12px;
   overflow-wrap:anywhere;
@@ -779,7 +779,7 @@
   display:flex; gap:8px;
   align-items:center;
   padding:9px 5px;
-  border-bottom:1px solid #f2edf5;
+  border-bottom:1px solid #e0e8f2;
   overflow-wrap:anywhere;
   cursor:pointer;
 }
@@ -834,7 +834,7 @@
 #st-little-phone-root .lp-api-custom[hidden] { display:none !important; }
 #st-little-phone-root .lp-api-key-state { margin-top:5px; font-size:12px; color:var(--lp-soft-ink); }
 #st-little-phone-root .lp-settings-link { flex:0 0 auto; min-height:44px; text-align:center; }
-#st-little-phone-root .lp-picker { padding:14px; gap:12px; min-height:0; overflow:hidden; background:#fcf9ff; }
+#st-little-phone-root .lp-picker { padding:14px; gap:12px; min-height:0; overflow:hidden; background:#e0e8f2; }
 #st-little-phone-root .lp-picker-head {
   flex:0 0 auto;
   padding:7px 0;
@@ -862,14 +862,14 @@
   overscroll-behavior:contain;
   -webkit-overflow-scrolling:touch;
   touch-action:pan-y;
-  border:1px solid #e6deec;
+  border:1px solid #e0e8f2;
   border-radius:12px;
   padding:8px;
   background:#fff;
 }
 #st-little-phone-root .lp-picker-row {
   padding:10px 8px;
-  border-bottom:1px solid #eee8f2;
+  border-bottom:1px solid #e0e8f2;
   overflow-wrap:anywhere;
   word-break:break-word;
 }
@@ -890,7 +890,7 @@
   width:22px;
   height:22px;
   margin:0;
-  accent-color:#9777bb;
+  accent-color:#8b9bc1;
 }
 #st-little-phone-root .lp-picker-title {
   flex:1 1 auto;
@@ -908,7 +908,7 @@
 }
 #st-little-phone-root .lp-picker-row details {
   margin:5px 0 0 34px;
-  color:#735c91;
+  color:#35568a;
   font-size:12px;
 }
 #st-little-phone-root .lp-picker-full {
@@ -917,7 +917,7 @@
   margin-top:9px;
   padding:11px;
   border-radius:10px;
-  background:#f7f3fa;
+  background:#e0e8f2;
   color:#514b56;
   line-height:1.6;
   white-space:pre-wrap;
@@ -929,7 +929,7 @@
   min-height:54px;
   padding:9px 14px;
   gap:10px;
-  background:#f9f8fb;
+  background:#e0e8f2;
 }
 #st-little-phone-root[data-screen="chat"] .lp-subtitle { display:none; }
 #st-little-phone-root .lp-header-menu {
@@ -965,18 +965,18 @@
   gap:12px;
   background:#fff;
   border:0;
-  border-bottom:1px solid #f2eff4;
+  border-bottom:1px solid #e0e8f2;
   padding:11px 15px;
   text-align:left;
   font:inherit;
-  color:#2f2935;
+  color:#35568a;
   cursor:pointer;
 }
 #st-little-phone-root .lp-list-action {min-height:57px;}
 #st-little-phone-root .lp-list-action > span:first-child {
   display:grid;place-items:center;
   width:34px;height:34px;
-  color:#fff;background:#a990c8;
+  color:#fff;background:#8b9bc1;
   border-radius:9px;font-size:20px;
 }
 #st-little-phone-root .lp-list-action > span:last-child {
@@ -989,7 +989,7 @@
   border-radius:9px;
   object-fit:cover;
   flex-shrink:0;
-  background:#ede7f0;
+  background:#e0e8f2;
 }
 #st-little-phone-root .lp-conversation-row .lp-person-avatar {
   width:49px;height:49px;
@@ -1016,13 +1016,13 @@
   overflow:hidden;
   text-overflow:ellipsis;
 }
-#st-little-phone-root .lp-chevron {color:#aaa0b0;font-size:20px;}
+#st-little-phone-root .lp-chevron {color:#8b9bc1;font-size:20px;}
 #st-little-phone-root .lp-tabbar {
   flex:0 0 auto;
   display:flex;
   min-height:56px;
   background:#fff;
-  border-top:1px solid #ede9f0;
+  border-top:1px solid #e0e8f2;
 }
 #st-little-phone-root .lp-tabbar button {
   flex:1;
@@ -1034,8 +1034,8 @@
 }
 #st-little-phone-root .lp-tabbar .lp-tab-active {
   font-weight:650;
-  color:#8264a5;
-  border-bottom:3px solid #a48cc8;
+  color:#8b9bc1;
+  border-bottom:3px solid #8b9bc1;
 }
 #st-little-phone-root .lp-list-empty {
   text-align:center;
@@ -1079,16 +1079,16 @@
   flex:1;
   min-height:42px;
   padding:10px;
-  border:1px solid #e3dbe8;
+  border:1px solid #e0e8f2;
   border-radius:10px;
   background:#fff;
-  color:#745c8d;
+  color:#35568a;
   font:inherit;
   cursor:pointer;
 }
 #st-little-phone-root .lp-profile-chat {
   flex:0 0 auto;
-  color:#fff;background:#9880bd;
+  color:#fff;background:#8b9bc1;
 }
 #st-little-phone-root .lp-profile-setup,
 #st-little-phone-root .lp-profile-upload {
@@ -1150,20 +1150,20 @@
   border-radius:5px 15px 15px 15px;
   border:1px solid #eee;
   background:#fff;
-  color:#29252f;
+  color:#35568a;
   line-height:1.55;
   font-size:14px;
   white-space:pre-wrap;
   word-break:break-word;
 }
 #st-little-phone-root .lp-mine .lp-bubble {
-  background:#ded1f1;
-  border:1px solid #ded1f1;
+  background:#e0e8f2;
+  border:1px solid #e0e8f2;
   border-radius:15px 5px 15px 15px;
 }
 #st-little-phone-root .lp-message-time {
   padding:3px 1px;
-  color:#a39aaa;
+  color:#8b9bc1;
   font-size:10px;
 }
 #st-little-phone-root .lp-message-remove {
@@ -1188,7 +1188,7 @@
   font-size:13px;
   padding:9px 12px;
   background:#fff;
-  color:#9987ad;
+  color:#8b9bc1;
   border-radius:6px 16px 16px 16px;
 }
 #st-little-phone-root .lp-chat-error {
@@ -1242,7 +1242,7 @@
   text-align:left;
   font:inherit;
   font-size:14px;
-  color:#463e50;
+  color:#35568a;
   cursor:pointer;
 }
 #st-little-phone-root .lp-option-file input {
@@ -1260,7 +1260,7 @@
   align-items:stretch;
   gap:14px;
   padding:18px 14px;
-  background:#f7f5f9;
+  background:#e0e8f2;
 }
 #st-little-phone-root .lp-npc-editor h2 {
   font-size:17px;
@@ -1281,11 +1281,11 @@
 #st-little-phone-root .lp-profile-remark input {
   width:100%;
   min-height:44px;
-  border:1px solid #e3dce9;
+  border:1px solid #e0e8f2;
   border-radius:11px;
   background:white;
   padding:10px 12px;
-  color:#363042;
+  color:#35568a;
   font:inherit;
   font-size:14px;
 }
@@ -1300,7 +1300,7 @@
   border:0;
   border-radius:10px;
   padding:10px 14px;
-  background:#977fbd;
+  background:#8b9bc1;
   color:white;
   font:inherit;
   cursor:pointer;
@@ -1336,13 +1336,13 @@
   align-items:stretch;
   padding:14px;
   gap:11px;
-  background:#f7f5f9;
+  background:#e0e8f2;
   min-height:0;
   overflow-y:auto;
   -webkit-overflow-scrolling:touch;
 }
 #st-little-phone-root .lp-npc-discovery > *{flex-shrink:0;}
-#st-little-phone-root .lp-npc-discovery h2 {font-size:17px;line-height:1.4;margin:0;color:#392c4b;}
+#st-little-phone-root .lp-npc-discovery h2 {font-size:17px;line-height:1.4;margin:0;color:#35568a;}
 #st-little-phone-root .lp-npc-discovery p,
 #st-little-phone-root .lp-npc-scan-state {
   font-size:12px;
@@ -1365,11 +1365,11 @@
   display:block;
   min-height:42px;
   width:100%;
-  border:1px solid #dcd4e6;
+  border:1px solid #e0e8f2;
   border-radius:10px;
   padding:9px 11px;
   font-size:13px;
-  color:#42394d;
+  color:#35568a;
   background:#fff;
   font-family:inherit;
 }
@@ -1381,7 +1381,7 @@
   border:0;
   border-radius:11px;
   padding:11px;
-  background:#947bb9;
+  background:#8b9bc1;
   color:#fff;
   font:inherit;
 }
@@ -1400,7 +1400,7 @@
   gap:8px;
   padding:12px;
   border-radius:13px;
-  border:1px solid #e5ddeb;
+  border:1px solid #e0e8f2;
   background:#fff;
   min-width:0;
 }
@@ -1414,12 +1414,12 @@
 #st-little-phone-root .lp-npc-candidate > label input {
   flex:0 0 19px;
   width:19px;height:19px;
-  accent-color:#8a6cb4;
+  accent-color:#8b9bc1;
 }
 #st-little-phone-root .lp-npc-candidate > label strong {font-size:15px;overflow-wrap:anywhere;}
 #st-little-phone-root .lp-npc-candidate small {font-size:11px;color:#968b9d;white-space:normal;overflow-wrap:anywhere;}
 #st-little-phone-root .lp-npc-candidate details summary {
-  cursor:pointer;color:#816c9e;font-size:12px;padding:7px 0;
+  cursor:pointer;color:#8b9bc1;font-size:12px;padding:7px 0;
 }
 #st-little-phone-root .lp-npc-candidate textarea{margin-top:5px;}
 
@@ -1427,38 +1427,38 @@
 #st-little-phone-root .lp-tabbar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));}
 #st-little-phone-root .lp-tabbar button{font-size:12px;min-width:0;padding:8px 2px;}
 #st-little-phone-root .lp-moments-panel{padding:14px;display:flex;flex-direction:column;gap:12px;}
-#st-little-phone-root .lp-moments-panel textarea{width:100%;min-height:85px;resize:vertical;border:1px solid #dcd4e6;border-radius:10px;padding:10px;font:inherit;}
-#st-little-phone-root .lp-moments-panel button{padding:10px;border:0;border-radius:9px;background:#967ab7;color:white;font:inherit;}
+#st-little-phone-root .lp-moments-panel textarea{width:100%;min-height:85px;resize:vertical;border:1px solid #e0e8f2;border-radius:10px;padding:10px;font:inherit;}
+#st-little-phone-root .lp-moments-panel button{padding:10px;border:0;border-radius:9px;background:#8b9bc1;color:white;font:inherit;}
 #st-little-phone-root .lp-moments-feed{display:flex;flex-direction:column;gap:12px;color:#8d8494;}
-#st-little-phone-root .lp-moment{display:flex;flex-direction:column;gap:7px;background:white;border-radius:12px;padding:13px;color:#453b4b;}
+#st-little-phone-root .lp-moment{display:flex;flex-direction:column;gap:7px;background:white;border-radius:12px;padding:13px;color:#35568a;}
 #st-little-phone-root .lp-moment p{white-space:pre-wrap;word-break:break-word;margin:0;font-size:14px;}
 #st-little-phone-root .lp-moment small{color:#9a90a0;font-size:11px;}
 #st-little-phone-root .lp-me-page{padding:14px;}
 #st-little-phone-root .lp-me-title{font-size:17px;padding:10px 2px;}
 #st-little-phone-root .lp-me-identity{background:white;padding:18px;border-radius:10px;margin-bottom:16px;}
-#st-little-phone-root .lp-contact-evidence{font-size:12px;line-height:1.5;color:#8a7997;padding:4px 0;overflow-wrap:anywhere;}
-#st-little-phone-root .lp-contact-exchange{border:1px solid #e0cdec;border-radius:10px;background:white;padding:12px;font:inherit;color:#73518e;}
+#st-little-phone-root .lp-contact-evidence{font-size:12px;line-height:1.5;color:#8b9bc1;padding:4px 0;overflow-wrap:anywhere;}
+#st-little-phone-root .lp-contact-exchange{border:1px solid #e0e8f2;border-radius:10px;background:white;padding:12px;font:inherit;color:#35568a;}
 #st-little-phone-root .lp-npc-check{display:flex!important;flex-direction:row!important;align-items:flex-start;}
 #st-little-phone-root .lp-npc-check input{flex:0 0 18px;width:18px;height:18px;}
-#st-little-phone-root .lp-npc-discover-button{width:100%;min-height:44px;background:#a18abf;color:white;border:0;border-radius:10px;font:inherit;}
-#st-little-phone-root .lp-message-actions{flex:0 0 auto;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;padding:8px;background:#fff;border-top:1px solid #ece7f1;}
+#st-little-phone-root .lp-npc-discover-button{width:100%;min-height:44px;background:#8b9bc1;color:white;border:0;border-radius:10px;font:inherit;}
+#st-little-phone-root .lp-message-actions{flex:0 0 auto;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;padding:8px;background:#fff;border-top:1px solid #e0e8f2;}
 #st-little-phone-root .lp-message-actions[hidden],#st-little-phone-root .lp-emoji-panel[hidden],#st-little-phone-root .lp-more-panel[hidden],#st-little-phone-root .lp-quoted-preview[hidden]{display:none!important;}
-#st-little-phone-root .lp-message-actions button{padding:10px 4px;border:0;border-radius:8px;font:inherit;background:#eee7f4;color:#675574;}
-#st-little-phone-root .lp-quoted-preview{font-size:12px;padding:6px 13px;background:#ece7f3;color:#675874;max-height:53px;display:flex;align-items:center;justify-content:space-between;gap:8px;}
+#st-little-phone-root .lp-message-actions button{padding:10px 4px;border:0;border-radius:8px;font:inherit;background:#e0e8f2;color:#35568a;}
+#st-little-phone-root .lp-quoted-preview{font-size:12px;padding:6px 13px;background:#e0e8f2;color:#35568a;max-height:53px;display:flex;align-items:center;justify-content:space-between;gap:8px;}
 #st-little-phone-root .lp-quoted-preview span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-#st-little-phone-root .lp-quoted-preview button{border:0;background:transparent;color:#675874;font-size:17px;padding:3px 7px;min-width:30px;cursor:pointer;}
-#st-little-phone-root .lp-inline-quote{background:#eeeaf3;border-left:3px solid #aa8ac3;padding:6px;margin-bottom:5px;font-size:11px;color:#73657b;}
+#st-little-phone-root .lp-quoted-preview button{border:0;background:transparent;color:#35568a;font-size:17px;padding:3px 7px;min-width:30px;cursor:pointer;}
+#st-little-phone-root .lp-inline-quote{background:#e0e8f2;border-left:3px solid #8b9bc1;padding:6px;margin-bottom:5px;font-size:11px;color:#35568a;}
 #st-little-phone-root .lp-chat-image{display:block;max-width:100%;max-height:240px;object-fit:contain;border-radius:7px;margin-top:6px;}
-#st-little-phone-root .lp-emoji-panel,#st-little-phone-root .lp-more-panel{flex:0 0 auto;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));padding:9px;gap:8px;background:#f9f6fb;border-top:1px solid #e5ddeb;}
-#st-little-phone-root .lp-emoji-panel button,#st-little-phone-root .lp-more-panel button{min-height:40px;border:1px solid #e9e0ef;border-radius:9px;background:white;font-size:16px;color:#42394b;}
+#st-little-phone-root .lp-emoji-panel,#st-little-phone-root .lp-more-panel{flex:0 0 auto;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));padding:9px;gap:8px;background:#e0e8f2;border-top:1px solid #e0e8f2;}
+#st-little-phone-root .lp-emoji-panel button,#st-little-phone-root .lp-more-panel button{min-height:40px;border:1px solid #e0e8f2;border-radius:9px;background:white;font-size:16px;color:#35568a;}
 #st-little-phone-root .lp-more-panel button{font-size:13px;}
 #st-little-phone-root .lp-chat .lp-composer .lp-tool-btn{padding:0 7px!important;min-width:32px;height:40px;font-size:20px!important;background:transparent;color:#5b5562;border:0;}
 #st-little-phone-root .lp-chat .lp-composer{flex-wrap:nowrap;padding:7px;gap:3px;}
 #st-little-phone-root .lp-chat .lp-composer textarea{flex:1 1 auto;min-width:0;font-size:14px;}
 #st-little-phone-root .lp-chat .lp-composer button[data-lp="send"],
 #st-little-phone-root .lp-chat .lp-composer button[data-lp="generate"]{padding:0 8px;min-width:43px;font-size:12px;}
-#st-little-phone-root .lp-chat .lp-composer button[data-lp="send"]{background:#b3a5ce;color:#302743;}
-#st-little-phone-root .lp-chat .lp-composer button[data-lp="generate"]{background:#8767b6;color:#fff;}
+#st-little-phone-root .lp-chat .lp-composer button[data-lp="send"]{background:#8b9bc1;color:#35568a;}
+#st-little-phone-root .lp-chat .lp-composer button[data-lp="generate"]{background:#8b9bc1;color:#fff;}
 
 /* User-owned image stickers: empty on install, shared across conversations. */
 #st-little-phone-root .lp-sticker-library,
@@ -1483,114 +1483,114 @@
 #st-little-phone-root .lp-me-page input[type="file"] { max-width: 100%; margin: 8px 0; font-size: 12px; }
 
 /* v0.8.0 social home / Moments visual overhaul */
-#st-little-phone-root .lp-social-screen .lp-list-body {background:#f6f5f8;}
+#st-little-phone-root .lp-social-screen .lp-list-body {background:#e0e8f2;}
 #st-little-phone-root .lp-me-page {
  padding:0 0 22px!important;display:flex;flex-direction:column;gap:12px;
  overflow-y:auto;-webkit-overflow-scrolling:touch;
 }
 #st-little-phone-root .lp-me-hero {
  display:flex;align-items:center;gap:17px;
- padding:24px 19px;margin-bottom:5px;background:linear-gradient(125deg,#f6edff,#fff9ff 60%,#f6f8ff);
- border-bottom:1px solid #eee5f3;
+ padding:24px 19px;margin-bottom:5px;background:linear-gradient(125deg,#e0e8f2,#e0e8f2 60%,#f6f8ff);
+ border-bottom:1px solid #e0e8f2;
 }
 #st-little-phone-root .lp-me-avatar-wrap {
  flex:0 0 79px;position:relative;cursor:pointer;
 }
 #st-little-phone-root .lp-me-avatar {
  width:79px;height:79px;object-fit:cover;display:block;border-radius:20px;
- background:linear-gradient(135deg,#bba2d5,#f2d7e8);border:3px solid white;
- box-shadow:0 3px 12px #7b548d22;
+ background:linear-gradient(135deg,#8b9bc1,#f1d6d6);border:3px solid white;
+ box-shadow:0 3px 12px #35568a22;
 }
 #st-little-phone-root .lp-me-avatar-wrap span {
  position:absolute;bottom:-5px;right:-5px;
- padding:2px 6px;font-size:10px;border-radius:8px;background:#8e70b1;color:#fff;
+ padding:2px 6px;font-size:10px;border-radius:8px;background:#8b9bc1;color:#fff;
 }
 #st-little-phone-root .lp-me-profile {flex:1;display:flex;flex-direction:column;gap:9px;min-width:0;}
-#st-little-phone-root .lp-me-profile strong{font-size:22px;color:#302039;word-break:break-word;}
-#st-little-phone-root .lp-me-profile span{font-size:12px;color:#85768e;}
-#st-little-phone-root .lp-me-links{display:flex;flex-direction:column;background:#fff;border-radius:16px;margin:0 13px;overflow:hidden;border:1px solid #eee8f3;}
+#st-little-phone-root .lp-me-profile strong{font-size:22px;color:#35568a;word-break:break-word;}
+#st-little-phone-root .lp-me-profile span{font-size:12px;color:#8b9bc1;}
+#st-little-phone-root .lp-me-links{display:flex;flex-direction:column;background:#fff;border-radius:16px;margin:0 13px;overflow:hidden;border:1px solid #e0e8f2;}
 #st-little-phone-root .lp-me-links button{
  display:flex;align-items:center;justify-content:space-between;width:100%;
- min-height:53px; padding:12px 15px;background:white;color:#493a58;
- border:0;border-bottom:1px solid #f0eaf3;font:inherit;text-align:left;font-size:14px;
+ min-height:53px; padding:12px 15px;background:white;color:#35568a;
+ border:0;border-bottom:1px solid #e0e8f2;font:inherit;text-align:left;font-size:14px;
 }
 #st-little-phone-root .lp-me-links button:last-child{border-bottom:0;}
-#st-little-phone-root .lp-me-links span{font-size:11px;color:#968a9e;}
+#st-little-phone-root .lp-me-links span{font-size:11px;color:#8b9bc1;}
 #st-little-phone-root .lp-me-section{
- border:1px solid #ece4f2;border-radius:16px;margin:0 13px;
+ border:1px solid #e0e8f2;border-radius:16px;margin:0 13px;
  background:#fff;padding:14px;display:block;
 }
-#st-little-phone-root .lp-me-section summary{cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-size:15px;color:#4b375a;font-weight:600;min-height:28px;}
-#st-little-phone-root .lp-me-section summary span{font-size:11px;color:#918199;font-weight:400;}
+#st-little-phone-root .lp-me-section summary{cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-size:15px;color:#35568a;font-weight:600;min-height:28px;}
+#st-little-phone-root .lp-me-section summary span{font-size:11px;color:#8b9bc1;font-weight:400;}
 #st-little-phone-root .lp-me-section[open] summary{margin-bottom:12px;}
-#st-little-phone-root .lp-persona-description{font-size:13px;white-space:pre-wrap;line-height:1.65;color:#696176;overflow-wrap:anywhere;}
-#st-little-phone-root .lp-autonomy p{font-size:12px;color:#84778d;line-height:1.65;margin:0 0 12px;}
+#st-little-phone-root .lp-persona-description{font-size:13px;white-space:pre-wrap;line-height:1.65;color:#35568a;overflow-wrap:anywhere;}
+#st-little-phone-root .lp-autonomy p{font-size:12px;color:#8b9bc1;line-height:1.65;margin:0 0 12px;}
 #st-little-phone-root .lp-autonomy-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 9px;}
-#st-little-phone-root .lp-autonomy-grid label{display:flex;flex-direction:column;gap:6px;font-size:12px;color:#70637a;min-width:0;}
+#st-little-phone-root .lp-autonomy-grid label{display:flex;flex-direction:column;gap:6px;font-size:12px;color:#35568a;min-width:0;}
 #st-little-phone-root .lp-autonomy-grid input,#st-little-phone-root .lp-autonomy-grid select{
  display:block;width:100%;min-width:0;box-sizing:border-box;min-height:43px;
- border:1px solid #e2d8e9;border-radius:10px;background:#fcfbfe;
- font:inherit;font-size:13px;color:#40344d;padding:7px 8px;
+ border:1px solid #e0e8f2;border-radius:10px;background:#e0e8f2;
+ font:inherit;font-size:13px;color:#35568a;padding:7px 8px;
 }
-#st-little-phone-root .lp-autonomy-divider{height:1px;background:#f0eaf5;margin:16px 0 10px;}
+#st-little-phone-root .lp-autonomy-divider{height:1px;background:#e0e8f2;margin:16px 0 10px;}
 #st-little-phone-root .lp-checkline{
  display:flex;gap:9px;align-items:flex-start;line-height:1.6;
- color:#62536c;font-size:12px;margin:10px 0;
+ color:#35568a;font-size:12px;margin:10px 0;
 }
-#st-little-phone-root .lp-checkline input{flex:0 0 18px;width:18px;height:18px;accent-color:#8e73b1;}
-#st-little-phone-root .lp-autonomy-status{color:#9a879f;font-size:11px;line-height:1.5;overflow-wrap:anywhere;margin:12px 0;}
+#st-little-phone-root .lp-checkline input{flex:0 0 18px;width:18px;height:18px;accent-color:#8b9bc1;}
+#st-little-phone-root .lp-autonomy-status{color:#8b9bc1;font-size:11px;line-height:1.5;overflow-wrap:anywhere;margin:12px 0;}
 #st-little-phone-root .lp-autonomy-buttons{display:flex;gap:9px;flex-wrap:wrap;}
-#st-little-phone-root .lp-autonomy-buttons button{flex:1 1 45%;min-height:39px;border:1px solid #dacfe4;background:#9679b6;color:white;border-radius:11px;font-size:12px;padding:8px;}
-#st-little-phone-root .lp-autonomy-buttons button:last-child{background:#fff;color:#77628c;}
-#st-little-phone-root .lp-autonomy-feedback{min-height:22px;margin-top:10px;padding:4px 7px;font-size:12px;color:#66507c;line-height:1.6;overflow-wrap:anywhere;}
-#st-little-phone-root .lp-sticker-uploader{font-size:12px;color:#6a5878;}
+#st-little-phone-root .lp-autonomy-buttons button{flex:1 1 45%;min-height:39px;border:1px solid #8b9bc1;background:#8b9bc1;color:white;border-radius:11px;font-size:12px;padding:8px;}
+#st-little-phone-root .lp-autonomy-buttons button:last-child{background:#fff;color:#35568a;}
+#st-little-phone-root .lp-autonomy-feedback{min-height:22px;margin-top:10px;padding:4px 7px;font-size:12px;color:#35568a;line-height:1.6;overflow-wrap:anywhere;}
+#st-little-phone-root .lp-sticker-uploader{font-size:12px;color:#35568a;}
 #st-little-phone-root .lp-sticker-uploader input{display:block;width:100%;margin-top:7px;max-width:100%;font-size:11px;}
-#st-little-phone-root .lp-discover{padding:14px 13px 18px;display:flex;flex-direction:column;gap:14px;background:#f6f5f8;}
-#st-little-phone-root .lp-discover-heading{display:flex;justify-content:space-between;align-items:baseline;font-size:19px;color:#473651;font-weight:600;padding:3px 4px;}
-#st-little-phone-root .lp-muted{font-size:11px;color:#9f91a6;font-weight:400;}
-#st-little-phone-root .lp-moments-composer{display:flex;flex-direction:column;gap:12px;background:white;padding:16px;border-radius:16px;border:1px solid #eee6f2;}
-#st-little-phone-root .lp-moments-caption{font-size:14px;color:#65506f;font-weight:600;}
+#st-little-phone-root .lp-discover{padding:14px 13px 18px;display:flex;flex-direction:column;gap:14px;background:#e0e8f2;}
+#st-little-phone-root .lp-discover-heading{display:flex;justify-content:space-between;align-items:baseline;font-size:19px;color:#35568a;font-weight:600;padding:3px 4px;}
+#st-little-phone-root .lp-muted{font-size:11px;color:#8b9bc1;font-weight:400;}
+#st-little-phone-root .lp-moments-composer{display:flex;flex-direction:column;gap:12px;background:white;padding:16px;border-radius:16px;border:1px solid #e0e8f2;}
+#st-little-phone-root .lp-moments-caption{font-size:14px;color:#35568a;font-weight:600;}
 #st-little-phone-root .lp-moments-composer textarea{
- width:100%;box-sizing:border-box;padding:12px;border:1px solid #eae1ee;border-radius:12px;
- min-height:82px;resize:vertical;font-size:14px;color:#423750;font-family:inherit;background:#fcfbfd;
+ width:100%;box-sizing:border-box;padding:12px;border:1px solid #e0e8f2;border-radius:12px;
+ min-height:82px;resize:vertical;font-size:14px;color:#35568a;font-family:inherit;background:#e0e8f2;
 }
 #st-little-phone-root .lp-moments-preview{display:flex;align-items:flex-start;gap:8px;}
 #st-little-phone-root .lp-moments-compose-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
 #st-little-phone-root .lp-moments-compose-actions button,
 #st-little-phone-root .lp-moments-compose-actions label{
  min-height:36px;padding:8px 10px;display:flex;align-items:center;justify-content:center;
- font-size:12px;color:#745f8b;background:#f5effa;border:1px solid #ece1f2;border-radius:9px;
+ font-size:12px;color:#35568a;background:#e0e8f2;border:1px solid #e0e8f2;border-radius:9px;
  cursor:pointer;box-sizing:border-box;
 }
-#st-little-phone-root .lp-moments-compose-actions button[data-lp="momentsPost"]{margin-left:auto;background:#8f73b0;color:white;border-color:#8f73b0;}
+#st-little-phone-root .lp-moments-compose-actions button[data-lp="momentsPost"]{margin-left:auto;background:#8b9bc1;color:white;border-color:#8b9bc1;}
 #st-little-phone-root .lp-moment-remove-photo{background:white!important;}
 #st-little-phone-root .lp-moments-feed{gap:12px;}
-#st-little-phone-root .lp-moment{display:flex;flex-direction:column;gap:9px;padding:15px;border:1px solid #ede6f2;border-radius:16px;background:white;color:#53455e;}
-#st-little-phone-root .lp-moment strong{font-size:14px;color:#6f5587;}
-#st-little-phone-root .lp-moment-photo{display:block;max-width:min(100%,280px);max-height:330px;object-fit:contain;border-radius:10px;background:#f4eff7;}
+#st-little-phone-root .lp-moment{display:flex;flex-direction:column;gap:9px;padding:15px;border:1px solid #e0e8f2;border-radius:16px;background:white;color:#35568a;}
+#st-little-phone-root .lp-moment strong{font-size:14px;color:#35568a;}
+#st-little-phone-root .lp-moment-photo{display:block;max-width:min(100%,280px);max-height:330px;object-fit:contain;border-radius:10px;background:#e0e8f2;}
 #st-little-phone-root .lp-moment p{font-size:14px;line-height:1.55;margin:0;white-space:pre-wrap;overflow-wrap:anywhere;}
-#st-little-phone-root .lp-moment small{font-size:10px;color:#a89bac;}
-#st-little-phone-root .lp-moment-repost{padding:11px;background:#f6f1f9;border-radius:10px;color:#756280;font-size:12px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;}
-#st-little-phone-root .lp-moment-likes{padding:7px 9px;border-radius:9px;background:#f7f2fa;color:#9573b1;font-size:12px;overflow-wrap:anywhere;}
-#st-little-phone-root .lp-moment-comments{display:grid;gap:7px;padding:9px;border-radius:10px;background:#faf7fc;}
+#st-little-phone-root .lp-moment small{font-size:10px;color:#8b9bc1;}
+#st-little-phone-root .lp-moment-repost{padding:11px;background:#e0e8f2;border-radius:10px;color:#35568a;font-size:12px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;}
+#st-little-phone-root .lp-moment-likes{padding:7px 9px;border-radius:9px;background:#e0e8f2;color:#8b9bc1;font-size:12px;overflow-wrap:anywhere;}
+#st-little-phone-root .lp-moment-comments{display:grid;gap:7px;padding:9px;border-radius:10px;background:#e0e8f2;}
 #st-little-phone-root .lp-moment-comment{display:flex;align-items:flex-start;justify-content:space-between;gap:5px;font-size:12px;line-height:1.5;overflow-wrap:anywhere;}
 #st-little-phone-root .lp-moment-comment span{min-width:0;flex:1;}
 #st-little-phone-root .lp-moment-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px;}
 #st-little-phone-root .lp-moment-actions button,#st-little-phone-root .lp-moment-comment button,#st-little-phone-root .lp-moment-editor button{
- min-height:31px;padding:5px 8px;border:1px solid #e8dced;background:#f9f5fc;color:#8767a3;border-radius:9px;font:inherit;font-size:11px;cursor:pointer;
+ min-height:31px;padding:5px 8px;border:1px solid #e0e8f2;background:#e0e8f2;color:#8b9bc1;border-radius:9px;font:inherit;font-size:11px;cursor:pointer;
 }
-#st-little-phone-root .lp-moment-actions select{min-width:0;max-width:115px;padding:5px 4px;border:1px solid #e8dced;border-radius:9px;background:white;color:#695777;font-size:11px;}
+#st-little-phone-root .lp-moment-actions select{min-width:0;max-width:115px;padding:5px 4px;border:1px solid #e0e8f2;border-radius:9px;background:white;color:#35568a;font-size:11px;}
 #st-little-phone-root .lp-moment-editor{display:flex;gap:8px;align-items:flex-end;}
 #st-little-phone-root .lp-moment-editor[hidden]{display:none!important;}
-#st-little-phone-root .lp-moment-editor textarea{flex:1;min-width:0;min-height:54px;resize:vertical;padding:8px;border:1px solid #e8dced;border-radius:9px;font:inherit;font-size:12px;}
-#st-little-phone-root .lp-contact-links p{color:#81718b;font-size:12px;line-height:1.5;margin:6px 0;}
-#st-little-phone-root .lp-contact-links [data-lp="contactLinks"]{display:grid;gap:8px;margin-top:10px;font-size:12px;color:#63546e;}
+#st-little-phone-root .lp-moment-editor textarea{flex:1;min-width:0;min-height:54px;resize:vertical;padding:8px;border:1px solid #e0e8f2;border-radius:9px;font:inherit;font-size:12px;}
+#st-little-phone-root .lp-contact-links p{color:#8b9bc1;font-size:12px;line-height:1.5;margin:6px 0;}
+#st-little-phone-root .lp-contact-links [data-lp="contactLinks"]{display:grid;gap:8px;margin-top:10px;font-size:12px;color:#35568a;}
 
-#st-little-phone-root .lp-request-entry{display:flex;flex-direction:column;margin:0;background:#fff;border-bottom:1px solid #ede7f2;}
+#st-little-phone-root .lp-request-entry{display:flex;flex-direction:column;margin:0;background:#fff;border-bottom:1px solid #e0e8f2;}
 #st-little-phone-root .lp-request-entry .lp-conversation-row{border-bottom:none;}
 #st-little-phone-root .lp-request-actions{display:flex;justify-content:flex-end;gap:10px;padding:0 16px 12px;}
-#st-little-phone-root .lp-request-actions button{min-width:66px;min-height:33px;border:1px solid #d9cae5;border-radius:9px;background:#fff;color:#86699e;font:inherit;font-size:12px;padding:5px 10px;}
-#st-little-phone-root .lp-request-actions button:first-child{background:#987cb8;color:#fff;border-color:#987cb8;}
+#st-little-phone-root .lp-request-actions button{min-width:66px;min-height:33px;border:1px solid #8b9bc1;border-radius:9px;background:#fff;color:#8b9bc1;font:inherit;font-size:12px;padding:5px 10px;}
+#st-little-phone-root .lp-request-actions button:first-child{background:#8b9bc1;color:#fff;border-color:#8b9bc1;}
 
 /* v0.8.2: robust user avatar image and friend-request badges */
 #st-little-phone-root .lp-me-avatar-wrap {
@@ -1600,8 +1600,8 @@
 #st-little-phone-root .lp-me-avatar-fallback {
  position:absolute;top:0;left:0;width:82px;height:82px;
  display:flex;align-items:center;justify-content:center;
- color:#775893;font-weight:600;font-size:27px;
- background:linear-gradient(135deg,#dbc9ee,#f6e9fa);
+ color:#35568a;font-weight:600;font-size:27px;
+ background:linear-gradient(135deg,#e0e8f2,#e0e8f2);
  border:3px solid white;box-sizing:border-box;border-radius:20px;
 }
 #st-little-phone-root .lp-me-avatar {
@@ -1620,7 +1620,7 @@
  font-size:0;
 }
 #st-little-phone-root .lp-me-avatar-status {
- padding:0 19px;margin:-2px 0 0;color:#806a91;
+ padding:0 19px;margin:-2px 0 0;color:#8b9bc1;
  min-height:14px;font-size:12px;line-height:1.5;
  overflow-wrap:anywhere;
 }
@@ -1647,13 +1647,13 @@
 #st-little-phone-root .lp-time-jump-panel[hidden],
 #st-little-phone-root .lp-time-jump-hint[hidden]{display:none!important;}
 #st-little-phone-root .lp-time-jump-hint{
-  flex:0 0 auto;padding:6px 12px;background:#eee7f4;color:#665076;
-  font-size:12px;text-align:center;border-top:1px solid #dfd5e8;
+  flex:0 0 auto;padding:6px 12px;background:#e0e8f2;color:#35568a;
+  font-size:12px;text-align:center;border-top:1px solid #e0e8f2;
 }
 #st-little-phone-root .lp-time-jump-panel{
   display:flex;flex:0 0 auto;flex-direction:column;gap:9px;
   padding:11px 12px 10px;overflow-y:auto;max-height:min(44vh,340px);
-  background:#faf7fd;border-top:1px solid #e7dded;color:#4d4059;
+  background:#e0e8f2;border-top:1px solid #e0e8f2;color:#35568a;
   -webkit-overflow-scrolling:touch;
 }
 #st-little-phone-root .lp-time-jump-head{
@@ -1662,15 +1662,15 @@
 #st-little-phone-root .lp-time-jump-head strong{font-size:14px;}
 #st-little-phone-root .lp-time-jump-head button{
   font-size:22px;line-height:1;width:32px;height:30px;
-  background:transparent;color:#745d82;border:0;border-radius:8px;
+  background:transparent;color:#35568a;border:0;border-radius:8px;
 }
-#st-little-phone-root .lp-time-jump-current{font-size:12px;color:#796a86;}
+#st-little-phone-root .lp-time-jump-current{font-size:12px;color:#35568a;}
 #st-little-phone-root .lp-time-jump-shortcuts{
   display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;
 }
 #st-little-phone-root .lp-time-jump-shortcuts button{
   min-height:36px;padding:5px 3px;font:inherit;font-size:12px;white-space:nowrap;
-  color:#654f77;border:1px solid #e5d7ef;border-radius:9px;background:#fff;
+  color:#35568a;border:1px solid #e0e8f2;border-radius:9px;background:#fff;
 }
 #st-little-phone-root .lp-time-jump-custom{
   display:flex;align-items:center;gap:6px;min-width:0;
@@ -1678,27 +1678,27 @@
 #st-little-phone-root .lp-time-jump-custom label{font-size:12px;white-space:nowrap;}
 #st-little-phone-root .lp-time-jump-custom input{
   flex:1 1 70px;width:72px;min-width:45px;max-width:120px;
-  min-height:36px;padding:4px 7px;border:1px solid #ded4e6;
-  border-radius:8px;background:#fff;color:#493c53;font-size:14px;
+  min-height:36px;padding:4px 7px;border:1px solid #e0e8f2;
+  border-radius:8px;background:#fff;color:#35568a;font-size:14px;
 }
 #st-little-phone-root .lp-time-jump-custom select{
   flex:0 0 65px;width:65px;min-height:36px;padding:4px 1px;
-  border:1px solid #ded4e6;border-radius:8px;background:#fff;
-  color:#493c53;font-size:12px;
+  border:1px solid #e0e8f2;border-radius:8px;background:#fff;
+  color:#35568a;font-size:12px;
 }
 #st-little-phone-root .lp-time-jump-custom button{
   flex:0 0 52px;min-height:36px;border:0;border-radius:8px;
-  background:#a58cc4;color:#fff;font-size:12px;
+  background:#8b9bc1;color:#fff;font-size:12px;
 }
 #st-little-phone-root .lp-time-jump-panel p{
-  margin:0;font-size:11px;line-height:1.5;color:#85758f;
+  margin:0;font-size:11px;line-height:1.5;color:#8b9bc1;
 }
 #st-little-phone-root .lp-time-jump-panel button:disabled{opacity:.5;cursor:not-allowed;}
 
 /* v0.8.19 • Calendar: month / year / week / day / timeline */
 #st-little-phone-root .lp-calendar-screen{
   overflow-y:auto;overscroll-behavior:contain;
-  background:#f6f5f8;color:#302b36;gap:0;
+  background:#e0e8f2;color:#35568a;gap:0;
   -webkit-overflow-scrolling:touch;
 }
 #st-little-phone-root .lp-calendar-top{
@@ -1710,11 +1710,11 @@
 }
 #st-little-phone-root .lp-calendar-top button{
   min-width:39px;min-height:38px;border:0;border-radius:11px;
-  color:#725d88;background:#f5f1f9;font-size:26px;line-height:1;
+  color:#35568a;background:#e0e8f2;font-size:26px;line-height:1;
 }
 #st-little-phone-root .lp-calendar-views{
   display:grid;grid-template-columns:repeat(5,minmax(0,1fr));
-  margin:0 13px 13px;padding:4px;background:#f0edf2;
+  margin:0 13px 13px;padding:4px;background:#e0e8f2;
   border-radius:16px;gap:2px;
 }
 #st-little-phone-root .lp-calendar-views button{
@@ -1722,7 +1722,7 @@
   font-size:13px;min-height:35px;padding:5px 0;font-family:inherit;
 }
 #st-little-phone-root .lp-calendar-views button.lp-calendar-current-view{
-  color:#4e3c62;background:#fff;box-shadow:0 1px 6px #271a3614;font-weight:700;
+  color:#35568a;background:#fff;box-shadow:0 1px 6px #35568a14;font-weight:700;
 }
 #st-little-phone-root .lp-calendar-grid{
   padding:0 9px 9px;background:#fff;
@@ -1733,56 +1733,56 @@
 }
 #st-little-phone-root .lp-calendar-weekdays{
   padding:7px 0 9px;color:#847888;font-size:11px;text-align:center;
-  border-bottom:1px solid #f0edf4;
+  border-bottom:1px solid #e0e8f2;
 }
 #st-little-phone-root .lp-calendar-weekdays span{min-width:0;}
 #st-little-phone-root .lp-calendar-day{
   position:relative;display:flex;flex-direction:column;align-items:center;
   justify-content:flex-start;gap:4px;min-height:66px;margin:2px 1px;
   padding:8px 0 13px;border:0;border-radius:13px;background:transparent;
-  color:#332c3a;font-family:inherit;text-align:center;
+  color:#35568a;font-family:inherit;text-align:center;
 }
 #st-little-phone-root .lp-calendar-number{font-size:17px;line-height:1.1;}
 #st-little-phone-root .lp-calendar-day small{
   font-size:10px;line-height:1.3;white-space:nowrap;overflow:hidden;
   max-width:100%;text-overflow:ellipsis;color:#aba2b0;
 }
-#st-little-phone-root .lp-calendar-day small.lp-calendar-festival{color:#a26987;}
+#st-little-phone-root .lp-calendar-day small.lp-calendar-festival{color:#e39f9f;}
 #st-little-phone-root .lp-calendar-day.lp-calendar-outside{opacity:.38;}
-#st-little-phone-root .lp-calendar-day.lp-calendar-today .lp-calendar-number{color:#bb4972;font-weight:700;}
+#st-little-phone-root .lp-calendar-day.lp-calendar-today .lp-calendar-number{color:#e39f9f;font-weight:700;}
 #st-little-phone-root .lp-calendar-day.lp-calendar-story-day::before{
   content:'';position:absolute;top:4px;right:6px;width:5px;height:5px;
-  border-radius:50%;background:#ac80c0;
+  border-radius:50%;background:#8b9bc1;
 }
 #st-little-phone-root .lp-calendar-day.lp-calendar-selected{
-  background:#f1e8f8;color:#553b75;box-shadow:inset 0 0 0 1px #e0cbed;
+  background:#e0e8f2;color:#35568a;box-shadow:inset 0 0 0 1px #e0e8f2;
 }
 #st-little-phone-root .lp-calendar-dot{
   position:absolute;bottom:5px;width:5px;height:5px;
-  background:#b891ce;border-radius:50%;
+  background:#8b9bc1;border-radius:50%;
 }
 #st-little-phone-root .lp-calendar-years{
   display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:12px 6px;
 }
 #st-little-phone-root .lp-calendar-years button{
-  min-height:66px;border:1px solid #eee7f4;border-radius:13px;
-  background:#faf8fc;color:#685678;font:inherit;font-size:15px;
+  min-height:66px;border:1px solid #e0e8f2;border-radius:13px;
+  background:#e0e8f2;color:#35568a;font:inherit;font-size:15px;
 }
 #st-little-phone-root .lp-calendar-years .lp-calendar-month-active{
-  background:#e9dbf4;border-color:#d5b9e5;font-weight:700;
+  background:#e0e8f2;border-color:#8b9bc1;font-weight:700;
 }
 #st-little-phone-root .lp-calendar-day-focus{
-  padding:28px 10px;text-align:center;font-size:18px;color:#654a7d;
+  padding:28px 10px;text-align:center;font-size:18px;color:#35568a;
 }
 #st-little-phone-root .lp-calendar-agenda{
   padding:14px 5px;display:flex;flex-direction:column;gap:8px;
 }
 #st-little-phone-root .lp-calendar-agenda p{
-  color:#91869b;text-align:center;font-size:13px;margin:20px 0;
+  color:#8b9bc1;text-align:center;font-size:13px;margin:20px 0;
 }
 #st-little-phone-root .lp-calendar-agenda button{
-  text-align:left;padding:12px;border:1px solid #e7dfed;border-radius:10px;
-  color:#655477;background:#fbf9fd;font:inherit;font-size:12px;
+  text-align:left;padding:12px;border:1px solid #e0e8f2;border-radius:10px;
+  color:#35568a;background:#e0e8f2;font:inherit;font-size:12px;
 }
 #st-little-phone-root .lp-calendar-selected-detail{
   display:flex;flex-direction:column;gap:7px;padding:16px 14px 13px;
@@ -1792,8 +1792,8 @@
 #st-little-phone-root .lp-calendar-selected-detail>span{font-size:12px;color:#827686;}
 #st-little-phone-root .lp-calendar-shortcuts{display:flex;gap:8px;margin-top:2px;}
 #st-little-phone-root .lp-calendar-shortcuts button{
-  min-height:34px;flex:1;border-radius:10px;border:1px solid #e5d9ed;
-  color:#765e8c;background:#fff;font:inherit;font-size:12px;
+  min-height:34px;flex:1;border-radius:10px;border:1px solid #e0e8f2;
+  color:#35568a;background:#fff;font:inherit;font-size:12px;
 }
 #st-little-phone-root .lp-calendar-time-editor{
   display:flex;flex-direction:column;gap:9px;padding:15px 14px 22px;
@@ -1809,49 +1809,49 @@
 #st-little-phone-root .lp-calendar-time-actions label{font-size:12px;color:#746879;}
 #st-little-phone-root .lp-calendar-time-actions input{
   flex:1 1 85px;min-width:85px;width:100px;max-width:132px;
-  height:38px;padding:5px;border:1px solid #e1d6e8;
-  border-radius:8px;background:#fff;color:#40334c;font:inherit;font-size:13px;color-scheme:light;
+  height:38px;padding:5px;border:1px solid #e0e8f2;
+  border-radius:8px;background:#fff;color:#35568a;font:inherit;font-size:13px;color-scheme:light;
 }
 #st-little-phone-root .lp-calendar-time-actions button,
 #st-little-phone-root .lp-calendar-time-editor details button{
   flex:1 1 122px;min-height:38px;padding:6px;
-  border:0;border-radius:9px;background:#ac92c7;
+  border:0;border-radius:9px;background:#8b9bc1;
   color:#fff;font:inherit;font-size:12px;
 }
 #st-little-phone-root .lp-calendar-time-editor details{
-  padding:9px 0 0;border-top:1px solid #eee8f2;font-size:12px;color:#796986;
+  padding:9px 0 0;border-top:1px solid #e0e8f2;font-size:12px;color:#35568a;
 }
 #st-little-phone-root .lp-calendar-time-editor details summary{cursor:pointer;}
 #st-little-phone-root .lp-calendar-time-editor details input{
   width:100%;min-height:37px;margin:9px 0;padding:6px;
-  border:1px solid #e3d9eb;border-radius:8px;background:#fff;
+  border:1px solid #e0e8f2;border-radius:8px;background:#fff;
   font:inherit;color-scheme:light;
 }
 #st-little-phone-root .lp-calendar-time-editor details button{width:100%;}
 
 /* v0.9.0 — account dashboard, payment cards and transaction composer */
 #st-little-phone-root .lp-wallet-screen{
-  background:#f4f3f7;overflow-y:auto;overscroll-behavior:contain;
+  background:#e0e8f2;overflow-y:auto;overscroll-behavior:contain;
   -webkit-overflow-scrolling:touch;
 }
 #st-little-phone-root .lp-wallet-main{display:flex;flex-direction:column;gap:10px;padding-bottom:20px;}
 #st-little-phone-root .lp-wallet-head{
   display:flex;flex-direction:column;align-items:flex-start;gap:8px;
   padding:24px 20px 22px;
-  background:linear-gradient(145deg,#ece4fa,#ded2f0);
-  color:#48385d;border-radius:0 0 18px 18px;
+  background:linear-gradient(145deg,#e0e8f2,#e0e8f2);
+  color:#35568a;border-radius:0 0 18px 18px;
 }
 #st-little-phone-root .lp-wallet-heading{display:flex;align-items:center;gap:9px;font-size:18px;}
 #st-little-phone-root .lp-wallet-heading>span{font-size:25px;}
-#st-little-phone-root .lp-wallet-caption{color:#745d85;font-size:12px;margin-top:11px;}
+#st-little-phone-root .lp-wallet-caption{color:#35568a;font-size:12px;margin-top:11px;}
 #st-little-phone-root .lp-wallet-number{font-size:30px;font-weight:650;letter-spacing:.015em;}
 #st-little-phone-root .lp-wallet-shortcut{
   min-height:40px;width:100%;margin-top:8px;background:#fff;
-  color:#73528d;border:0;border-radius:11px;font:inherit;font-size:14px;
+  color:#35568a;border:0;border-radius:11px;font:inherit;font-size:14px;
 }
 #st-little-phone-root .lp-wallet-adjust,#st-little-phone-root .lp-wallet-events,
 #st-little-phone-root .lp-wallet-section{
-  margin:0 12px;padding:14px 13px;background:#fff;border:0;border-radius:13px;color:#493d56;
+  margin:0 12px;padding:14px 13px;background:#fff;border:0;border-radius:13px;color:#35568a;
 }
 #st-little-phone-root .lp-wallet-adjust>summary,
 #st-little-phone-root .lp-wallet-events>summary{font-size:13px;font-weight:600;cursor:pointer;}
@@ -1859,62 +1859,62 @@
 #st-little-phone-root .lp-wallet-adjust-controls{
   display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px;
 }
-#st-little-phone-root .lp-wallet-adjust-controls label{font-size:12px;color:#72657b;}
+#st-little-phone-root .lp-wallet-adjust-controls label{font-size:12px;color:#35568a;}
 #st-little-phone-root .lp-wallet-adjust-controls input{
   flex:1 1 115px;width:100px;min-width:80px;min-height:38px;
-  background:#fff;border:1px solid #e1d9e8;border-radius:9px;
-  padding:5px 8px;font:inherit;font-size:14px;color:#45354e;
+  background:#fff;border:1px solid #e0e8f2;border-radius:9px;
+  padding:5px 8px;font:inherit;font-size:14px;color:#35568a;
 }
 #st-little-phone-root .lp-wallet-adjust-controls button{
-  border:0;background:#a68bc4;color:white;border-radius:9px;padding:9px 15px;
+  border:0;background:#8b9bc1;color:white;border-radius:9px;padding:9px 15px;
   min-height:38px;font:inherit;font-size:13px;
 }
 #st-little-phone-root .lp-wallet-bills{display:flex;flex-direction:column;gap:0;}
 #st-little-phone-root .lp-wallet-bill{
   display:flex;align-items:center;justify-content:space-between;gap:8px;
-  padding:11px 0;border-bottom:1px solid #f1edf3;
+  padding:11px 0;border-bottom:1px solid #e0e8f2;
 }
 #st-little-phone-root .lp-wallet-bill:last-child{border-bottom:0;}
 #st-little-phone-root .lp-wallet-bill>div{min-width:0;flex:1;display:flex;flex-direction:column;gap:4px;}
 #st-little-phone-root .lp-wallet-bill strong{font-size:13px;font-weight:550;overflow-wrap:anywhere;}
-#st-little-phone-root .lp-wallet-bill small{font-size:10px;color:#968a9d;}
+#st-little-phone-root .lp-wallet-bill small{font-size:10px;color:#8b9bc1;}
 #st-little-phone-root .lp-wallet-bill>span{font-size:14px;font-weight:650;white-space:nowrap;}
 #st-little-phone-root .lp-wallet-positive{color:#48836b;}
 #st-little-phone-root .lp-wallet-pending-button{
-  min-width:43px;padding:7px;border:1px solid #dfcfea;border-radius:8px;
-  background:#f9f4fc;color:#72538d;font-size:11px;
+  min-width:43px;padding:7px;border:1px solid #e0e8f2;border-radius:8px;
+  background:#e0e8f2;color:#35568a;font-size:11px;
 }
-#st-little-phone-root .lp-wallet-empty{margin:3px 0;color:#a094a8;font-size:12px;}
+#st-little-phone-root .lp-wallet-empty{margin:3px 0;color:#8b9bc1;font-size:12px;}
 #st-little-phone-root .lp-wallet-event-list{margin-top:9px;display:flex;flex-direction:column;gap:7px;}
-#st-little-phone-root .lp-wallet-event{font-size:11px;line-height:1.55;color:#7c7084;padding-bottom:7px;border-bottom:1px solid #f1edf3;}
-#st-little-phone-root .lp-wallet-inline-status{margin:0 13px;color:#7c688c;font-size:12px;}
+#st-little-phone-root .lp-wallet-event{font-size:11px;line-height:1.55;color:#7c7084;padding-bottom:7px;border-bottom:1px solid #e0e8f2;}
+#st-little-phone-root .lp-wallet-inline-status{margin:0 13px;color:#35568a;font-size:12px;}
 #st-little-phone-root .lp-payment-panel[hidden]{display:none!important;}
 #st-little-phone-root .lp-payment-panel{
   display:flex;flex-direction:column;gap:9px;flex:0 0 auto;
-  padding:12px 13px;background:#faf7fd;border-top:1px solid #e5daec;
+  padding:12px 13px;background:#e0e8f2;border-top:1px solid #e0e8f2;
   max-height:min(55vh,340px);overflow-y:auto;
 }
 #st-little-phone-root .lp-payment-panel-head{
   display:flex;align-items:center;justify-content:space-between;
 }
-#st-little-phone-root .lp-payment-panel-head strong{font-size:15px;color:#51405f;}
+#st-little-phone-root .lp-payment-panel-head strong{font-size:15px;color:#35568a;}
 #st-little-phone-root .lp-payment-panel-head button{
   width:29px;height:29px;border:0;background:transparent;
-  color:#736384;font-size:22px;
+  color:#35568a;font-size:22px;
 }
-#st-little-phone-root .lp-payment-panel label{display:flex;align-items:center;gap:9px;color:#71637e;font-size:12px;}
+#st-little-phone-root .lp-payment-panel label{display:flex;align-items:center;gap:9px;color:#35568a;font-size:12px;}
 #st-little-phone-root .lp-payment-panel select,
 #st-little-phone-root .lp-payment-panel input{
-  min-width:0;flex:1;height:37px;border-radius:8px;border:1px solid #e2d8eb;
-  background:#fff;color:#3f3448;font:inherit;font-size:13px;padding:6px 8px;
+  min-width:0;flex:1;height:37px;border-radius:8px;border:1px solid #e0e8f2;
+  background:#fff;color:#35568a;font:inherit;font-size:13px;padding:6px 8px;
 }
 #st-little-phone-root .lp-payment-panel-foot{
   display:flex;align-items:center;justify-content:space-between;gap:8px;
 }
-#st-little-phone-root .lp-payment-panel-foot small{font-size:11px;color:#8d7d97;}
+#st-little-phone-root .lp-payment-panel-foot small{font-size:11px;color:#8b9bc1;}
 #st-little-phone-root .lp-payment-panel-foot button{
   min-height:37px;padding:0 15px;border-radius:8px;border:0;
-  background:#9e81bd;color:white;font:inherit;font-size:12px;
+  background:#8b9bc1;color:white;font:inherit;font-size:12px;
 }
 #st-little-phone-root .lp-payment-card{
   display:flex;flex-direction:column;gap:5px;min-width:140px;
@@ -2171,11 +2171,11 @@
 #st-little-phone-root .lp-payment-card.lp-payment-transfer{
  width:min(235px,60vw);min-width:175px;max-width:100%;min-height:104px;
  border-radius:13px;padding:13px 15px;gap:4px;
- background:var(--lp-blush);border:1px solid #ecc5c5;color:#734b58;
+ background:var(--lp-blush);border:1px solid #ecc5c5;color:#35568a;
  box-shadow:none;
 }
 #st-little-phone-root .lp-payment-pending{
- background:var(--lp-blush)!important;color:#774b58!important;
+ background:var(--lp-blush)!important;color:#35568a!important;
 }
 #st-little-phone-root .lp-payment-finished{
  background:var(--lp-ice)!important;color:#697b94!important;border-color:#d0dae7!important;
@@ -2189,7 +2189,7 @@
 #st-little-phone-root .lp-payment-actions{gap:7px;padding-top:4px;}
 #st-little-phone-root .lp-payment-actions button{
  min-height:27px;border-color:#ffffffa8;border-radius:8px;
- background:#ffffff76;color:#774b58;font-size:11px;
+ background:#ffffff76;color:#35568a;font-size:11px;
 }
 #st-little-phone-root .lp-wallet-head{
  background:var(--lp-ice);color:var(--lp-navy);border-radius:0 0 16px 16px;
@@ -2249,3 +2249,133 @@
   padding-bottom:max(13px,env(safe-area-inset-bottom,0px));
  }
 }
+
+/* v0.11 — six-swatch theme and actual uploaded wallpaper on home/lock. */
+#st-little-phone-root { --lp-soft-ink:var(--lp-slate); color:var(--lp-navy); }
+#st-little-phone-root .lp-settings,
+#st-little-phone-root .lp-picker,
+#st-little-phone-root .lp-social-screen,
+#st-little-phone-root .lp-chat,
+#st-little-phone-root .lp-weibo-screen { color:var(--lp-navy);background:var(--lp-white); }
+#st-little-phone-root .lp-settings h2,
+#st-little-phone-root .lp-settings h3 { color:var(--lp-navy); }
+#st-little-phone-root .lp-settings-link,
+#st-little-phone-root .lp-settings select,
+#st-little-phone-root .lp-settings input { accent-color:var(--lp-navy); }
+#st-little-phone-root .lp-lock,
+#st-little-phone-root .lp-home { background-color:var(--lp-ice)!important;background-repeat:no-repeat!important;background-position:center!important;background-size:cover!important; }
+#st-little-phone-root .lp-home-search {
+  width:calc(100% - 36px);border:1px solid #ffffff8c;
+  text-align:left;cursor:pointer;font:inherit;font-size:13px;
+  color:var(--lp-navy);box-shadow:none;flex:0 0 auto;
+}
+#st-little-phone-root .lp-home-widget { background:#ffffffd4; }
+#st-little-phone-root .lp-desktop-wrap { flex:1 1 auto;min-height:0; }
+#st-little-phone-root .lp-desktop-page {
+  display:flex;flex-direction:column;justify-content:flex-end;
+  overflow-y:auto;padding:5px 15px clamp(24px,5vh,64px);
+}
+#st-little-phone-root .lp-desktop-grid {
+  width:100%;gap:clamp(18px,3vh,34px) 4px;align-content:end;
+}
+#st-little-phone-root .lp-desktop-app-icon {
+  width:clamp(45px,13vw,58px);height:clamp(45px,13vw,58px);
+  border-radius:0;background:transparent!important;box-shadow:none!important;
+  color:var(--lp-navy);
+}
+#st-little-phone-root .lp-desktop-app-icon svg {width:34px;height:34px;}
+#st-little-phone-root .lp-desktop-app { gap:3px; }
+#st-little-phone-root .lp-desktop-dots { margin:0 0 26px;min-height:20px; }
+#st-little-phone-root .lp-home-dock,
+#st-little-phone-root .lp-desktop-bottom,
+#st-little-phone-root .lp-home-edit { display:none!important; }
+#st-little-phone-root .lp-lock-stage {
+  display:flex;flex-direction:column;align-items:center;justify-content:space-between;
+  padding:clamp(45px,8vh,85px) 22px clamp(30px,7vh,75px);
+}
+#st-little-phone-root .lp-lock-time { font-size:clamp(56px,16vw,84px);font-weight:300;margin:0;line-height:1.05; }
+#st-little-phone-root .lp-lock-date { margin:12px 0 0;font-size:15px; }
+#st-little-phone-root .lp-lock-unlock {
+  width:min(100%,330px);display:flex;flex-direction:column;align-items:center;
+  gap:14px;margin:auto 0 0;
+}
+#st-little-phone-root .lp-lock-symbol { font-size:27px;color:var(--lp-navy);font-weight:300; }
+#st-little-phone-root .lp-lock-intro {font-size:15px;color:var(--lp-navy);font-weight:600;}
+#st-little-phone-root .lp-lock-dots {display:flex;justify-content:center;gap:12px;margin:3px 0;}
+#st-little-phone-root .lp-lock-dots i {width:10px;height:10px;border:1.5px solid var(--lp-navy);border-radius:50%;background:transparent;}
+#st-little-phone-root .lp-lock-dots i.filled {background:var(--lp-navy);}
+#st-little-phone-root .lp-lock-hidden-input {
+ position:absolute!important;left:-9999px!important;width:1px!important;height:1px!important;
+ opacity:0!important;pointer-events:none!important;
+}
+#st-little-phone-root .lp-lock-keypad {width:100%;display:grid;grid-template-columns:repeat(3,1fr);justify-items:center;gap:11px 12px;}
+#st-little-phone-root .lp-lock-keypad button {
+  width:clamp(53px,15vw,65px);height:clamp(53px,15vw,65px);
+  padding:0;border:0;border-radius:50%;background:#ffffff77;color:var(--lp-navy);
+  font-size:24px;font-weight:350;box-shadow:0 1px 2px #35568a13;
+}
+#st-little-phone-root .lp-lock-keypad button:active {background:var(--lp-ice);}
+#st-little-phone-root .lp-lock-submit {
+  min-width:120px;padding:10px 18px;border:1px solid #ffffffc0;
+  border-radius:20px;background:#ffffff99;color:var(--lp-navy);font-weight:600;
+}
+#st-little-phone-root .lp-lock-swipe {margin-top:20px;}
+#st-little-phone-root .lp-password-change {margin:12px 0;padding:12px;background:var(--lp-ice);border-radius:12px;}
+#st-little-phone-root .lp-password-change label{display:flex;flex-direction:column;gap:4px;margin:8px 0;font-size:12px;}
+#st-little-phone-root .lp-password-change input{width:100%;padding:10px;border:1px solid var(--lp-slate);border-radius:8px;background:var(--lp-white);}
+#st-little-phone-root .lp-password-change p{font-size:12px;}
+#st-little-phone-root .lp-theme-color-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;}
+#st-little-phone-root .lp-theme-color-grid label{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px;border:1px solid var(--lp-ice);border-radius:10px;font-size:12px;}
+#st-little-phone-root .lp-theme-color-grid input{width:45px;height:30px;padding:1px;border:0;}
+#st-little-phone-root .lp-theme-custom-colors{display:grid;gap:10px;}
+#st-little-phone-root .lp-theme-custom-colors[hidden]{display:none!important;}
+/* Qunxing: five bottom tabs, all page content scrolls above them. */
+#st-little-phone-root .lp-weibo-screen {display:flex;flex-direction:column;min-height:0;overflow:hidden;background:var(--lp-ice);}
+#st-little-phone-root .lp-weibo-top{flex:0 0 auto;border-bottom:1px solid var(--lp-ice);}
+#st-little-phone-root .lp-weibo-feedback{flex:0 0 auto;background:var(--lp-white);}
+#st-little-phone-root .lp-weibo-body {min-height:0;flex:1 1 auto;overflow-y:auto;padding:12px 0 6px;overscroll-behavior:contain;}
+#st-little-phone-root .lp-weibo-body>[hidden]{display:none!important;}
+#st-little-phone-root .lp-weibo-tabs {
+  order:3;flex:0 0 auto;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));
+  border-top:1px solid var(--lp-ice);background:#ffffffed;
+  padding:5px 3px max(7px,env(safe-area-inset-bottom,0px));
+  box-shadow:0 -2px 10px #35568a10;
+}
+#st-little-phone-root .lp-weibo-tabs button {padding:4px 0 3px;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:22px;line-height:1.2;}
+#st-little-phone-root .lp-weibo-tabs button small{font-size:11px;}
+#st-little-phone-root .lp-weibo-tabs button.selected{border-color:var(--lp-navy);background:var(--lp-ice);}
+#st-little-phone-root .lp-weibo-feed,#st-little-phone-root .lp-weibo-hot,
+#st-little-phone-root .lp-weibo-nearby,#st-little-phone-root .lp-weibo-detail,
+#st-little-phone-root .lp-weibo-me {display:flex;flex-direction:column;gap:10px;padding:0 12px 15px;}
+#st-little-phone-root .lp-wb-card{gap:9px;border:1px solid var(--lp-ice);border-radius:15px;background:var(--lp-white);}
+#st-little-phone-root .lp-wb-head{display:flex;align-items:center;flex-wrap:nowrap;gap:10px;}
+#st-little-phone-root .lp-wb-author{display:flex;flex-direction:column;flex:1;min-width:0;gap:3px;}
+#st-little-phone-root .lp-wb-author strong{font-size:14px;overflow-wrap:anywhere;}
+#st-little-phone-root .lp-wb-avatar{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:var(--lp-ice);color:var(--lp-navy);flex:0 0 auto;font-size:17px;overflow:hidden;}
+#st-little-phone-root .lp-wb-avatar img{width:100%;height:100%;object-fit:cover;}
+#st-little-phone-root .lp-wb-follow{border:1px solid var(--lp-slate);border-radius:16px;padding:5px 7px;font-size:11px;}
+#st-little-phone-root .lp-wb-section-heading{display:flex;flex-direction:column;gap:4px;color:var(--lp-navy);padding:10px 6px;}
+#st-little-phone-root .lp-wb-section-heading strong{font-size:16px;}
+#st-little-phone-root .lp-wb-section-heading small{font-size:11px;color:var(--lp-slate);}
+#st-little-phone-root .lp-wb-empty{font-size:13px;color:var(--lp-slate);padding:16px;text-align:center;}
+#st-little-phone-root .lp-weibo-compose-panel{padding:16px;background:var(--lp-white);margin:0 12px;border-radius:14px;}
+#st-little-phone-root .lp-weibo-compose-panel textarea,
+#st-little-phone-root .lp-weibo-detail textarea{width:100%;min-height:110px;border:1px solid var(--lp-slate);border-radius:12px;padding:10px;font:inherit;}
+#st-little-phone-root .lp-weibo-compose-panel button{padding:10px 18px;border:0;border-radius:10px;background:var(--lp-navy);color:var(--lp-white);}
+#st-little-phone-root .lp-wb-profile{display:flex;align-items:center;gap:12px;padding:15px;background:var(--lp-white);border-radius:14px;}
+#st-little-phone-root .lp-wb-profile .lp-wb-avatar{width:65px;height:65px;}
+#st-little-phone-root .lp-wb-profile>div{display:flex;flex-direction:column;gap:5px;min-width:0;overflow-wrap:anywhere;}
+#st-little-phone-root .lp-wb-profile small{color:var(--lp-slate);font-size:11px;}
+#st-little-phone-root .lp-wb-stats{padding:10px;text-align:center;color:var(--lp-navy);background:var(--lp-white);border-radius:10px;}
+#st-little-phone-root .lp-wb-me-menu{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+#st-little-phone-root .lp-wb-me-menu button{padding:11px 5px;border-radius:10px;background:var(--lp-white);border:1px solid var(--lp-ice);}
+#st-little-phone-root .lp-wb-me-menu button.active{background:var(--lp-ice);color:var(--lp-navy);}
+#st-little-phone-root .lp-wb-editor{display:grid;gap:11px;padding:14px;background:var(--lp-white);border-radius:14px;}
+#st-little-phone-root .lp-wb-field{display:flex;flex-direction:column;gap:6px;color:var(--lp-navy);font-size:12px;}
+#st-little-phone-root .lp-wb-field input{width:100%;min-height:35px;border:1px solid var(--lp-ice);border-radius:9px;padding:7px;color:var(--lp-navy);background:var(--lp-white);}
+#st-little-phone-root .lp-wb-field input[type="checkbox"]{width:22px;min-height:20px;align-self:flex-start;accent-color:var(--lp-navy);}
+#st-little-phone-root .lp-wb-editor>button{padding:10px;border:1px solid var(--lp-slate);border-radius:10px;background:var(--lp-navy);color:var(--lp-white);}
+#st-little-phone-root .lp-wb-account-line{display:flex;align-items:center;gap:7px;background:var(--lp-white);padding:10px;border-radius:12px;flex-wrap:wrap;}
+#st-little-phone-root .lp-wb-account-line>span:not(.lp-wb-avatar){flex:1;min-width:95px;font-size:12px;overflow-wrap:anywhere;}
+#st-little-phone-root .lp-wb-account-line button{padding:5px 7px;font-size:11px;border:1px solid var(--lp-ice);border-radius:8px;background:var(--lp-white);}
+#st-little-phone-root .lp-wb-hot-item{border:1px solid var(--lp-ice);}
