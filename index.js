@@ -111,6 +111,7 @@ const DESKTOP_PAGE_SIZE=8;
 let desktopPage=0;
 let desktopEditMode=false;
 let desktopTouchX=null;
+let desktopLayoutSignature='';
 let desktopTouchY=null;
 let securityUnlocked=false;
 let lockSetupStep=0;
@@ -468,7 +469,7 @@ function desktopVisual(page){
   if(effect==='cube'){
    section.style.transform=diff===0?'translate3d(0,0,0) rotateY(0deg)':
     diff<0?'translate3d(-95%,0,0) rotateY(68deg)':'translate3d(95%,0,0) rotateY(-68deg)';
-   section.style.transformOrigin=diff<0?'right center':'left center';
+   section.style.transformOrigin=index%2===0?'right center':'left center';
    section.style.opacity=Math.abs(diff)>1?'0':'1';
   }else if(effect==='stack'){
    section.style.transform='translate3d('+(diff*20)+'%,0,0) scale('+(diff===0?1:'.91')+')';
@@ -489,9 +490,15 @@ function renderDesktop(){
  const order=desktopOrder();
  const count=Math.max(1,Math.ceil(order.length/DESKTOP_PAGE_SIZE));
  desktopPage=Math.min(Math.max(0,desktopPage),count-1);
- nodes.homePages.replaceChildren();
- nodes.homeDots.replaceChildren();
- for(let page=0;page<count;page++){
+ const signature=order.join('|')+';'+count;
+ const rebuild=nodes.homePages.children.length!==count||signature!==desktopLayoutSignature;
+ if(rebuild){
+  desktopLayoutSignature=signature;
+  const landingWidget=root.querySelector('.lp-home-widget');
+  const landingSearch=nodes.homeHotSearch;
+  nodes.homePages.replaceChildren();
+  nodes.homeDots.replaceChildren();
+  for(let page=0;page<count;page++){
   const section=document.createElement('div');section.className='lp-desktop-page';
   section.setAttribute('aria-label','第 '+(page+1)+' 页');
   const grid=document.createElement('div');grid.className='lp-desktop-grid';
@@ -505,8 +512,8 @@ function renderDesktop(){
    tile.append(pict,name);grid.append(tile);
   }
   if(page===0){
-    const widget=root.querySelector('.lp-home-widget');
-    const search=nodes.homeHotSearch;
+    const widget=landingWidget;
+    const search=landingSearch;
     if(widget)section.append(widget);
     if(search)section.append(search);
    }
@@ -516,9 +523,11 @@ function renderDesktop(){
   dot.dataset.desktopPage=String(page);dot.setAttribute('aria-label','切换到第 '+(page+1)+' 页');
   nodes.homeDots.append(dot);
  }
- nodes.homePages.dataset.ready='false';
+  nodes.homePages.dataset.ready='false';
+  const ready=()=>{if(nodes?.homePages)nodes.homePages.dataset.ready='true';};
+  if(typeof requestAnimationFrame==='function')requestAnimationFrame(ready);else ready();
+ }
  desktopVisual(desktopPage);
- requestAnimationFrame(()=>{if(nodes?.homePages)nodes.homePages.dataset.ready='true';});
  const data=readRootData(context());
  const time=String(data.storyTime||localDateTime());
  nodes.homeTime.textContent=time.slice(11,16);
