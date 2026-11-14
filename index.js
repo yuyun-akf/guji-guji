@@ -312,6 +312,209 @@ function scheduleLauncherProbe(reason) {
     launcherProbeTimer=setTimeout(()=>{launcherProbeTimer=null;inspectLauncher(reason);},180);
 }
 
+
+function phoneSettings(ctx=context()) {
+ return ctx?.extensionSettings?.[SETTINGS_KEY]||{};
+}
+function phoneLockSettings(ctx=context()) {
+ const value=phoneSettings(ctx).lock;
+ return {enabled:value?.enabled!==false,salt:value?.salt||'',hash:value?.hash||''};
+}
+async function phonePinDigest(pin,salt){
+ if(!/^\d{4,6}$/.test(String(pin||'')))throw new Error('密码须为 4～6 位数字');
+ if(!globalThis.crypto?.subtle)throw new Error('当前浏览器不支持安全密码存储，请检查安全环境');
+ const bytes=new TextEncoder().encode(salt+':'+pin);
+ const hash=await crypto.subtle.digest('SHA-256',bytes);
+ return Array.from(new Uint8Array(hash),byte=>byte.toString(16).padStart(2,'0')).join('');
+}
+async function phoneUnlock(){
+ if(!nodes||busy)return;
+ const ctx=context(),lock=phoneLockSettings(ctx);
+ const pin=nodes.lockPin.value;
+ try{
+  if(!lock.hash){
+   const repeat=nodes.lockRepeat.value;
+   if(pin!==repeat)throw new Error('两次输入的密码不一致');
+   const salt=Array.from(crypto.getRandomValues(new Uint8Array(12)),byte=>byte.toString(16).padStart(2,'0')).join('');
+   const hash=await phonePinDigest(pin,salt);
+   if(!ctx?.extensionSettings||typeof ctx.saveSettingsDebounced!=='function')throw new Error('无法保存解锁设置');
+   (ctx.extensionSettings[SETTINGS_KEY]||={}).lock={enabled:true,salt,hash};
+   ctx.saveSettingsDebounced();
+  }else{
+   const actual=await phonePinDigest(pin,lock.salt);
+   if(actual!==lock.hash)throw new Error('密码不正确');
+  }
+  nodes.lockPin.value='';nodes.lockRepeat.value='';
+  securityUnlocked=true;
+  nodes.lockFeedback.textContent='';
+  setScreen('home');
+ }catch(error){nodes.lockFeedback.textContent=String(error.message||error);}
+}
+function renderLock(){
+ if(!nodes?.lockPin)return;
+ const lock=phoneLockSettings();
+ const data=readRootData(context());
+ nodes.lockTime.textContent=String(data.storyTime||localDateTime()).slice(11,16);
+ nodes.lockDate.textContent=String(data.storyTime||localDateTime()).slice(0,10);
+ nodes.lockRepeatRow.hidden=Boolean(lock.hash);
+ nodes.lockIntro.textContent=lock.hash?'输入密码解锁':'第一次使用，请设置 4～6 位解锁密码';
+ nodes.lockAction.textContent=lock.hash?'解锁':'设置密码并进入';
+}
+function desktopOrder(){
+ const order=phoneSettings().desktopOrder;
+ const keys=APP_CATALOG.map(item=>item.key);
+ return [...new Set([...(Array.isArray(order)?order:[]),...keys])].filter(key=>keys.includes(key));
+}
+function saveDesktopOrder(order){
+ const ctx=context();
+ if(!ctx?.extensionSettings||typeof ctx.saveSettingsDebounced!=='function')
+   return setStatus('无法保存应用顺序','error');
+ (ctx.extensionSettings[SETTINGS_KEY]||={}).desktopOrder=order;
+ ctx.saveSettingsDebounced();
+ renderDesktop();renderDesktopSort();
+}
+function moveDesktopApp(key,offset){
+ const order=desktopOrder(),from=order.indexOf(key),to=from+offset;
+ if(from<0||to<0||to>=order.length)return;
+ [order[from],order[to]]=[order[to],order[from]];
+ saveDesktopOrder(order);
+}
+function renderDesktop(){
+ if(!nodes?.homePages)return;
+ const order=desktopOrder();
+ const count=Math.ceil(order.length/DESKTOP_PAGE_SIZE);
+ desktopPage=Math.min(Math.max(0,desktopPage),count-1);
+ nodes.homePages.replaceChildren();
+ nodes.homeDots.replaceChildren();
+ for(let page=0;page<count;page++){
+  const section=document.createElement('div');section.className='lp-desktop-page';
+  section.setAttribute('aria-label','第 '+(page+1)+' 页');
+  const grid=document.createElement('div');grid.className='lp-desktop-grid';
+  for(const key of order.slice(page*DESKTOP_PAGE_SIZE,(page+1)*DESKTOP_PAGE_SIZE)){
+   const app=APP_CATALOG.find(item=>item.key===key);
+   const tile=document.createElement(app.ready?'button':'div');
+   if(app.ready){tile.type='button';tile.dataset.lpOpen=app.screen;}
+   tile.className='lp-desktop-app'+(app.ready?'':' lp-desktop-disabled');
+   const pict=document.createElement('span');pict.className='lp-desktop-app-icon';pict.innerHTML=phoneIconMarkup(key);
+   const name=document.createElement('span');name.className='lp-desktop-app-name';name.textContent=app.name;
+   tile.append(pict,name);grid.append(tile);
+  }
+  section.append(grid);nodes.homePages.append(section);
+  const dot=document.createElement('button');dot.type='button';
+  dot.className='lp-desktop-page-dot'+(page===desktopPage?' current':'');
+  dot.dataset.desktopPage=String(page);dot.setAttribute('aria-label','切换到第 '+(page+1)+' 页');
+  nodes.homeDots.append(dot);
+ }
+ nodes.homePages.style.transform='translateX(-'+desktopPage*100+'%)';
+ nodes.homeDots.querySelectorAll('button').forEach((btn,i)=>btn.classList.toggle('current',i===desktopPage));
+ const data=readRootData(context());
+ const time=String(data.storyTime||localDateTime());
+ nodes.homeTime.textContent=time.slice(11,16);
+ nodes.homeDate.textContent=time.slice(0,10).replaceAll('-',' / ');
+ const scene=data.storyScene||{};
+ const loc=typeof scene.location==='string'?scene.location.trim().slice(0,40):'';
+ const weather=typeof scene.weather==='string'?scene.weather.trim().slice(0,30):'';
+ nodes.homeScene.textContent=[loc,weather].filter(Boolean).join(' · ');
+ nodes.homeScene.hidden=!loc&&!weather;
+}
+function renderDesktopSort(){
+ if(!nodes?.desktopSortList)return;
+ nodes.desktopSortList.replaceChildren();
+ const order=desktopOrder();
+ for(const [index,key] of order.entries()){
+  const item=APP_CATALOG.find(app=>app.key===key);
+  const row=document.createElement('div');row.className='lp-desktop-sort-row';
+  const name=document.createElement('span');name.textContent=item.name;
+  row.append(name);
+  for(const [direction,label] of [[-1,'上移'],[1,'下移']]){
+   const button=document.createElement('button');button.type='button';
+   button.dataset.desktopMove=String(direction);button.dataset.desktopKey=key;
+   button.textContent=label;button.disabled=(index===0&&direction===-1)||(index===order.length-1&&direction===1);
+   row.append(button);
+  }
+  nodes.desktopSortList.append(row);
+ }
+}
+function switchDesktopPage(page){
+ const total=Math.ceil(desktopOrder().length/DESKTOP_PAGE_SIZE);
+ desktopPage=Math.max(0,Math.min(total-1,page));
+ if(nodes?.homePages)nodes.homePages.style.transform='translateX(-'+desktopPage*100+'%)';
+ nodes?.homeDots?.querySelectorAll('button').forEach((btn,i)=>btn.classList.toggle('current',i===desktopPage));
+}
+function phoneClockPreferences(){
+ const pref=phoneSettings().clock||{};
+ return {mode:['always','open','custom'].includes(pref.mode)?pref.mode:'open',
+  rate:Math.min(120,Math.max(.1,Number(pref.rate)||5)),continueClosed:pref.continueClosed===true};
+}
+function advanceStoryMinutes(storyTime,clock,now=Date.now(),active=true,rate=1){
+ const original=new Date(storyTime).getTime();
+ if(!Number.isFinite(original))throw new Error('故事时间无效');
+ const anchor=Number.isFinite(clock?.lastRealMs)?clock.lastRealMs:now;
+ const remainder=Number.isFinite(clock?.remainderMs)?clock.remainderMs:0;
+ const elapsed=active?Math.max(0,now-anchor):0;
+ const total=remainder+elapsed*rate;
+ const minutes=Math.floor(total/60000);
+ return {storyTime:minutes?formatStoryTime(new Date(original+minutes*60000)):storyTime,
+  lastRealMs:now,remainderMs:total-minutes*60000,minutes};
+}
+async function tickStoryClock({onOpen=false,onClose=false}={}){
+ if(clockTickBusy||busy||bridgeSyncWorking||relationSyncWorking)return;
+ const ctx=context();if(!selectedCharacter(ctx)||!ctx?.chatMetadata)return;
+ const prefs=phoneClockPreferences(),rootData=structuredClone(readRootData(ctx));
+ const open=Boolean(root?.classList.contains('lp-open')&&document.visibilityState!=='hidden');
+ const allowsClosed=prefs.mode==='always'||(prefs.mode==='custom'&&prefs.continueClosed);
+ const active=allowsClosed||open;
+ const rate=prefs.mode==='custom'?prefs.rate:1;
+ const clock=rootData.clock||{};
+ // Once paused, reset the anchor without catching up for time spent outside.
+ if(onOpen&&!allowsClosed&&!clock.openAtLastTick){
+   clock.lastRealMs=Date.now();clock.openAtLastTick=true;
+ }
+ const next=advanceStoryMinutes(rootData.storyTime||localDateTime(),clock,Date.now(),active,rate);
+ if(!open&&!allowsClosed){
+   next.lastRealMs=Date.now();
+ }
+ if(next.minutes===0&&!onOpen&&!onClose)return;
+ rootData.storyTime=next.storyTime;
+ rootData.clock={lastRealMs:next.lastRealMs,remainderMs:next.remainderMs,openAtLastTick:open&&!onClose};
+ clockTickBusy=true;
+ try{
+  await writeData(ctx,{...rootData,__contactId:PRIMARY_CONTACT_ID});
+  if(mounted&&root?.classList.contains('lp-open')){
+    if(nodes?.homeTime)renderDesktop();
+    if(nodes?.lockTime)renderLock();
+  }
+ }catch(error){recordError('故事时钟',error);}
+ finally{clockTickBusy=false;}
+}
+async function savePhoneClockPrefs(){
+ const ctx=context();if(!ctx?.extensionSettings||typeof ctx.saveSettingsDebounced!=='function')return;
+ const mode=nodes.clockMode.value,rate=Number(nodes.clockRate.value);
+ if(!['always','open','custom'].includes(mode)||!Number.isFinite(rate)||rate<.1||rate>120)
+   return setStatus('请选择有效的时间流速','error');
+ (ctx.extensionSettings[SETTINGS_KEY]||={}).clock={mode,rate,continueClosed:nodes.clockContinueClosed.checked};
+ ctx.saveSettingsDebounced();
+ const data=structuredClone(readRootData(ctx));
+ data.clock={...(data.clock||{}),lastRealMs:Date.now(),remainderMs:0,openAtLastTick:false};
+ try{await writeData(ctx,{...data,__contactId:PRIMARY_CONTACT_ID});setStatus('时间流速已保存');}
+ catch(error){setStatus(recordError('保存时间流速',error),'error');}
+}
+function loadPhoneClockPrefs(){
+ if(!nodes?.clockMode)return;
+ const pref=phoneClockPreferences();
+ nodes.clockMode.value=pref.mode;nodes.clockRate.value=String(pref.rate);
+ nodes.clockContinueClosed.checked=pref.continueClosed;
+ nodes.clockCustomFields.hidden=pref.mode!=='custom';
+ nodes.lockEnabled.checked=phoneLockSettings().enabled;
+}
+async function savePhoneLockEnabled(){
+ const ctx=context();if(!ctx?.extensionSettings||!ctx.saveSettingsDebounced)return;
+ const lock=phoneLockSettings(ctx);
+ (ctx.extensionSettings[SETTINGS_KEY]||={}).lock={...lock,enabled:nodes.lockEnabled.checked};
+ ctx.saveSettingsDebounced();
+ setStatus('锁屏设置已保存');
+}
+
 function themeData() {
     const theme = context()?.extensionSettings?.[SETTINGS_KEY]?.theme;
     return theme && typeof theme === 'object' ? theme : {};
