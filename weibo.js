@@ -1,6 +1,6 @@
 /* 群星 · story-aware public social feed. Persists identities and interactions per story chat. */
 export function createWeiboModule(api) {
- const state={scope:'',tab:'home',detail:'',subview:'',posts:{home:[],nearby:[]},trends:[],nearbyTrends:[],loading:false,attempted:{},token:0,editing:'',avatarDraft:'',avatarOwnerDraft:''};
+ const state={scope:'',tab:'home',detail:'',topic:null,subview:'',posts:{home:[],nearby:[]},trends:[],nearbyTrends:[],loading:false,attempted:{},token:0,editing:'',avatarDraft:'',avatarOwnerDraft:'',candidates:[],scanLoading:false,scanMessage:''};
  let writes=Promise.resolve(), autoBusy=false;
  const context=()=>api.context(), nodes=()=>api.getNodes(), root=()=>api.readRootData(context());
  const uid=(prefix='qx')=>prefix+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
@@ -13,7 +13,7 @@ export function createWeiboModule(api) {
   return {profile:{nickname:api.currentPersona(context())?.name||context()?.name1||'我',handle:'',bio:'',avatar:'',followers:0,...q.profile},
    accounts:Array.isArray(q.accounts)?q.accounts:[],
    following:Array.isArray(q.following)?q.following:[],
-   posts:Array.isArray(q.posts)?q.posts:[],
+   posts:Array.isArray(q.posts)?q.posts:[],topicDetails:q.topicDetails&&typeof q.topicDetails==='object'?q.topicDetails:{},
    trends:Array.isArray(q.trends)?q.trends:[],nearbyTrends:Array.isArray(q.nearbyTrends)?q.nearbyTrends:[],
    settings:{...defaults,...q.settings},lastAutoStoryMinute:Number(q.lastAutoStoryMinute)||0};
  };
@@ -31,7 +31,7 @@ export function createWeiboModule(api) {
  const feedback=s=>{if(nodes()?.weiboFeedback)nodes().weiboFeedback.textContent=s;};
  function reset(){
   const next=scope();if(next===state.scope)return;
-  state.scope=next;state.tab='home';state.detail='';state.subview='';state.posts={home:[],nearby:[]};
+  state.scope=next;state.tab='home';state.detail='';state.topic=null;state.subview='';state.posts={home:[],nearby:[]};state.candidates=[];state.scanMessage='';state.scanLoading=false;
   state.trends=[];state.nearbyTrends=[];state.attempted={};state.loading=false;state.token++;
  }
  const actionState=p=>data().posts.find(x=>x.id===p.id)?.actions||p.actions||{};
@@ -39,7 +39,8 @@ export function createWeiboModule(api) {
  function allPosts(){
   const q=data();
   const legacy=(Array.isArray(root().weiboSaved)?root().weiboSaved:[]).filter(p=>p?.id).map(p=>({...p,zone:p.zone||'world'}));
-  const combined=[...q.posts,...legacy,...state.posts.home,...state.posts.nearby],seen=new Set();
+  const cached=Object.values(q.topicDetails).flatMap(t=>Array.isArray(t?.posts)?t.posts:[]);
+  const combined=[...q.posts,...legacy,...state.posts.home,...state.posts.nearby,...cached,...(state.topic?.posts||[])],seen=new Set();
   return combined.filter(p=>p?.id&&!seen.has(p.id)&&seen.add(p.id));
  }
  function byId(id){return allPosts().find(p=>p.id===id);}
@@ -112,6 +113,41 @@ export function createWeiboModule(api) {
   }catch(e){feedback('刷新失败：'+String(e.message||e));api.recordError('群星生成',e);}
   finally{state.loading=false;render();}
  }
+
+ const topicKey=(zone,title)=>JSON.stringify([zone,title]);
+ async function openTopic(title,zone='home'){
+  reset();
+  const key=topicKey(zone,title),cached=data().topicDetails[key];
+  state.detail='';
+  state.topic={title,zone,key,summary:cached?.summary||'',posts:cached?.posts||[],loading:false,error:''};
+  render();
+  if(!cached?.posts?.length)await loadTopic();
+ }
+ async function loadTopic(){
+  const t=state.topic;if(!t||t.loading)return;
+  const session=scope(),key=t.key;
+  t.loading=true;t.error='';render();
+  try{
+   const raw=await api.phoneGenerate(context(),{systemPrompt:'只输出有效 JSON。',prompt:[{role:'user',content:
+    prompt(4,t.zone,t.title,false)+'\n现在是打开「'+t.title+'」话题详情页，不是刷新首页。请针对该话题生成4条不同视角的帖子，每条附3至6条评论。返回 JSON：{"summary":"话题概况","posts":[{"author":"昵称","text":"正文","comments":[{"name":"网友","text":"评论"}]}]}。请不要编造未公开的私事。'}]},api.readData(context()));
+   if(session!==scope()||state.topic?.key!==key)return;
+   const parsed=parse(raw),posts=(Array.isArray(parsed.posts)?parsed.posts:[])
+    .map(p=>normalize(p,t.zone==='nearby'?'nearby':'world')).filter(Boolean).slice(0,6);
+   if(!posts.length)throw Error('话题没有生成有效讨论');
+   const summary=clean(parsed.summary,500);
+   await mutate(q=>{
+    const details={...q.topicDetails,[key]:{title:t.title,zone:t.zone,summary,posts}};
+    const keys=Object.keys(details);
+    if(keys.length>30)for(const old of keys.slice(0,keys.length-30))delete details[old];
+    q.topicDetails=details;
+   });
+   if(state.topic?.key===key)state.topic={...t,summary,posts,loading:false,error:''};
+  }catch(e){
+   if(state.topic?.key===key){t.error='加载话题失败：'+String(e.message||e);t.loading=false;}
+   api.recordError('群星话题',e);
+  }finally{if(state.topic?.key===key){state.topic.loading=false;render();}}
+ }
+
  function control(label,act,id='',active=false){
   const b=el('button','lp-wb-action'+(active?' active':''),label);
   b.type='button';b.dataset.wbAction=act;b.dataset.wbPost=id;return b;
