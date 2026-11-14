@@ -2526,6 +2526,25 @@ function weiboStoryContext(){
  const c=context();
  return (c?.chat||[]).slice(-16).map(m=>String(m?.mes||m?.text||'').slice(0,350)).join('\n').slice(-3200);
 }
+
+async function scanQunxingAccounts(extraWorld=''){
+ const ctx=context(),main=selectedCharacter(ctx);
+ if(!main)throw Error('请先打开角色卡的单人聊天');
+ const result=await scanNpcSources(ctx,extraWorld);
+ const charName=getCharacterName(main);
+ const mainInfo=main.data||main;
+ const primary={name:charName,kind:'角色',handle:'',bio:'',publicFigure:false,
+  reference:[mainInfo.description,mainInfo.personality,mainInfo.scenario].filter(x=>typeof x==='string').join('\n').slice(0,1000),
+  source:'当前角色卡'};
+ const candidates=[primary,...result.candidates.map(c=>({
+  name:c.name,kind:'NPC',handle:'',bio:'',publicFigure:false,
+  reference:String(c.description||'').slice(0,1000),source:c.source||'故事资料'
+ }))];
+ const unique=new Set();
+ return {...result,candidates:candidates.filter(a=>{
+  if(!a.name||unique.has(a.name))return false;unique.add(a.name);return true;
+ }).slice(0,45)};
+}
 async function loadWeiboController(){
  if(weiboController)return weiboController;
  if(weiboLoadPromise)return weiboLoadPromise;
@@ -2533,7 +2552,7 @@ async function loadWeiboController(){
   weiboController=module.createWeiboModule({
    context,getNodes:()=>nodes,readRootData,writeData,readData,phoneGenerate,
    selectedCharacter,currentPersona,stripModelReasoning,publishPhoneAppEvent,
-   recordActivity,recordError,storyContext:weiboStoryContext
+   recordActivity,recordError,storyContext:weiboStoryContext,scanAccounts:scanQunxingAccounts
   });return weiboController;
  }).catch(error=>{
   if(nodes?.weiboFeedback)nodes.weiboFeedback.textContent='群星加载失败：'+String(error.message||error);
@@ -5291,9 +5310,6 @@ function makeUI() {
           <span data-lp="homeUnreadCount" hidden></span><span data-lp="homeLogCount" hidden></span>
         </section>
         <section class="lp-screen lp-weibo-screen" data-lp-screen="weibo" aria-label="群星" hidden>
-          <div class="lp-weibo-top">
-            <strong>群星</strong><button type="button" data-lp="weiboGenerate">刷新 10 条</button>
-          </div>
           <div data-lp="weiboFeedback" class="lp-weibo-feedback" role="status"></div>
           <div class="lp-weibo-body">
             <div data-lp="weiboFeed" class="lp-weibo-feed"></div>
@@ -5307,6 +5323,7 @@ function makeUI() {
             <div data-lp="weiboMe" class="lp-weibo-me" hidden></div>
             <div data-lp="weiboDetail" class="lp-weibo-detail" hidden></div>
             <button type="button" data-lp="weiboDetailBack" class="lp-weibo-detail-back" hidden>返回列表</button>
+            <div class="lp-weibo-refresh-box" data-lp="weiboRefreshBox"><button type="button" data-lp="weiboGenerate">刷新更多</button></div>
           </div>
           <nav class="lp-weibo-tabs" data-lp="weiboTabs" aria-label="群星导航">
             <button type="button" data-weibo-tab="home" class="selected">⌂<small>首页</small></button>
@@ -5820,7 +5837,7 @@ function mount() {
     nodes = Object.fromEntries(['title', 'subtitle', 'back', 'close', 'time',
         'homeTime','homeDate','homeScene','homePages','homeDots','homeSwipe','homeHotSearch','homeCharacter','homeLogCount','homeUnreadCount',
         'lockTime','lockDate','lockPin','lockRepeat','lockDots','lockKeypad','lockIntro','lockFeedback','lockAction','lockExit','homeExit','lockOldPin','lockNewPin','lockConfirmPin','lockChangePin','lockChangeFeedback',
-        'weiboGenerate','weiboFeedback','weiboFeed','weiboHot','weiboNearby','weiboCompose','weiboMe','weiboDetail','weiboTabs','weiboComposeText','weiboPublish','weiboDetailBack',
+        'weiboGenerate','weiboFeedback','weiboFeed','weiboHot','weiboNearby','weiboCompose','weiboMe','weiboDetail','weiboTabs','weiboComposeText','weiboPublish','weiboDetailBack','weiboRefreshBox',
         'desktopSortList','clockMode','clockRate','clockContinueClosed','clockCustomFields','clockSave','lockEnabled','lockSaveEnabled','notification','inlineNotification','calendarPrev','calendarNext','calendarHeading','calendarViews','calendarGrid','calendarSelected','calendarSummary','calendarSelectedTime','calendarStoryToday','calendarRealToday','calendarSaveTime','calendarExactSave',
         'momentsPost', 'momentsText', 'momentsFeed', 'momentFeedback','momentsPreview','momentImageUpload','momentRemovePhoto','myAvatarUpload','myAvatarFallback','myAvatarStatus','myIdentity', 'myAvatar', 'myPersona', 'autoMessagesMode','autoMessagesDays','autoMomentsMode','autoMomentsDays','relationAutoSync','phoneInPast','characterRequests','momentInteractions','autonomyStatus','autonomyFeedback','saveAutonomy','rescanRelations','testAutonomy', 'stickerUpload','stickerPackUpload', 'stickerStatus', 'stickerLibrary',
         'friendLabel', 'friendActions','profileAvatar','profileName','profileDescription','contactEvidence','contactExchange','contactLinks','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcScanState','npcCandidates','npcSaveCandidates','storyPeopleList','viewPrimaryContact','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
