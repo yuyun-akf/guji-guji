@@ -2712,3 +2712,12 @@
 #st-little-phone-root .lp-theme-binding input{
  flex:0 0 20px;width:20px;height:20px;margin:1px 0 0;accent-color:var(--lp-navy);
 }
+
+/* Keep text-entry scrollbars invisible despite the global app-scrollbar rule. */
+#st-little-phone-root .lp-composer textarea,
+#st-little-phone-root .lp-chat .lp-composer textarea,
+#st-little-phone-root .lp-wb-editor textarea{
+ scrollbar-width:none!important;
+}
+#st-little-phone-root .lp-composer textarea::-webkit-scrollbar,
+#st-little-phone-root .lp-wb-editor textarea::-webkit-scrollbar{display:none!important;width:0!important;}
