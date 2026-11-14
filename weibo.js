@@ -285,7 +285,7 @@ export function createWeiboModule(api) {
   });
  }
  async function action(type,id){
-  if(state.loading&&type!=='detail')return;
+  // Reading/profile/settings interactions remain available during feed generation.
   if(type==='subview'){state.subview=id;render();return;}
   if(type==='newAccount'){state.editing='new';state.avatarDraft='';render();return;}
   if(type==='editAccount'){state.editing=id;state.avatarDraft='';render();return;}
