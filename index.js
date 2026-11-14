@@ -445,33 +445,45 @@ function storyScenePreview(ctx,data){
 }
 
 
+
 const DESKTOP_EFFECTS=new Set(['slide','cube','stack','fade']);
-function desktopEffect(){const v=themeData().desktopEffect;return DESKTOP_EFFECTS.has(v)?v:'slide';}
+function desktopEffect(){
+ const v=themeData().desktopEffect;
+ return DESKTOP_EFFECTS.has(v)?v:'slide';
+}
 function desktopVisual(page){
- if(!nodes?.homePages)return;
+ if(!nodes?.homePages||!root)return;
  const pages=[...nodes.homePages.children],effect=desktopEffect();
- root.dataset.desktopPage=String(page);root.dataset.desktopEffect=effect;
- const widget=root.querySelector('.lp-home-widget');
- if(widget)widget.hidden=page!==0;
- if(nodes.homeHotSearch)nodes.homeHotSearch.hidden=page!==0;
+ root.dataset.desktopPage=String(page);
+ root.dataset.desktopEffect=effect;
  nodes.homePages.dataset.effect=effect;
- nodes.homePages.style.transform=effect==='slide'?'translateX(-'+page*100+'%)':'none';
- for(const [index,section] of pages.entries()){
+ // Every page is equal-sized; the clock and search belong to page 1.
+ pages.forEach((section,index)=>{
   const diff=index-page;
   section.classList.toggle('lp-desktop-first',index===0);
   section.classList.toggle('lp-desktop-later',index>0);
   section.style.pointerEvents=index===page?'auto':'none';
-  section.style.zIndex=index===page?'3':String(Math.max(0,2-Math.abs(diff)));
-  section.style.opacity=effect==='slide'?'1':(Math.abs(diff)>1?'0':effect==='stack'?(diff===0?'1':'.48'):diff===0?'1':effect==='cube'?'.72':'0');
+  section.style.zIndex=index===page?'4':String(index<page?2:3);
+  section.setAttribute('aria-hidden',index===page?'false':'true');
   if(effect==='cube'){
-   section.style.transform=diff===0?'translateX(0) rotateY(0deg)':diff>0?'translateX(80%) rotateY(-72deg)':'translateX(-80%) rotateY(72deg)';
-   section.style.transformOrigin=diff>0?'left center':'right center';
+   section.style.transform=diff===0?'translate3d(0,0,0) rotateY(0deg)':
+    diff<0?'translate3d(-95%,0,0) rotateY(68deg)':'translate3d(95%,0,0) rotateY(-68deg)';
+   section.style.transformOrigin=diff<0?'right center':'left center';
+   section.style.opacity=Math.abs(diff)>1?'0':'1';
   }else if(effect==='stack'){
-   section.style.transform='translateX('+(diff===0?0:diff>0?18:-18)+'%) scale('+(diff===0?1:'.90')+')';
-  }else section.style.transform='';
- }
+   section.style.transform='translate3d('+(diff*20)+'%,0,0) scale('+(diff===0?1:'.91')+')';
+   section.style.opacity=Math.abs(diff)>1?'0':diff===0?'1':'.55';
+  }else if(effect==='fade'){
+   section.style.transform='translate3d(0,'+(diff===0?'0':'12')+'px,0) scale('+(diff===0?1:'.985')+')';
+   section.style.opacity=diff===0?'1':'0';
+  }else{
+   section.style.transform='translate3d('+(diff*100)+'%,0,0)';
+   section.style.opacity=Math.abs(diff)>1?'0':'1';
+  }
+ });
  nodes.homeDots?.querySelectorAll('button').forEach((btn,i)=>btn.classList.toggle('current',i===page));
 }
+
 function renderDesktop(){
  if(!nodes?.homePages)return;
  const order=desktopOrder();
@@ -492,13 +504,21 @@ function renderDesktop(){
    const name=document.createElement('span');name.className='lp-desktop-app-name';name.textContent=app.name;
    tile.append(pict,name);grid.append(tile);
   }
-  section.append(grid);nodes.homePages.append(section);
+  if(page===0){
+    const widget=root.querySelector('.lp-home-widget');
+    const search=nodes.homeHotSearch;
+    if(widget)section.append(widget);
+    if(search)section.append(search);
+   }
+   section.append(grid);nodes.homePages.append(section);
   const dot=document.createElement('button');dot.type='button';
   dot.className='lp-desktop-page-dot'+(page===desktopPage?' current':'');
   dot.dataset.desktopPage=String(page);dot.setAttribute('aria-label','切换到第 '+(page+1)+' 页');
   nodes.homeDots.append(dot);
  }
+ nodes.homePages.dataset.ready='false';
  desktopVisual(desktopPage);
+ requestAnimationFrame(()=>{if(nodes?.homePages)nodes.homePages.dataset.ready='true';});
  const data=readRootData(context());
  const time=String(data.storyTime||localDateTime());
  nodes.homeTime.textContent=time.slice(11,16);
