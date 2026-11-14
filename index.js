@@ -5070,20 +5070,25 @@ function makeUI() {
           <div class="lp-lock-stage">
             <div class="lp-lock-time" data-lp="lockTime">19:50</div>
             <div class="lp-lock-date" data-lp="lockDate"></div>
-            <div class="lp-lock-card">
-              <div data-lp="lockIntro">输入密码解锁</div>
-              <label class="lp-lock-field">密码
-                <input data-lp="lockPin" type="password" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="6" autocomplete="off" placeholder="4～6 位数字" />
-              </label>
-              <label class="lp-lock-field" data-lp="lockRepeatRow">确认密码
-                <input data-lp="lockRepeat" type="password" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="6" autocomplete="off" placeholder="再次输入密码" />
-              </label>
+            <div class="lp-lock-unlock">
+              <div class="lp-lock-symbol" aria-hidden="true">♧</div>
+              <div class="lp-lock-intro" data-lp="lockIntro">输入密码</div>
+              <div class="lp-lock-dots" data-lp="lockDots" aria-label="密码位数"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+              <input data-lp="lockPin" class="lp-lock-hidden-input" type="password" inputmode="none" maxlength="6" autocomplete="off" tabindex="-1" aria-label="密码" />
+              <input data-lp="lockRepeat" class="lp-lock-hidden-input" type="password" inputmode="none" maxlength="6" autocomplete="off" tabindex="-1" aria-label="确认密码" />
               <div data-lp="lockFeedback" class="lp-lock-feedback" role="status"></div>
-              <button type="button" data-lp="lockAction">解锁</button>
+              <div class="lp-lock-keypad" data-lp="lockKeypad" aria-label="数字密码键盘">
+                <button type="button" data-lock-digit="1">1</button><button type="button" data-lock-digit="2">2</button><button type="button" data-lock-digit="3">3</button>
+                <button type="button" data-lock-digit="4">4</button><button type="button" data-lock-digit="5">5</button><button type="button" data-lock-digit="6">6</button>
+                <button type="button" data-lock-digit="7">7</button><button type="button" data-lock-digit="8">8</button><button type="button" data-lock-digit="9">9</button>
+                <span aria-hidden="true"></span><button type="button" data-lock-digit="0">0</button><button type="button" data-lock-digit="del" aria-label="删除一位数字">⌫</button>
+              </div>
+              <button type="button" data-lp="lockAction" class="lp-lock-submit">解锁</button>
             </div>
-            <div class="lp-lock-swipe">上滑进入 · 密码解锁</div>
+            <div class="lp-lock-swipe">数字密码解锁</div>
           </div>
         </section>
+
         <section class="lp-screen lp-home" data-lp-screen="home" aria-label="手机桌面">
           <div class="lp-phone-status"><span>咕叽手机</span><button type="button" data-lp="homeExit" class="lp-phone-exit" aria-label="关闭手机">×</button></div>
           <div class="lp-home-widget">
@@ -5096,43 +5101,41 @@ function makeUI() {
             </div>
             <div data-lp="homeCharacter" class="lp-home-character"></div>
           </div>
-          <div class="lp-home-search" aria-label="应用桌面">咕叽手机 <span>⌕</span></div>
+          <button type="button" class="lp-home-search" data-lp="homeHotSearch" aria-label="查看群星热搜">群星 · 热搜 <span>⌕</span></button>
           <div class="lp-desktop-wrap" data-lp="homeSwipe">
             <div class="lp-desktop-pages" data-lp="homePages"></div>
           </div>
           <div class="lp-desktop-dots" data-lp="homeDots"></div>
-          <div class="lp-desktop-bottom">
-            <button type="button" class="lp-home-edit" data-lp="homeEdit">调整应用顺序</button>
-            <nav class="lp-home-dock" aria-label="快捷应用">
-              <button type="button" data-lp-open="chatList" aria-label="咕叽聊"><span data-lp-icon="chat"></span></button>
-              <button type="button" data-lp-open="wallet" aria-label="吱付宝"><span data-lp-icon="wallet"></span></button>
-              <button type="button" data-lp-open="weibo" aria-label="群星"><span data-lp-icon="weibo"></span></button>
-              <button type="button" data-lp-open="calendar" aria-label="日历"><span data-lp-icon="calendar"></span></button>
-            </nav>
-          </div>
+
           <span data-lp="homeUnreadCount" hidden></span><span data-lp="homeLogCount" hidden></span>
         </section>
         <section class="lp-screen lp-weibo-screen" data-lp-screen="weibo" aria-label="群星" hidden>
           <div class="lp-weibo-top">
-            <strong>群星</strong>
-            <button type="button" data-lp="weiboGenerate">刷新 10 条</button>
+            <strong>群星</strong><button type="button" data-lp="weiboGenerate">刷新 10 条</button>
+          </div>
+          <div data-lp="weiboFeedback" class="lp-weibo-feedback" role="status"></div>
+          <div class="lp-weibo-body">
+            <div data-lp="weiboFeed" class="lp-weibo-feed"></div>
+            <div data-lp="weiboHot" class="lp-weibo-hot" hidden></div>
+            <div data-lp="weiboNearby" class="lp-weibo-nearby" hidden></div>
+            <div data-lp="weiboCompose" class="lp-weibo-compose-panel" hidden>
+              <h3>发布新动态</h3>
+              <textarea data-lp="weiboComposeText" rows="6" maxlength="1000" placeholder="分享你的想法…"></textarea>
+              <button type="button" data-lp="weiboPublish">发布到群星</button>
+            </div>
+            <div data-lp="weiboMe" class="lp-weibo-me" hidden></div>
+            <div data-lp="weiboDetail" class="lp-weibo-detail" hidden></div>
+            <button type="button" data-lp="weiboDetailBack" class="lp-weibo-detail-back" hidden>返回列表</button>
           </div>
           <nav class="lp-weibo-tabs" data-lp="weiboTabs" aria-label="群星导航">
-            <button type="button" data-weibo-tab="feed" class="selected">推荐</button>
-            <button type="button" data-weibo-tab="hot">热搜</button>
-            <button type="button" data-weibo-tab="saved">我的互动</button>
+            <button type="button" data-weibo-tab="home" class="selected">⌂<small>首页</small></button>
+            <button type="button" data-weibo-tab="discover">⌕<small>发现</small></button>
+            <button type="button" data-weibo-tab="nearby">◎<small>周边</small></button>
+            <button type="button" data-weibo-tab="compose">＋<small>发布</small></button>
+            <button type="button" data-weibo-tab="me">♙<small>我</small></button>
           </nav>
-          <div data-lp="weiboFeedback" class="lp-weibo-feedback" role="status"></div>
-          <details class="lp-weibo-composer">
-            <summary>写群星</summary>
-            <textarea data-lp="weiboComposeText" rows="3" maxlength="1000" placeholder="分享这一刻…"></textarea>
-            <button type="button" data-lp="weiboPublish">发布</button>
-          </details>
-          <div data-lp="weiboFeed" class="lp-weibo-feed"></div>
-          <div data-lp="weiboHot" class="lp-weibo-hot" hidden></div>
-          <div data-lp="weiboDetail" class="lp-weibo-detail" hidden></div>
-          <button type="button" data-lp="weiboDetailBack" class="lp-weibo-detail-back" hidden>返回群星列表</button>
         </section>
+
         <section class="lp-screen lp-wallet lp-wallet-screen" data-lp-screen="wallet" aria-label="吱付宝" hidden>
           <div class="lp-wallet-main">
             <div class="lp-wallet-head">
@@ -5434,8 +5437,15 @@ function makeUI() {
           <h2>手机与桌面</h2>
           <label class="lp-entry-option"><input type="checkbox" data-lp="lockEnabled" checked /> 开启锁屏与密码</label>
           <button type="button" class="lp-settings-link" data-lp="lockSaveEnabled">保存锁屏设置</button>
-          <h3>应用排序</h3>
-          <div class="lp-desktop-sort" data-lp="desktopSortList"></div>
+          <details class="lp-password-change">
+            <summary>修改解锁密码</summary>
+            <label>旧密码 <input data-lp="lockOldPin" type="password" inputmode="numeric" maxlength="6" autocomplete="off" /></label>
+            <label>新密码（4～6位） <input data-lp="lockNewPin" type="password" inputmode="numeric" maxlength="6" autocomplete="off" /></label>
+            <label>确认新密码 <input data-lp="lockConfirmPin" type="password" inputmode="numeric" maxlength="6" autocomplete="off" /></label>
+            <button type="button" class="lp-settings-link" data-lp="lockChangePin">保存新密码</button>
+            <p data-lp="lockChangeFeedback" role="status"></p>
+          </details>
+
           <h3>故事时钟</h3>
           <label class="lp-field">时间流动<select data-lp="clockMode">
             <option value="always">与现实同步，关闭手机继续流动</option>
@@ -5543,17 +5553,37 @@ function makeUI() {
           </div>
         </section>
         <section class="lp-screen lp-settings" data-lp-screen="theme" aria-label="主题" hidden>
+          <h2>可选主题</h2>
+          <select data-lp="themePreset" aria-label="选择主题">
+            <option value="swiss">01 · 瑞士纸韵（蓝灰玫瑰）</option>
+            <option value="custom">02 · 自定义主题</option>
+          </select>
+          <div class="lp-theme-custom-colors" data-lp="themeCustomColors" hidden>
+            <p>自定义六色</p>
+            <div class="lp-theme-color-grid">
+              <label>白色 <input type="color" data-theme-color="white" value="#ffffff"/></label>
+              <label>浅蓝灰 <input type="color" data-theme-color="ice" value="#e0e8f2"/></label>
+              <label>浅粉 <input type="color" data-theme-color="blush" value="#f1d6d6"/></label>
+              <label>玫瑰 <input type="color" data-theme-color="rose" value="#e39f9f"/></label>
+              <label>灰蓝 <input type="color" data-theme-color="slate" value="#8b9bc1"/></label>
+              <label>深蓝 <input type="color" data-theme-color="navy" value="#35568a"/></label>
+            </div>
+            <button type="button" data-lp="themeSaveColors" class="lp-settings-link">应用自定义配色</button>
+          </div>
           <h2>手机壁纸</h2>
-          <input type="file" accept="image/*" data-lp="themeWallpaper" aria-label="选择壁纸图片" />
+          <p class="lp-settings-hint">上传后同时应用在主页和锁屏；不改变其他应用的背景。</p>
+          <input type="file" accept="image/png,image/jpeg,image/webp" data-lp="themeWallpaper" aria-label="选择壁纸图片" />
+          <p class="lp-settings-hint" data-lp="themeWallpaperPreview"></p>
           <button type="button" class="lp-settings-link" data-lp="themeResetWallpaper">恢复默认壁纸</button>
           <h2>字体</h2>
           <select data-lp="themeFont" aria-label="选择手机字体">
-            <option value="system">系统字体</option>
-            <option value="serif">衬线字体</option>
-            <option value="rounded">圆润字体</option>
+            <option value="system">系统字体</option><option value="serif">衬线字体</option><option value="rounded">圆润字体</option>
           </select>
-          <p class="lp-settings-hint">所有应用图标统一使用主题单色，以形状区分。</p>
+          <h2>桌面应用排序</h2>
+          <div class="lp-desktop-sort" data-lp="desktopSortList"></div>
+          <p class="lp-settings-hint">应用图标统一主题单色，桌面不使用固定应用栏。</p>
         </section>
+
         <section class="lp-screen lp-diagnostics" data-lp-screen="diagnostics" aria-label="运行日志与报错" hidden>
           <div class="lp-diagnostic-state" data-lp="diagnosticState" role="status" aria-live="polite">空闲</div>
           <div class="lp-diagnostic-head"><strong>本次打开页面后的记录</strong><button type="button" data-lp="copyDiagnostics">复制日志</button></div>
