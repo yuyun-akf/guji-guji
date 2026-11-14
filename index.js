@@ -111,6 +111,7 @@ const DESKTOP_PAGE_SIZE=8;
 let desktopPage=0;
 let desktopEditMode=false;
 let desktopTouchX=null;
+let desktopTouchY=null;
 let securityUnlocked=false;
 let lockSetupStep=0;
 let desktopSwipedAt=0;
@@ -443,6 +444,34 @@ function storyScenePreview(ctx,data){
  return {location,weather};
 }
 
+
+const DESKTOP_EFFECTS=new Set(['slide','cube','stack','fade']);
+function desktopEffect(){const v=themeData().desktopEffect;return DESKTOP_EFFECTS.has(v)?v:'slide';}
+function desktopVisual(page){
+ if(!nodes?.homePages)return;
+ const pages=[...nodes.homePages.children],effect=desktopEffect();
+ root.dataset.desktopPage=String(page);root.dataset.desktopEffect=effect;
+ const widget=root.querySelector('.lp-home-widget');
+ if(widget)widget.hidden=page!==0;
+ if(nodes.homeHotSearch)nodes.homeHotSearch.hidden=page!==0;
+ nodes.homePages.dataset.effect=effect;
+ nodes.homePages.style.transform=effect==='slide'?'translateX(-'+page*100+'%)':'none';
+ for(const [index,section] of pages.entries()){
+  const diff=index-page;
+  section.classList.toggle('lp-desktop-first',index===0);
+  section.classList.toggle('lp-desktop-later',index>0);
+  section.style.pointerEvents=index===page?'auto':'none';
+  section.style.zIndex=index===page?'3':String(Math.max(0,2-Math.abs(diff)));
+  section.style.opacity=effect==='slide'?'1':(Math.abs(diff)>1?'0':effect==='stack'?(diff===0?'1':'.48'):diff===0?'1':effect==='cube'?'.72':'0');
+  if(effect==='cube'){
+   section.style.transform=diff===0?'translateX(0) rotateY(0deg)':diff>0?'translateX(80%) rotateY(-72deg)':'translateX(-80%) rotateY(72deg)';
+   section.style.transformOrigin=diff>0?'left center':'right center';
+  }else if(effect==='stack'){
+   section.style.transform='translateX('+(diff===0?0:diff>0?18:-18)+'%) scale('+(diff===0?1:'.90')+')';
+  }else section.style.transform='';
+ }
+ nodes.homeDots?.querySelectorAll('button').forEach((btn,i)=>btn.classList.toggle('current',i===page));
+}
 function renderDesktop(){
  if(!nodes?.homePages)return;
  const order=desktopOrder();
@@ -469,8 +498,7 @@ function renderDesktop(){
   dot.dataset.desktopPage=String(page);dot.setAttribute('aria-label','切换到第 '+(page+1)+' 页');
   nodes.homeDots.append(dot);
  }
- nodes.homePages.style.transform='translateX(-'+desktopPage*100+'%)';
- nodes.homeDots.querySelectorAll('button').forEach((btn,i)=>btn.classList.toggle('current',i===desktopPage));
+ desktopVisual(desktopPage);
  const data=readRootData(context());
  const time=String(data.storyTime||localDateTime());
  nodes.homeTime.textContent=time.slice(11,16);
@@ -499,12 +527,13 @@ function renderDesktopSort(){
   nodes.desktopSortList.append(row);
  }
 }
+
 function switchDesktopPage(page){
- const total=Math.ceil(desktopOrder().length/DESKTOP_PAGE_SIZE);
+ const total=Math.max(1,Math.ceil(desktopOrder().length/DESKTOP_PAGE_SIZE));
  desktopPage=Math.max(0,Math.min(total-1,page));
- if(nodes?.homePages)nodes.homePages.style.transform='translateX(-'+desktopPage*100+'%)';
- nodes?.homeDots?.querySelectorAll('button').forEach((btn,i)=>btn.classList.toggle('current',i===desktopPage));
+ desktopVisual(desktopPage);
 }
+
 function phoneClockPreferences(){
  const pref=phoneSettings().clock||{};
  return {mode:['always','open','custom'].includes(pref.mode)?pref.mode:'open',
@@ -613,6 +642,7 @@ function applyTheme(){
  for(const span of root.querySelectorAll('[data-lp-icon]'))span.innerHTML=phoneIconMarkup(span.dataset.lpIcon);
  if(nodes?.themeFont)nodes.themeFont.value=root.dataset.font;
  if(nodes?.themePreset)nodes.themePreset.value=theme.palette==='custom'?'custom':'swiss';
+ if(nodes?.themeDesktopEffect)nodes.themeDesktopEffect.value=desktopEffect();
  for(const [key,value] of Object.entries(SWISS_THEME)){
   const input=root.querySelector('[data-theme-color="'+key+'"]');
   if(input)input.value=paletteValue(key,colors[key]||value);
@@ -2475,9 +2505,12 @@ function setScreen(screen) {
         section.hidden = section.dataset.lpScreen !== screen;
     }
     nodes.back.hidden = screen === 'home'||screen==='lock';
+    if(nodes.close)nodes.close.hidden=true;
     const titles = {lock:'锁屏',home:'咕叽咕机',weibo:'群星',wallet:'吱付宝',chat:'',chatList:'咕叽聊',contacts:'通讯录',discover:'发现',me:'我',requests:'新的朋友',profile:'联系人资料',addNpc:'添加 NPC',discoverNpc:'发现故事人物',chatOptions:'聊天设置',settings:'设置',diagnostics:'运行日志',calendar:'日历',theme:'主题',presetPicker:'选择预设条目',worldPicker:'选择世界书条目' };
     nodes.title.textContent = screen === 'chat' ? contactDisplayName(context()) : titles[screen];
     nodes.chatMenu.hidden = screen !== 'chat';
+    if(nodes.homeExit)nodes.homeExit.hidden=screen!=='home';
+    if(nodes.lockExit)nodes.lockExit.hidden=screen!=='lock';
     if(screen==='lock')renderLock();
     if(screen==='home')renderDesktop();
     if(screen==='weibo'){
@@ -5198,9 +5231,6 @@ function makeUI() {
             <section class="lp-wallet-section" aria-label="账单">
               <h3>账单记录</h3><div data-lp="walletBills" class="lp-wallet-bills"></div>
             </section>
-            <details class="lp-wallet-events">
-              <summary>事件记录</summary><div data-lp="bridgeEvents" class="lp-wallet-event-list"></div>
-            </details>
             <div data-lp="walletStatus" class="lp-wallet-inline-status" role="status"></div>
           </div>
         </section>
@@ -5619,6 +5649,11 @@ function makeUI() {
           <select data-lp="themeFont" aria-label="选择手机字体">
             <option value="system">系统字体</option><option value="serif">衬线字体</option><option value="rounded">圆润字体</option>
           </select>
+          <h2>桌面翻页效果</h2>
+          <select data-lp="themeDesktopEffect" aria-label="选择桌面翻页动画">
+            <option value="slide">平滑滑动</option><option value="cube">3D 立方体</option>
+            <option value="stack">卡片叠加</option><option value="fade">淡入淡出</option>
+          </select>
           <h2>桌面应用排序</h2>
           <div class="lp-desktop-sort" data-lp="desktopSortList"></div>
           <p class="lp-settings-hint">应用图标统一主题单色，桌面不使用固定应用栏。</p>
@@ -5683,8 +5718,8 @@ function mount() {
         'friendLabel', 'friendActions','profileAvatar','profileName','profileDescription','contactEvidence','contactExchange','contactLinks','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcScanState','npcCandidates','npcSaveCandidates','storyPeopleList','viewPrimaryContact','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','avatarUserFile','resetCharAvatar','resetUserAvatar',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
-        'walletBalance','walletPending','walletBills','walletAdjustInput','walletSaveBalance','walletToChat','walletStatus','bridgeEvents',
-        'presetSource','presetInfo','presetEntries','worldBookList','worldSelectionSummary','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','saveSelections','savePresetPicker','saveWorldPicker','selectionSaveStatus','readMainlineMemory','memorySource','phoneToMainline','eventBridge','saveContextSettings','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themePreset','themeCustomColors','themeSaveColors','themeWallpaperPreview',
+        'walletBalance','walletPending','walletBills','walletAdjustInput','walletSaveBalance','walletToChat','walletStatus',
+        'presetSource','presetInfo','presetEntries','worldBookList','worldSelectionSummary','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','saveSelections','savePresetPicker','saveWorldPicker','selectionSaveStatus','readMainlineMemory','memorySource','phoneToMainline','eventBridge','saveContextSettings','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themePreset','themeCustomColors','themeSaveColors','themeWallpaperPreview','themeDesktopEffect',
         'diagnostics', 'diagnosticState', 'copyDiagnostics', 'clearDiagnostics',
         'messages','messageActions','quotedPreview','quotedText','cancelQuote','emojiPanel','morePanel','chatImageInput','timeJumpPanel','timeJumpHint','timeJumpCurrent','timeJumpAmount','timeJumpUnit','timeJumpApply','timeJumpClose','paymentPanel','paymentTitle','paymentKind','paymentAmount','paymentNote','paymentBalance','paymentClose','paymentSend','input', 'generate', 'send', 'launcher']
         .map(key => [key, key === 'launcher' ? floating : root.querySelector(`[data-lp="${key}"]`)]));
@@ -5695,12 +5730,13 @@ function mount() {
     nodes.homeExit.addEventListener('click',closePhone);
     nodes.lockKeypad.addEventListener('click',e=>{const b=e.target.closest('[data-lock-digit]');if(b)lockDigit(b.dataset.lockDigit);});
     nodes.lockChangePin.addEventListener('click',()=>void changePhonePin());
-    nodes.homeSwipe.addEventListener('touchstart',e=>{desktopTouchX=e.touches?.[0]?.clientX??null;},{passive:true});
+    nodes.homeSwipe.addEventListener('touchstart',e=>{desktopTouchX=e.touches?.[0]?.clientX??null;desktopTouchY=e.touches?.[0]?.clientY??null;},{passive:true});
     nodes.homeSwipe.addEventListener('touchend',e=>{
         if(desktopTouchX===null)return;
         const delta=(e.changedTouches?.[0]?.clientX??desktopTouchX)-desktopTouchX;
-        desktopTouchX=null;
-        if(Math.abs(delta)>44){desktopSwipedAt=Date.now();switchDesktopPage(desktopPage+(delta<0?1:-1));}
+        const dy=(e.changedTouches?.[0]?.clientY??desktopTouchY)-desktopTouchY;
+        desktopTouchX=null;desktopTouchY=null;
+        if(Math.abs(delta)>44&&Math.abs(delta)>Math.abs(dy)*1.2){desktopSwipedAt=Date.now();switchDesktopPage(desktopPage+(delta<0?1:-1));}
     },{passive:true});
     nodes.homeDots.addEventListener('click',e=>{
         const b=e.target.closest('[data-desktop-page]');if(b)switchDesktopPage(Number(b.dataset.desktopPage));
@@ -5816,6 +5852,7 @@ function mount() {
     nodes.themeResetWallpaper.addEventListener('click',resetWallpaper);
     nodes.themePreset.addEventListener('change',()=>changeTheme({palette:nodes.themePreset.value}));
     nodes.themeSaveColors.addEventListener('click',saveThemeColors);
+    nodes.themeDesktopEffect.addEventListener('change',()=>{changeTheme({desktopEffect:nodes.themeDesktopEffect.value});desktopVisual(desktopPage);});
     // All default icons use the same single-color line style.
     nodes.floatingLauncher.addEventListener('change', event => setFloatLauncherEnabled(event.target.checked));
     nodes.send.addEventListener('click',send);
