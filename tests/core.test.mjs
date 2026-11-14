@@ -371,10 +371,10 @@ test('modal entirely outside the viewport produces a visible diagnostic error', 
 test('diagnostic bootstrap is the manifest entry and exposes lifecycle hooks', () => {
     const manifest = JSON.parse(readFileSync(resolve(testRoot, '../manifest.json'), 'utf8'));
     const bootstrap = readFileSync(resolve(testRoot, '../bootstrap.js'), 'utf8');
-    assert.equal(manifest.version, '0.9.0');
+    assert.equal(manifest.version, '0.10.0');
     assert.equal(manifest.minimum_client_version, '1.18.0');
     assert.equal(manifest.js, 'bootstrap.js');
-    assert.match(bootstrap, /import\('\.\/index\.js\?v=0\.9\.0'\)/);
+    assert.match(bootstrap, /import\('\.\/index\.js\?v=0\.10\.0'\)/);
     assert.match(bootstrap, /export function onActivate\(/);
     assert.match(bootstrap, /export function onEnable\(/);
     assert.match(bootstrap, /export function onDisable\(/);
@@ -387,7 +387,10 @@ test('theme and calendar are separate apps with per-session time setting', () =>
         assert.match(html, new RegExp('data-lp-screen="' + screen + '"'));
     }
     assert.match(html, /data-lp="themeWallpaper"/);
-    assert.match(html, /data-lp="themeIcons"/);
+    assert.match(html, /data-lp="homePages"/);
+    assert.match(html, /data-lp="desktopSortList"/);
+    assert.match(html, /data-lp="lockPin"/);
+    assert.match(html, /data-lp-screen="weibo"/);
     assert.match(html, /data-lp="apiInfo"/);
     assert.match(html, /data-lp="worldEntries"/);
     assert.equal((html.match(/data-lp="time"/g) || []).length, 1);
@@ -524,12 +527,12 @@ test('worldbook checkboxes render multiple choices and persist selections togeth
         assert.match(fixture.openWorldPicker.textContent,/2 本/);
     }finally{sandbox.document=previousDocument;sandbox.window=previousWindow;vm.runInContext('nodes=null',sandbox);}
 });
-test('story clock advances for replies, respects manual calendar jumps and evening-vs-late-night',()=>{
+test('naturally flowing clock retains same-minute messages, respects jumps and evening-vs-late-night',()=>{
     const data={...newData(),storyTime:'2026-01-18T17:41',messages:[]};
     appendPhoneMessage(data,'user','你好');
     appendPhoneMessage(data,'character','晚上好');
     assert.equal(data.messages[0].storyTime,'2026-01-18T17:41');
-    assert.equal(data.messages[1].storyTime,'2026-01-18T17:42');
+    assert.equal(data.messages[1].storyTime,'2026-01-18T17:41');
     assert.equal(storyHourLabel(data.storyTime),'傍晚');
     data.storyTime='2026-01-18T22:30';
     assert.equal(nextMessageStoryTime(data),'2026-01-18T22:30');
@@ -1117,7 +1120,7 @@ test('time jump is persisted and applies to next message only; prior timestamps 
     const user=scope.append(data,'user','几小时后上线了');
     assert.equal(user.storyTime,'2025-12-17T22:00');
     const reply=scope.append(data,'character','来了');
-    assert.equal(reply.storyTime,'2025-12-17T22:01');
+    assert.equal(reply.storyTime,'2025-12-17T22:00');
     assert.match(fixture.notices.at(-1),/下一条消息/);
 });
 
