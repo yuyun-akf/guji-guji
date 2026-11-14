@@ -579,37 +579,90 @@ async function savePhoneLockEnabled(){
  setStatus('锁屏设置已保存');
 }
 
-function themeData() {
-    const theme = context()?.extensionSettings?.[SETTINGS_KEY]?.theme;
-    return theme && typeof theme === 'object' ? theme : {};
+
+const SWISS_THEME={white:'#ffffff',ice:'#e0e8f2',blush:'#f1d6d6',rose:'#e39f9f',slate:'#8b9bc1',navy:'#35568a'};
+const WALLPAPER_STORAGE_KEY='gujiguji-wallpaper-v1';
+function themeData(){
+ const t=context()?.extensionSettings?.[SETTINGS_KEY]?.theme;
+ return t&&typeof t==='object'?t:{};
 }
-function applyTheme() {
-    if (!root) return;
-    const theme = themeData();
-    root.dataset.font = ['system','serif','rounded'].includes(theme.font) ? theme.font : 'system';
-    root.style.setProperty('--lp-wallpaper', theme.wallpaper?.startsWith('data:image/') ? 'url("' + theme.wallpaper + '")' : 'none');
-    for(const span of root.querySelectorAll('[data-lp-icon]'))
-        span.innerHTML=phoneIconMarkup(span.dataset.lpIcon);
-    if(nodes?.themeFont)nodes.themeFont.value=root.dataset.font;
+function paletteValue(key,value){
+ return /^#[0-9a-f]{6}$/i.test(String(value||''))?value:SWISS_THEME[key];
 }
-function changeTheme(partial) {
-    const ctx = context();
-    if (!ctx?.extensionSettings || !ctx.saveSettingsDebounced) return setStatus('保存主题失败', 'error');
-    const settings = ctx.extensionSettings[SETTINGS_KEY] ||= {};
-    settings.theme = { ...(settings.theme || {}), ...partial };
-    ctx.saveSettingsDebounced();
-    applyTheme();
-    setStatus('已保存');
+function applyTheme(){
+ if(!root)return;
+ const theme=themeData(),colors=theme.palette==='custom'?theme.colors||{}:{};
+ for(const [key,swatch] of Object.entries(SWISS_THEME))
+  root.style.setProperty('--lp-'+key,paletteValue(key,colors[key]||swatch));
+ root.style.setProperty('--lp-ink',paletteValue('navy',colors.navy));
+ root.style.setProperty('--lp-lilac',paletteValue('slate',colors.slate));
+ root.style.setProperty('--lp-paper',paletteValue('white',colors.white));
+ root.style.setProperty('--lp-border',paletteValue('ice',colors.ice));
+ root.dataset.font=['system','serif','rounded'].includes(theme.font)?theme.font:'system';
+ let saved='';
+ try{saved=window.localStorage.getItem(WALLPAPER_STORAGE_KEY)||'';}catch{}
+ const image=(typeof theme.wallpaper==='string'&&theme.wallpaper)||saved;
+ const background=/^data:image\/(?:png|jpeg|webp);base64,/.test(image)?'url("'+image+'")':'none';
+ root.style.setProperty('--lp-wallpaper',background);
+ // Older home/lock backgrounds use !important; set both screens explicitly.
+ for(const screen of root.querySelectorAll('.lp-home,.lp-lock')){
+  screen.style.setProperty('background-image',background,'important');
+  screen.style.setProperty('background-position','center','important');
+  screen.style.setProperty('background-size','cover','important');
+ }
+ for(const span of root.querySelectorAll('[data-lp-icon]'))span.innerHTML=phoneIconMarkup(span.dataset.lpIcon);
+ if(nodes?.themeFont)nodes.themeFont.value=root.dataset.font;
+ if(nodes?.themePreset)nodes.themePreset.value=theme.palette==='custom'?'custom':'swiss';
+ for(const [key,value] of Object.entries(SWISS_THEME)){
+  const input=root.querySelector('[data-theme-color="'+key+'"]');
+  if(input)input.value=paletteValue(key,colors[key]||value);
+ }
+ if(nodes?.themeCustomColors)nodes.themeCustomColors.hidden=theme.palette!=='custom';
+ if(nodes?.themeWallpaperPreview)nodes.themeWallpaperPreview.textContent=background==='none'?'当前：默认纯色':'当前：自定义壁纸已应用到主页与锁屏';
 }
-function loadWallpaper(file) {
-    if (!file) return;
-    if (!file.type.startsWith('image/')) return setStatus('请选择图片文件', 'error');
-    if (file.size > 750 * 1024) return setStatus('图片不能超过 750KB', 'error');
-    const reader = new FileReader();
-    reader.onload = () => { if (typeof reader.result === 'string') changeTheme({wallpaper:reader.result}); };
-    reader.onerror = () => setStatus('读取图片失败', 'error');
-    reader.readAsDataURL(file);
+function changeTheme(partial){
+ const ctx=context();
+ if(!ctx?.extensionSettings||!ctx.saveSettingsDebounced)return setStatus('保存主题失败','error');
+ const settings=ctx.extensionSettings[SETTINGS_KEY]||={};
+ settings.theme={...(settings.theme||{}),...partial};
+ ctx.saveSettingsDebounced();applyTheme();setStatus('主题已保存');
 }
+function loadWallpaper(file){
+ if(!file)return;
+ if(!/^image\/(?:png|jpeg|webp)$/.test(file.type))return setStatus('请选择 PNG、JPEG 或 WebP 图片','error');
+ if(file.size>12*1024*1024)return setStatus('图片不能超过 12MB','error');
+ const reader=new FileReader();
+ reader.onload=()=>{
+  const img=new Image();
+  img.onload=()=>{
+   const scale=Math.min(1,1080/img.width,1920/img.height);
+   const canvas=document.createElement('canvas');
+   canvas.width=Math.max(1,Math.round(img.width*scale));canvas.height=Math.max(1,Math.round(img.height*scale));
+   canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
+   const content=canvas.toDataURL('image/webp',.84);
+   try{window.localStorage.setItem(WALLPAPER_STORAGE_KEY,content);}catch(e){recordError('壁纸本地缓存',e);}
+   changeTheme({wallpaper:content});
+   setStatus('壁纸已应用于主页和锁屏');
+  };
+  img.onerror=()=>setStatus('图片解码失败','error');
+  img.src=String(reader.result||'');
+ };
+ reader.onerror=()=>setStatus('无法读取壁纸','error');
+ reader.readAsDataURL(file);
+}
+function resetWallpaper(){
+ try{window.localStorage.removeItem(WALLPAPER_STORAGE_KEY);}catch{}
+ changeTheme({wallpaper:''});
+}
+function saveThemeColors(){
+ const colors={};
+ for(const key of Object.keys(SWISS_THEME)){
+  const input=root.querySelector('[data-theme-color="'+key+'"]');
+  colors[key]=paletteValue(key,input?.value);
+ }
+ changeTheme({palette:'custom',colors});
+}
+
 function apiSessionId(ctx) {
     return String(ctx?.characterId ?? 'none') + '::' + String(ctx?.chatId ?? ctx?.getCurrentChatId?.() ?? 'default');
 }
