@@ -4976,6 +4976,7 @@ function makeUI() {
         </header>
         <button type="button" class="lp-inline-notification" data-lp="inlineNotification" aria-label="打开新消息" hidden></button>
         <section class="lp-screen lp-lock" data-lp-screen="lock" aria-label="锁屏" hidden>
+          <button type="button" data-lp="lockExit" class="lp-phone-exit" aria-label="关闭手机">×</button>
           <div class="lp-lock-stage">
             <div class="lp-lock-time" data-lp="lockTime">19:50</div>
             <div class="lp-lock-date" data-lp="lockDate"></div>
@@ -4994,7 +4995,7 @@ function makeUI() {
           </div>
         </section>
         <section class="lp-screen lp-home" data-lp-screen="home" aria-label="手机桌面">
-          <div class="lp-phone-status"><span>咕叽手机</span><span>◉ ▮▮</span></div>
+          <div class="lp-phone-status"><span>咕叽手机</span><button type="button" data-lp="homeExit" class="lp-phone-exit" aria-label="关闭手机">×</button></div>
           <div class="lp-home-widget">
             <div class="lp-home-widget-top">
               <div class="lp-home-time" data-lp="homeTime">19:50</div>
@@ -5399,6 +5400,7 @@ function makeUI() {
           <h2>打开方式</h2>
           <label class="lp-entry-option"><input type="checkbox" data-lp="floatingLauncher" /> 显示悬浮按钮</label>
           <div class="lp-settings-status" data-lp="settingsStatus" role="status" aria-live="polite"></div>
+          <p class="lp-settings-hint">咕叽咕机 · v0.10.0</p>
         </section>
         <section class="lp-screen lp-picker" data-lp-screen="presetPicker" hidden>
           <div class="lp-picker-head" data-lp="presetPickerTitle">预设</div>
@@ -5514,7 +5516,7 @@ function mount() {
     document.body.append(floating);
     nodes = Object.fromEntries(['title', 'subtitle', 'back', 'close', 'time',
         'homeTime','homeDate','homeScene','homePages','homeDots','homeSwipe','homeEdit','homeCharacter','homeLogCount','homeUnreadCount',
-        'lockTime','lockDate','lockPin','lockRepeat','lockRepeatRow','lockIntro','lockFeedback','lockAction',
+        'lockTime','lockDate','lockPin','lockRepeat','lockRepeatRow','lockIntro','lockFeedback','lockAction','lockExit','homeExit',
         'weiboGenerate','weiboFeedback','weiboFeed','weiboHot','weiboDetail','weiboTabs','weiboComposeText','weiboPublish','weiboDetailBack',
         'desktopSortList','clockMode','clockRate','clockContinueClosed','clockCustomFields','clockSave','lockEnabled','lockSaveEnabled','notification','inlineNotification','calendarPrev','calendarNext','calendarHeading','calendarViews','calendarGrid','calendarSelected','calendarSummary','calendarSelectedTime','calendarStoryToday','calendarRealToday','calendarSaveTime','calendarExactSave',
         'momentsPost', 'momentsText', 'momentsFeed', 'momentFeedback','momentsPreview','momentImageUpload','momentRemovePhoto','myAvatarUpload','myAvatarFallback','myAvatarStatus','myIdentity', 'myAvatar', 'myPersona', 'autoMessagesMode','autoMessagesDays','autoMomentsMode','autoMomentsDays','relationAutoSync','phoneInPast','characterRequests','momentInteractions','autonomyStatus','autonomyFeedback','saveAutonomy','rescanRelations','testAutonomy', 'stickerUpload','stickerPackUpload', 'stickerStatus', 'stickerLibrary',
@@ -5529,6 +5531,8 @@ function mount() {
 
     const draggedClick=enableLauncherDragging(nodes.launcher);
     nodes.lockAction.addEventListener('click',()=>void phoneUnlock());
+    nodes.lockExit.addEventListener('click',closePhone);
+    nodes.homeExit.addEventListener('click',closePhone);
     for(const field of [nodes.lockPin,nodes.lockRepeat])field.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();void phoneUnlock();}});
     nodes.homeSwipe.addEventListener('touchstart',e=>{desktopTouchX=e.touches?.[0]?.clientX??null;},{passive:true});
     nodes.homeSwipe.addEventListener('touchend',e=>{
