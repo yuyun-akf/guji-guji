@@ -40,7 +40,8 @@ test('money input keeps cents and rejects improper, zero, negative or excessive 
     assert.equal(walletCents('20.05'),2005);
     assert.equal(walletCents('0.01'),1);
     assert.equal(walletCents('0',true),0);
-    for(const bad of ['-1','0','1.234','1e4','1000000000','abc'])
+    assert.equal(walletCents('1000000000'),100000000000); // no arbitrary per-transfer cap
+    for(const bad of ['-1','0','1.234','1e4','999999999999999999','abc'])
         assert.throws(()=>walletCents(bad));
 });
 test('outgoing transfers reserve money once; cancellation refunds exactly once',()=>{
@@ -62,11 +63,23 @@ test('balances enforce spending limits; all shopping and takeout use one account
     api.walletChargeOrder(data,{orderId:'food:1',amountCents:3500,shop:'食堂',category:'takeout'});
     assert.equal(api.walletState(data).balanceCents,96500);
     assert.throws(()=>api.walletChargeOrder(data,{orderId:'bad',amountCents:-500,category:'shopping'}));
-    assert.throws(()=>api.walletCreateTransfer(data,{amountCents:1000000,kind:'redpacket',from:'user'}),/余额不足/);
+    assert.throws(()=>api.walletCreateTransfer(data,{amountCents:1000000,kind:'redpacket',from:'user'}),/红包/);
+    assert.throws(()=>api.walletCreateTransfer(data,{amountCents:150000,kind:'transfer',from:'user'}),/余额不足/);
     api.walletRefundOrder(data,{orderId:'food:1',amountCents:3500,category:'takeout'});
     assert.equal(api.walletState(data).balanceCents,100000);
     api.walletRefundOrder(data,{orderId:'food:1',amountCents:3500,category:'takeout'});
     assert.equal(api.walletState(data).balanceCents,100000);
+});
+test('account snapshot preserves counterparty and transfer metadata',()=>{
+    const api=harness(),data=story();
+    data.contacts=[{id:'npc-friend',name:'联系人乙',remark:'同学乙'}];
+    api.walletAdjustBalance(data,500000,'初始余额');
+    const tx=api.walletCreateTransfer(data,{id:'pay:snapshot',kind:'transfer',from:'user',contactId:'npc-friend',amountCents:30000,note:'吃饭钱'});
+    assert.equal(tx.counterpartyName,'同学乙');
+    const entry=api.walletState(data).ledger.find(x=>x.relatedId===tx.id);
+    assert.equal(entry.counterpartyName,'同学乙');
+    assert.equal(entry.note,'吃饭钱');
+    assert.throws(()=>api.walletCreateTransfer(data,{kind:'redpacket',from:'contact',amountCents:20001}),/红包/);
 });
 test('incoming red packets require user consent; reject and repeated accept never credit twice',()=>{
     const api=harness(),data=story();
