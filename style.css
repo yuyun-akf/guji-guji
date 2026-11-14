@@ -2207,3 +2207,15 @@
 @media (prefers-reduced-motion:reduce){
  #st-little-phone-root .lp-desktop-pages{transition:none;}
 }
+
+/* Distinct active and completed transaction states; independent of sender. */
+#st-little-phone-root .lp-payment-card.lp-payment-pending,
+#st-little-phone-root .lp-payment-redpacket.lp-payment-pending,
+#st-little-phone-root .lp-payment-transfer.lp-payment-pending{
+ background:#e39f9f!important;border-color:#d78d94!important;color:#35568a!important;
+}
+#st-little-phone-root .lp-payment-card.lp-payment-finished,
+#st-little-phone-root .lp-payment-redpacket.lp-payment-finished,
+#st-little-phone-root .lp-payment-transfer.lp-payment-finished{
+ background:#e0e8f2!important;border-color:#d0d8e5!important;color:#526987!important;
+}
