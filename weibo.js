@@ -1,6 +1,6 @@
 /* Ephemeral Weibo feed: only user-interacted posts persist in chat metadata. */
 export function createWeiboModule(api){
- const state={scope:'',posts:[],trends:[],tab:'feed',detail:'',loading:false,token:0};
+ const state={scope:'',posts:[],trends:[],tab:'feed',detail:'',loading:false,token:0,attempted:false};
  const ctx=()=>api.context(),nodes=()=>api.getNodes(),root=()=>api.readRootData(ctx());
  const saved=()=>Array.isArray(root().weiboSaved)?root().weiboSaved:[];
  const uid=()=>('wb'+Date.now().toString(36)+Math.random().toString(36).slice(2,9));
@@ -10,7 +10,7 @@ export function createWeiboModule(api){
  const flags=p=>saved().find(x=>x.id===p.id)?.actions||p.actions||{};
  const interacted=a=>!!(a?.liked||a?.favorited||a?.reposted||a?.owned||(a?.comments||[]).length);
  function reset(){const next=scope();if(next!==state.scope){
-  state.scope=next;state.posts=[];state.trends=[];state.detail='';state.tab='feed';state.token++;}}
+  state.scope=next;state.posts=[];state.trends=[];state.detail='';state.tab='feed';state.token++;state.attempted=false;}}
  function parse(raw){
   const text=api.stripModelReasoning(typeof raw==='string'?raw:String(raw?.content||'')).trim();
   const start=text.indexOf('{'),end=text.lastIndexOf('}');
@@ -179,7 +179,7 @@ export function createWeiboModule(api){
   });
   return true;
  }
- function open(){reset();render();if(!state.posts.length&&!state.loading)void generate();}
+ function open(){reset();render();if(!state.attempted){state.attempted=true;void generate();}}
  function selectTab(t){if(['feed','hot','saved'].includes(t)){state.tab=t;state.detail='';render();}}
  function back(){state.detail='';render();}
  return {open,render,generate,selectTab,back,publish,handleClick,state,parse,normalize};
