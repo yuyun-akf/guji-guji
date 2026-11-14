@@ -2537,3 +2537,178 @@
 #st-little-phone-root .lp-location-copy{display:flex;flex:1;flex-direction:column;gap:6px;min-width:0;}
 #st-little-phone-root .lp-location-copy strong{font-size:13px;overflow-wrap:anywhere;line-height:1.35;}
 #st-little-phone-root .lp-location-copy small{font-size:10px;color:#657894;}
+
+
+/* 0.13 — desktop: stable full-size page transitions (no widget reflow). */
+#st-little-phone-root .lp-desktop-wrap {position:relative;overflow:hidden;touch-action:pan-y;}
+#st-little-phone-root .lp-desktop-pages,
+#st-little-phone-root .lp-desktop-pages[data-effect="slide"],
+#st-little-phone-root .lp-desktop-pages[data-effect="cube"],
+#st-little-phone-root .lp-desktop-pages[data-effect="stack"],
+#st-little-phone-root .lp-desktop-pages[data-effect="fade"]{
+ display:block!important;position:relative!important;
+ width:100%!important;height:100%!important;
+ transform:none!important;overflow:hidden!important;
+ perspective:950px;isolation:isolate;
+}
+#st-little-phone-root .lp-desktop-pages>.lp-desktop-page,
+#st-little-phone-root .lp-desktop-pages[data-effect="slide"]>.lp-desktop-page{
+ position:absolute!important;inset:0!important;
+ flex:initial!important;width:100%!important;height:100%!important;
+ display:flex!important;flex-direction:column!important;
+ justify-content:flex-start!important;overflow:hidden!important;
+ padding:clamp(15px,3vh,28px) 0 clamp(24px,5vh,50px)!important;
+ transform-style:preserve-3d;
+ backface-visibility:hidden;
+ transition:transform .44s cubic-bezier(.18,.78,.2,1),opacity .40s ease!important;
+ will-change:transform,opacity;
+}
+#st-little-phone-root .lp-desktop-pages[data-ready="false"]>.lp-desktop-page{transition:none!important;}
+#st-little-phone-root .lp-desktop-page.lp-desktop-first .lp-home-widget{
+ margin:clamp(9px,2.4vh,23px) 18px 0!important;flex:0 0 auto!important;
+}
+#st-little-phone-root .lp-desktop-page.lp-desktop-first .lp-home-search{
+ margin:14px 18px 10px!important;flex:0 0 auto!important;
+}
+#st-little-phone-root .lp-desktop-page.lp-desktop-first .lp-desktop-grid{
+ margin-top:auto!important;padding:0 15px 6px!important;
+ align-content:end!important;
+}
+#st-little-phone-root .lp-desktop-page.lp-desktop-later .lp-desktop-grid{
+ margin:0!important;padding:clamp(18px,5vh,58px) 15px 0!important;
+ align-content:start!important;
+}
+#st-little-phone-root .lp-desktop-page .lp-desktop-grid{width:100%!important;}
+#st-little-phone-root .lp-desktop-pages[data-effect="cube"]{perspective:850px;}
+#st-little-phone-root .lp-desktop-pages[data-effect="cube"]>.lp-desktop-page{backface-visibility:hidden;}
+
+/* App header: single title, no repetitive explanatory subtitle. */
+#st-little-phone-root .lp-subtitle{display:none!important;}
+#st-little-phone-root .lp-heading{display:flex;align-items:center;min-height:36px;}
+#st-little-phone-root .lp-title{margin:0;}
+#st-little-phone-root .lp-weibo-top{display:none!important;}
+
+/* Soft, theme-matched scrollbar color in ALL internal app screens. */
+#st-little-phone-root,
+#st-little-phone-root * {
+ scrollbar-width:thin!important;
+ scrollbar-color:color-mix(in srgb,var(--lp-slate) 42%,transparent) transparent!important;
+}
+#st-little-phone-root ::-webkit-scrollbar{width:3px!important;height:3px!important;background:transparent!important;}
+#st-little-phone-root ::-webkit-scrollbar-track{background:transparent!important;}
+#st-little-phone-root ::-webkit-scrollbar-thumb{
+ border-radius:9px!important;
+ background:color-mix(in srgb,var(--lp-slate) 48%,transparent)!important;
+ border:0!important;
+}
+#st-little-phone-root ::-webkit-scrollbar-thumb:hover{
+ background:color-mix(in srgb,var(--lp-navy) 50%,transparent)!important;
+}
+#st-little-phone-root textarea::-webkit-scrollbar{width:0!important;display:none!important;}
+
+/* Qunxing feed: refresh button belongs AFTER the last article/topic. */
+#st-little-phone-root .lp-weibo-feedback[hidden]{display:none!important;}
+#st-little-phone-root .lp-weibo-refresh-box[hidden]{display:none!important;}
+#st-little-phone-root .lp-wb-refresh-button{
+ display:block;align-self:center;min-width:144px;max-width:90%;
+ margin:20px auto 24px!important;padding:10px 20px!important;
+ border:1px solid var(--lp-slate)!important;border-radius:25px!important;
+ background:var(--lp-white)!important;color:var(--lp-navy)!important;
+ box-shadow:none!important;font:inherit;font-size:12px!important;
+}
+#st-little-phone-root .lp-wb-refresh-button:disabled{opacity:.48;}
+#st-little-phone-root .lp-weibo-detail-back{
+ align-self:flex-start;border:0;background:none;color:var(--lp-navy);
+ padding:8px 4px;margin:0 0 4px;font-size:13px;
+}
+#st-little-phone-root .lp-wb-topic-summary{
+ border-radius:12px;background:var(--lp-white);padding:12px 14px;
+ font-size:13px;line-height:1.7;color:var(--lp-navy);
+}
+#st-little-phone-root .lp-wb-topic-error{
+ margin:10px 5px;color:var(--lp-navy);font-size:12px;
+}
+#st-little-phone-root .lp-weibo-detail>.lp-wb-action{
+ align-self:center;margin-bottom:12px;padding:8px 12px;
+ border:1px solid var(--lp-slate);border-radius:10px;background:white;
+ color:var(--lp-navy);
+}
+
+/* Qunxing Me: five FULL-WIDTH routes, independent content pages. */
+#st-little-phone-root .lp-wb-me-menu{
+ display:flex!important;flex-direction:column!important;
+ gap:0!important;border-radius:14px;overflow:hidden;background:var(--lp-white);
+}
+#st-little-phone-root .lp-wb-me-menu button{
+ display:flex;align-items:center;justify-content:space-between;
+ width:100%!important;min-height:54px!important;
+ padding:13px 17px!important;border:0!important;border-radius:0!important;
+ border-bottom:1px solid var(--lp-ice)!important;background:transparent!important;
+ color:var(--lp-navy)!important;font-size:14px!important;text-align:left;
+}
+#st-little-phone-root .lp-wb-me-menu button:last-child{border-bottom:0!important;}
+#st-little-phone-root .lp-wb-menu-arrow{font-size:22px;line-height:1;color:var(--lp-slate);}
+#st-little-phone-root .lp-wb-subpage-bar{
+ display:flex;align-items:center;gap:15px;min-height:50px;
+ border-bottom:1px solid var(--lp-ice);padding:0 3px 12px;
+ color:var(--lp-navy);
+}
+#st-little-phone-root .lp-wb-subpage-bar button{
+ flex:0 0 auto;border:0;background:none;padding:7px 6px;
+ color:var(--lp-navy);font-size:13px;
+}
+#st-little-phone-root .lp-wb-subpage-bar strong{font-size:16px;}
+
+/* Avatar picker: large clickable area, clear preview, native file chooser hidden. */
+#st-little-phone-root .lp-wb-avatar-picker{
+ position:relative;display:flex;flex-direction:column;gap:10px;
+ padding:12px;border:1px dashed var(--lp-slate);border-radius:14px;
+ background:var(--lp-ice);color:var(--lp-navy);cursor:pointer;
+}
+#st-little-phone-root .lp-wb-avatar-picker-title{font-size:13px;font-weight:650;}
+#st-little-phone-root .lp-wb-avatar-picker-view{
+ display:flex;align-items:center;gap:13px;min-height:70px;
+}
+#st-little-phone-root .lp-wb-avatar-picker-view .lp-wb-avatar{
+ width:66px;height:66px;flex:0 0 66px;border:2px solid var(--lp-white);
+}
+#st-little-phone-root .lp-wb-avatar-picker-hint{font-size:12px;line-height:1.5;}
+#st-little-phone-root .lp-wb-avatar-picker input[type="file"]{
+ position:absolute!important;inset:0!important;width:100%!important;height:100%!important;
+ opacity:0!important;cursor:pointer!important;border:0!important;
+}
+#st-little-phone-root .lp-wb-scanner{
+ display:flex;flex-direction:column;gap:9px;padding:14px 10px;
+ border-radius:14px;background:var(--lp-white);border:1px solid var(--lp-ice);
+}
+#st-little-phone-root .lp-wb-scanner>.lp-wb-action{
+ border:1px solid var(--lp-slate);background:var(--lp-ice);
+ border-radius:10px;padding:12px;color:var(--lp-navy);
+}
+#st-little-phone-root .lp-wb-scan-message{
+ color:var(--lp-navy);font-size:12px;line-height:1.6;
+}
+#st-little-phone-root .lp-wb-candidate{
+ display:flex;flex-direction:column;gap:10px;padding:13px;
+ border:1px solid var(--lp-ice);border-radius:12px;
+ background:var(--lp-white);overflow:hidden;
+}
+#st-little-phone-root .lp-wb-candidate-title{display:flex;align-items:center;gap:8px;}
+#st-little-phone-root .lp-wb-candidate-title input[type="checkbox"]{
+ width:18px;height:18px;accent-color:var(--lp-navy);
+}
+#st-little-phone-root .lp-wb-candidate-title strong{font-size:13px;}
+#st-little-phone-root .lp-wb-candidate-title small,
+#st-little-phone-root .lp-wb-candidate-source{font-size:10px;color:var(--lp-slate);}
+#st-little-phone-root .lp-wb-candidate-reference{font-size:11px;color:var(--lp-navy);line-height:1.5;}
+#st-little-phone-root .lp-wb-candidate-reference p{
+ white-space:pre-wrap;max-height:160px;overflow-y:auto;overflow-wrap:anywhere;
+}
+#st-little-phone-root .lp-theme-binding{
+ display:flex;align-items:flex-start;gap:9px;
+ margin:12px 0;padding:13px 10px;background:var(--lp-ice);
+ border-radius:12px;color:var(--lp-navy);font-size:13px;line-height:1.6;
+}
+#st-little-phone-root .lp-theme-binding input{
+ flex:0 0 20px;width:20px;height:20px;margin:1px 0 0;accent-color:var(--lp-navy);
+}
