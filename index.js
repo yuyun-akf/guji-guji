@@ -4909,23 +4909,72 @@ function makeUI() {
           <button type="button" class="lp-close" data-lp="close" aria-label="关闭咕叽咕机">×</button>
         </header>
         <button type="button" class="lp-inline-notification" data-lp="inlineNotification" aria-label="打开新消息" hidden></button>
+        <section class="lp-screen lp-lock" data-lp-screen="lock" aria-label="锁屏" hidden>
+          <div class="lp-lock-stage">
+            <div class="lp-lock-time" data-lp="lockTime">19:50</div>
+            <div class="lp-lock-date" data-lp="lockDate"></div>
+            <div class="lp-lock-card">
+              <div data-lp="lockIntro">输入密码解锁</div>
+              <label class="lp-lock-field">密码
+                <input data-lp="lockPin" type="password" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="6" autocomplete="off" placeholder="4～6 位数字" />
+              </label>
+              <label class="lp-lock-field" data-lp="lockRepeatRow">确认密码
+                <input data-lp="lockRepeat" type="password" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="6" autocomplete="off" placeholder="再次输入密码" />
+              </label>
+              <div data-lp="lockFeedback" class="lp-lock-feedback" role="status"></div>
+              <button type="button" data-lp="lockAction">解锁</button>
+            </div>
+            <div class="lp-lock-swipe">上滑进入 · 密码解锁</div>
+          </div>
+        </section>
         <section class="lp-screen lp-home" data-lp-screen="home" aria-label="手机桌面">
-          <div class="lp-home-hero">
-            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.9.0</div>
-            <div class="lp-home-time" data-lp="homeTime">故事时间</div>
-            <div class="lp-home-character" data-lp="homeCharacter">等待进入角色存档</div>
+          <div class="lp-phone-status"><span>咕叽手机</span><span>◉ ▮▮</span></div>
+          <div class="lp-home-widget">
+            <div class="lp-home-widget-top">
+              <div class="lp-home-time" data-lp="homeTime">19:50</div>
+              <div class="lp-home-widget-side">
+                <span data-lp="homeDate"></span>
+                <span data-lp="homeScene" hidden></span>
+              </div>
+            </div>
+            <div data-lp="homeCharacter" class="lp-home-character"></div>
           </div>
-          <div class="lp-app-grid" aria-label="小手机应用">
-            <button type="button" class="lp-app-tile" data-lp-open="chatList"><span class="lp-app-icon lp-app-chat" data-lp-icon="chat">💬</span><span>咕叽聊</span><small data-lp="homeUnreadCount">可使用</small></button>
-            <button type="button" class="lp-app-tile" data-lp-open="wallet"><span class="lp-app-icon lp-app-wallet" data-lp-icon="wallet">💠</span><span>吱付宝</span><small>筹备中</small></button>
-            <button type="button" class="lp-app-tile" data-lp-open="diagnostics"><span class="lp-app-icon lp-app-log" data-lp-icon="diagnostics">🛠️</span><span>运行日志</span><small data-lp="homeLogCount">0 条记录</small></button>
-            <button type="button" class="lp-app-tile" data-lp-open="settings"><span class="lp-app-icon lp-app-settings" data-lp-icon="settings">⚙️</span><span>设置</span></button>
-            <button type="button" class="lp-app-tile" data-lp-open="calendar"><span class="lp-app-icon" data-lp-icon="calendar">📅</span><span>日历</span></button>
-            <button type="button" class="lp-app-tile" data-lp-open="theme"><span class="lp-app-icon" data-lp-icon="theme">🎨</span><span>主题</span></button>
-            <div class="lp-app-tile lp-app-soon" aria-label="相册，待开发"><span class="lp-app-icon" data-lp-icon="album">🖼️</span><span>相册</span><small>待开发</small></div>
-            <div class="lp-app-tile lp-app-soon" aria-label="购物，待开发"><span class="lp-app-icon" data-lp-icon="shopping">🛍️</span><span>购物</span><small>待开发</small></div>
-            <div class="lp-app-tile lp-app-soon" aria-label="外卖，待开发"><span class="lp-app-icon" data-lp-icon="takeout">🥡</span><span>外卖</span><small>待开发</small></div>
+          <div class="lp-home-search" aria-label="应用桌面">咕叽手机 <span>⌕</span></div>
+          <div class="lp-desktop-wrap" data-lp="homeSwipe">
+            <div class="lp-desktop-pages" data-lp="homePages"></div>
           </div>
+          <div class="lp-desktop-dots" data-lp="homeDots"></div>
+          <div class="lp-desktop-bottom">
+            <button type="button" class="lp-home-edit" data-lp="homeEdit">调整应用顺序</button>
+            <nav class="lp-home-dock" aria-label="快捷应用">
+              <button type="button" data-lp-open="chatList" aria-label="咕叽聊"><span data-lp-icon="chat"></span></button>
+              <button type="button" data-lp-open="wallet" aria-label="吱付宝"><span data-lp-icon="wallet"></span></button>
+              <button type="button" data-lp-open="weibo" aria-label="微博"><span data-lp-icon="weibo"></span></button>
+              <button type="button" data-lp-open="calendar" aria-label="日历"><span data-lp-icon="calendar"></span></button>
+            </nav>
+          </div>
+          <span data-lp="homeUnreadCount" hidden></span><span data-lp="homeLogCount" hidden></span>
+        </section>
+        <section class="lp-screen lp-weibo-screen" data-lp-screen="weibo" aria-label="微博" hidden>
+          <div class="lp-weibo-top">
+            <strong>微博</strong>
+            <button type="button" data-lp="weiboGenerate">刷新 10 条</button>
+          </div>
+          <nav class="lp-weibo-tabs" data-lp="weiboTabs" aria-label="微博导航">
+            <button type="button" data-weibo-tab="feed" class="selected">推荐</button>
+            <button type="button" data-weibo-tab="hot">热搜</button>
+            <button type="button" data-weibo-tab="saved">我的互动</button>
+          </nav>
+          <div data-lp="weiboFeedback" class="lp-weibo-feedback" role="status"></div>
+          <details class="lp-weibo-composer">
+            <summary>写微博</summary>
+            <textarea data-lp="weiboComposeText" rows="3" maxlength="1000" placeholder="分享这一刻…"></textarea>
+            <button type="button" data-lp="weiboPublish">发布</button>
+          </details>
+          <div data-lp="weiboFeed" class="lp-weibo-feed"></div>
+          <div data-lp="weiboHot" class="lp-weibo-hot" hidden></div>
+          <div data-lp="weiboDetail" class="lp-weibo-detail" hidden></div>
+          <button type="button" data-lp="weiboDetailBack" class="lp-weibo-detail-back" hidden>返回微博列表</button>
         </section>
         <section class="lp-screen lp-wallet lp-wallet-screen" data-lp-screen="wallet" aria-label="吱付宝" hidden>
           <div class="lp-wallet-main">
@@ -5225,6 +5274,23 @@ function makeUI() {
           </div>
         </section>
         <section class="lp-screen lp-settings" data-lp-screen="settings" aria-label="设置" hidden>
+          <h2>手机与桌面</h2>
+          <label class="lp-entry-option"><input type="checkbox" data-lp="lockEnabled" checked /> 开启锁屏与密码</label>
+          <button type="button" class="lp-settings-link" data-lp="lockSaveEnabled">保存锁屏设置</button>
+          <h3>应用排序</h3>
+          <div class="lp-desktop-sort" data-lp="desktopSortList"></div>
+          <h3>故事时钟</h3>
+          <label class="lp-field">时间流动<select data-lp="clockMode">
+            <option value="always">与现实同步，关闭手机继续流动</option>
+            <option value="open">仅在打开小手机时流动</option>
+            <option value="custom">自定义流速</option>
+          </select></label>
+          <div data-lp="clockCustomFields" class="lp-clock-custom" hidden>
+            <label>1 现实分钟 = <input type="number" data-lp="clockRate" min="0.1" max="120" step="0.1" value="5" /> 剧情分钟</label>
+            <label class="lp-entry-option"><input type="checkbox" data-lp="clockContinueClosed" /> 关闭小手机后继续流动</label>
+          </div>
+          <button type="button" data-lp="clockSave" class="lp-settings-link">保存时间设置</button>
+          <p class="lp-settings-hint">剧情时间仍可通过日历或聊天快捷跳转单独调整，跨午夜会自动更新日期。</p>
           <h2>API</h2>
           <div class="lp-settings-card" data-lp="apiInfo">当前酒馆连接</div>
           <label class="lp-field">连接方式<select data-lp="apiMode">
@@ -5328,18 +5394,7 @@ function makeUI() {
             <option value="serif">衬线字体</option>
             <option value="rounded">圆润字体</option>
           </select>
-          <h2>App 图标</h2>
-          <div class="lp-theme-icons" data-lp="themeIcons">
-            <label>咕叽聊 <input data-theme-icon="chat" maxlength="12" /></label>
-            <label>吱付宝 <input data-theme-icon="wallet" maxlength="12" /></label>
-            <label>运行日志 <input data-theme-icon="diagnostics" maxlength="12" /></label>
-            <label>设置 <input data-theme-icon="settings" maxlength="12" /></label>
-            <label>日历 <input data-theme-icon="calendar" maxlength="12" /></label>
-            <label>主题 <input data-theme-icon="theme" maxlength="12" /></label>
-            <label>相册 <input data-theme-icon="album" maxlength="12" /></label>
-            <label>购物 <input data-theme-icon="shopping" maxlength="12" /></label>
-            <label>外卖 <input data-theme-icon="takeout" maxlength="12" /></label>
-          </div>
+          <p class="lp-settings-hint">所有应用图标统一使用主题单色，以形状区分。</p>
         </section>
         <section class="lp-screen lp-diagnostics" data-lp-screen="diagnostics" aria-label="运行日志与报错" hidden>
           <div class="lp-diagnostic-state" data-lp="diagnosticState" role="status" aria-live="polite">空闲</div>
