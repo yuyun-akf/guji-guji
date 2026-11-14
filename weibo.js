@@ -111,7 +111,7 @@ export function createWeiboModule(api) {
    feedback('已更新 '+arr.length+' 条'+name+'动态');
    api.recordActivity('群星刷新',name+'：'+arr.length+' 条','success');
   }catch(e){feedback('刷新失败：'+String(e.message||e));api.recordError('群星生成',e);}
-  finally{state.loading=false;render();}
+  finally{state.loading=false;if(state.tab!=='me')render();else if(nodes()?.weiboGenerate)nodes().weiboGenerate.disabled=false;}
  }
 
  const topicKey=(zone,title)=>JSON.stringify([zone,title]);
@@ -382,7 +382,51 @@ export function createWeiboModule(api) {
  }
  async function action(type,id){
   // Reading/profile/settings interactions remain available during feed generation.
-  if(type==='subview'){state.subview=id;render();return;}
+  
+if(type==='subview'){state.subview=id;state.editing='';render();nodes().weiboMe.parentElement.scrollTop=0;return;}
+  if(type==='backMe'){state.subview='';state.editing='';render();nodes().weiboMe.parentElement.scrollTop=0;return;}
+  if(type==='scanAccounts'){
+   if(state.scanLoading)return;
+   if(typeof api.scanAccounts!=='function'){feedback('当前无法读取角色资料');return;}
+   const input=nodes().weiboMe.querySelector('[data-wb-field="scanWorldName"]');
+   state.scanWorldName=clean(input?.value,120);
+   const session=scope();state.scanLoading=true;state.scanMessage='正在读取角色卡和关联世界书…';render();
+   try{
+    const scan=await api.scanAccounts(state.scanWorldName);
+    if(scope()!==session)return;
+    state.candidates=Array.isArray(scan.candidates)?scan.candidates.slice(0,45):[];
+    state.scanMessage='已扫描 '+(scan.scanned||0)+' 段资料、'+(scan.worlds||0)+' 本世界书；找到 '+state.candidates.length+
+     ' 个候选账号。'+(scan.failures?.length?' 未读取：'+scan.failures.join('；'):'');
+   }catch(e){state.scanMessage='检测失败：'+String(e.message||e);api.recordError('群星账号检测',e);}
+   finally{state.scanLoading=false;if(scope()===session)render();}
+   return;
+  }
+  if(type==='saveCandidates'){
+   const selected=[...nodes().weiboMe.querySelectorAll('[data-wb-choose]:checked')];
+   const chosen=[];
+   for(const checkbox of selected){
+    const row=checkbox.closest('[data-wb-candidate]');
+    if(!row)continue;
+    const value=key=>{
+     const x=row.querySelector('[data-wb-candidate-field="'+key+'"]');
+     return x?.type==='checkbox'?!!x.checked:clean(x?.value,key==='bio'?450:60);
+    };
+    const name=value('name');if(!name)continue;
+    chosen.push({name,handle:value('handle'),kind:value('kind')||'角色',
+      bio:value('bio'),publicFigure:value('publicFigure')});
+   }
+   if(!chosen.length){feedback('请先勾选要保存的候选账号');return;}
+   await mutate(q=>{
+    for(const candidate of chosen){
+     const old=q.accounts.find(x=>x.name===candidate.name||(candidate.handle&&x.handle===candidate.handle));
+     const next={...old,...candidate,id:old?.id||uid('account'),followers:old?.followers||0,
+      avatar:old?.avatar||'',source:'manual'};
+     q.accounts=old?q.accounts.map(x=>x.id===old.id?next:x):[...q.accounts,next];
+    }
+   });
+   state.candidates=[];state.scanMessage='已保存 '+chosen.length+' 个已确认账号，未勾选的没有写入。';
+   feedback(state.scanMessage);render();return;
+  }
   if(type==='newAccount'){state.editing='new';state.avatarDraft='';render();return;}
   if(type==='editAccount'){state.editing=id;state.avatarDraft='';render();return;}
   if(type==='deleteAccount'){
@@ -458,15 +502,22 @@ export function createWeiboModule(api) {
   const alias={feed:'home',hot:'discover',saved:'me'};
   t=alias[t]||t;
   if(['home','discover','nearby','compose','me'].includes(t)){
-   state.tab=t;state.detail='';render();
+   if(t==='me'&&state.tab==='me')state.subview='';
+    if(t!=='me')state.subview='';
+    state.tab=t;state.detail='';state.topic=null;render();
    if((t==='home'||t==='discover')&&!state.attempted.world){state.attempted.world=true;void generate('home');}
    if(t==='nearby'&&!state.attempted.nearby){state.attempted.nearby=true;void generate('nearby');}
   }
  }
- function back(){state.detail='';render();}
+ function back(){
+  if(state.detail)state.detail='';
+  else if(state.topic)state.topic=null;
+  else if(state.subview)state.subview='';
+  render();
+ }
  function handleClick(event){
   const n=event.target?.closest?.('[data-wb-action],[data-wb-topic]');if(!n)return false;
-  if(n.dataset.wbTopic!==undefined){void generate(n.dataset.wbZone==='nearby'?'nearby':'home',n.dataset.wbTopic);return true;}
+  if(n.dataset.wbTopic!==undefined){void openTopic(n.dataset.wbTopic,n.dataset.wbZone==='nearby'?'nearby':'home');return true;}
   void action(n.dataset.wbAction,n.dataset.wbPost).catch(e=>feedback('操作失败：'+String(e.message||e)));return true;
  }
  function handleFile(event){
@@ -484,6 +535,8 @@ export function createWeiboModule(api) {
     const result=canvas.toDataURL('image/webp',.8);
     if(input.dataset.wbField==='accountAvatar')state.avatarDraft=result;
     else state.avatarOwnerDraft=result;
+    const preview=input.closest('.lp-wb-avatar-picker')?.querySelector('[data-wb-avatar-preview]');
+    if(preview){const img=new Image();img.src=result;img.alt='已选择的头像预览';preview.replaceChildren(img);}
     feedback('头像已选择，点击保存后生效');
    };
    img.onerror=()=>feedback('头像解码失败');
