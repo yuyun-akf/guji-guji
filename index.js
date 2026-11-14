@@ -1076,6 +1076,9 @@ function shiftStoryClock(time,amount,unit='minutes') {
 }
 function nextMessageStoryTime(data,minutes=1) {
     const cursor=String(data?.storyTime||localDateTime());
+    // A running clock is the only source of elapsed minutes: several quick
+    // messages may correctly share the same timestamp.
+    if(phoneClockPreferences().mode!=='manual')return cursor;
     if(!Array.isArray(data?.messages)||!data.messages.length)return cursor;
     const latest=[...data.messages].reverse().find(message=>/^\d{4}-\d\d-\d\dT\d\d:\d\d$/.test(message?.storyTime||''));
     // A manual calendar adjustment overrides the previous message's clock,
