@@ -2379,3 +2379,161 @@
 #st-little-phone-root .lp-wb-account-line>span:not(.lp-wb-avatar){flex:1;min-width:95px;font-size:12px;overflow-wrap:anywhere;}
 #st-little-phone-root .lp-wb-account-line button{padding:5px 7px;font-size:11px;border:1px solid var(--lp-ice);border-radius:8px;background:var(--lp-white);}
 #st-little-phone-root .lp-wb-hot-item{border:1px solid var(--lp-ice);}
+
+
+/* v0.12.0: desktop page effects. The first page reserves its header and
+   lower app area; later pages start apps at the top without any clock/search. */
+#st-little-phone-root .lp-home-widget[hidden],
+#st-little-phone-root .lp-home-search[hidden]{display:none!important;}
+#st-little-phone-root .lp-desktop-page.lp-desktop-first{
+  justify-content:flex-end;
+}
+#st-little-phone-root .lp-desktop-page.lp-desktop-later{
+  justify-content:flex-start;
+  padding-top:clamp(22px,6vh,66px);
+}
+#st-little-phone-root .lp-desktop-page.lp-desktop-later .lp-desktop-grid{align-content:start;}
+#st-little-phone-root .lp-desktop-pages[data-effect="cube"],
+#st-little-phone-root .lp-desktop-pages[data-effect="stack"],
+#st-little-phone-root .lp-desktop-pages[data-effect="fade"]{
+  display:block;position:relative;perspective:900px;transform:none!important;overflow:hidden;
+}
+#st-little-phone-root .lp-desktop-pages[data-effect="cube"]>.lp-desktop-page,
+#st-little-phone-root .lp-desktop-pages[data-effect="stack"]>.lp-desktop-page,
+#st-little-phone-root .lp-desktop-pages[data-effect="fade"]>.lp-desktop-page{
+  position:absolute;inset:0;width:100%;height:100%;
+  transition:transform .36s cubic-bezier(.2,.74,.2,1), opacity .32s ease;
+  backface-visibility:hidden;
+}
+#st-little-phone-root .lp-desktop-pages[data-effect="slide"]{
+  transition:transform .34s cubic-bezier(.2,.7,.25,1);
+}
+#st-little-phone-root .lp-home[data-page="1"] .lp-home-widget{display:none;}
+@media(prefers-reduced-motion:reduce){
+ #st-little-phone-root .lp-desktop-pages,
+ #st-little-phone-root .lp-desktop-pages>.lp-desktop-page{transition:none!important;}
+}
+
+/* Chat message timestamps are grouped, not a footer on each bubble. */
+#st-little-phone-root .lp-chat-time-divider{
+  align-self:stretch;width:100%;text-align:center;
+  margin:10px 0 4px;padding:4px 0;
+  color:#8b9bc1;font-size:11px;font-weight:400;letter-spacing:.015em;
+}
+#st-little-phone-root .lp-message-time{display:none!important;}
+#st-little-phone-root .lp-message-remove{display:none!important;}
+
+/* Long press / secondary-click: floating context menu attached to its bubble. */
+#st-little-phone-root .lp-message-actions{
+  position:fixed!important;z-index:120!important;
+  display:grid;grid-template-columns:repeat(4,minmax(0,1fr));
+  width:min(300px,calc(100vw - 24px));max-width:300px;
+  gap:3px;padding:7px;border:1px solid #e0e8f2;
+  border-radius:12px;background:#ffffffee;
+  box-shadow:0 9px 30px #35568a2b;
+  backdrop-filter:blur(10px);
+}
+#st-little-phone-root .lp-message-actions button{
+  min-height:34px;padding:5px 2px;border-radius:7px;
+  color:#35568a;background:transparent;font-size:11px;
+}
+#st-little-phone-root .lp-message-actions button:active{background:#e0e8f2;}
+#st-little-phone-root .lp-message-actions[hidden]{display:none!important;}
+#st-little-phone-root .lp-message .lp-bubble{touch-action:pan-y;}
+
+/* Attachments expand below composer and shrink scroll region above it. */
+#st-little-phone-root .lp-chat .lp-composer{order:20;flex:0 0 auto;}
+#st-little-phone-root .lp-chat .lp-emoji-panel,
+#st-little-phone-root .lp-chat .lp-more-panel{
+  order:21;flex:0 0 auto;max-height:min(36vh,310px);
+  overflow-y:auto;padding:15px 12px max(17px,env(safe-area-inset-bottom,0px));
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  background:#e0e8f2;border:0;
+}
+#st-little-phone-root .lp-chat .lp-more-panel button{
+  min-height:70px;border:0;border-radius:12px;background:#ffffffdb;
+  font-size:12px;color:#35568a;
+}
+#st-little-phone-root .lp-chat .lp-messages{
+  scrollbar-width:thin;scrollbar-color:#8b9bc16e transparent;
+}
+#st-little-phone-root .lp-chat .lp-messages::-webkit-scrollbar{
+  width:3px;background:transparent;
+}
+#st-little-phone-root .lp-chat .lp-messages::-webkit-scrollbar-thumb{
+  background:#8b9bc165;border-radius:8px;
+}
+#st-little-phone-root .lp-chat .lp-composer textarea{
+  scrollbar-width:none;overflow-y:auto;resize:none;
+}
+#st-little-phone-root .lp-chat .lp-composer textarea::-webkit-scrollbar{display:none!important;width:0!important;}
+
+/* Smaller horizontal WeChat-like financial cards. Pending #e39f9f,
+   accepted #f1d6d6, and expired/declined/invalidated a grey-blue. */
+#st-little-phone-root .lp-mine .lp-bubble.lp-payment-shell,
+#st-little-phone-root .lp-theirs .lp-bubble.lp-payment-shell{
+  background:transparent!important;padding:0!important;box-shadow:none!important;
+  border:0!important;max-width:100%!important;
+}
+#st-little-phone-root .lp-payment-card,
+#st-little-phone-root .lp-payment-card.lp-payment-transfer,
+#st-little-phone-root .lp-payment-card.lp-payment-redpacket{
+  width:min(255px,66vw)!important;min-width:185px!important;
+  max-width:100%!important;min-height:0!important;height:auto!important;
+  display:flex!important;flex-direction:column!important;
+  gap:5px!important;padding:10px 12px 7px!important;
+  border-radius:12px!important;box-shadow:none!important;
+  border:1px solid #35568a1e!important;
+  background:#e39f9f!important;color:#35568a!important;
+}
+#st-little-phone-root .lp-payment-card.lp-payment-pending{
+  background:#e39f9f!important;color:#35568a!important;border-color:#35568a1e!important;
+}
+#st-little-phone-root .lp-payment-card.lp-payment-finished{
+  background:#f1d6d6!important;color:#35568a!important;border-color:#35568a12!important;
+}
+#st-little-phone-root .lp-payment-card.lp-payment-expired{
+  background:#e0e8f2!important;color:#657894!important;border-color:#8b9bc144!important;
+}
+#st-little-phone-root .lp-payment-main{display:flex;align-items:center;gap:11px;min-height:42px;}
+#st-little-phone-root .lp-payment-glyph{
+  display:grid;place-items:center;flex:0 0 42px;width:42px;height:42px;
+  border-radius:50%;border:2px solid currentColor;
+  font-size:25px;font-weight:500;line-height:1;
+}
+#st-little-phone-root .lp-payment-copy{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1;}
+#st-little-phone-root .lp-payment-copy>strong{font-size:16px!important;font-weight:650;line-height:1.3;overflow-wrap:anywhere;}
+#st-little-phone-root .lp-payment-copy>small{font-size:10px!important;color:inherit!important;opacity:.83;line-height:1.3;}
+#st-little-phone-root .lp-payment-foot{
+  display:flex;align-items:center;justify-content:space-between;
+  min-height:20px;padding-top:4px;border-top:1px solid #35568a27;
+  font-size:10px;gap:6px;opacity:.92;
+}
+#st-little-phone-root .lp-payment-actions{
+  display:flex;gap:6px;padding:0!important;align-items:center;
+}
+#st-little-phone-root .lp-payment-actions button{
+  min-height:24px!important;padding:3px 6px!important;
+  border-radius:7px!important;background:#ffffff75!important;
+  border:1px solid #35568a2a!important;color:#35568a!important;
+  font-size:10px!important;
+}
+
+/* Location shares are cards, including historical [分享位置] messages. */
+#st-little-phone-root .lp-mine .lp-bubble.lp-location-shell,
+#st-little-phone-root .lp-theirs .lp-bubble.lp-location-shell{
+  width:min(265px,69vw);max-width:100%;padding:0!important;
+  background:#e0e8f2!important;border:1px solid #8b9bc17c!important;
+  border-radius:12px!important;overflow:hidden;
+}
+#st-little-phone-root .lp-location-card{
+  display:flex;align-items:center;gap:10px;min-height:70px;padding:11px;
+  color:#35568a;font-size:13px;white-space:normal;
+}
+#st-little-phone-root .lp-location-symbol{
+  flex:0 0 43px;width:43px;height:43px;display:grid;place-items:center;
+  border-radius:10px;background:#ffffffa8;color:#35568a;font-size:29px;
+}
+#st-little-phone-root .lp-location-copy{display:flex;flex:1;flex-direction:column;gap:6px;min-width:0;}
+#st-little-phone-root .lp-location-copy strong{font-size:13px;overflow-wrap:anywhere;line-height:1.35;}
+#st-little-phone-root .lp-location-copy small{font-size:10px;color:#657894;}
