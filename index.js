@@ -1247,6 +1247,8 @@ async function writeData(ctx,data) {
         throw new Error('当前联系人不存在，无法保存聊天');
     const payload={...data};
     delete payload.__contactId;
+    // Settlements expire on the story clock, never by the device's actual time.
+    if(payload.wallet)walletExpireTransfers(payload);
     if (id!==PRIMARY_CONTACT_ID) {
         const thread=root.conversations[id] || {};
         payload.conversations={
@@ -2099,6 +2101,10 @@ function finishBusy(jobId) {
     if (activityTicker) clearInterval(activityTicker);
     activityTicker = null;
     updateBusy();
+    if(bridgeNeedsSync&&!bridgeSyncWorking){
+        bridgeNeedsSync=false;
+        void syncMainlinePayments(context());
+    }
 }
 
 async function generateWithTimeout(ctx, options, data) {
@@ -2180,6 +2186,7 @@ function switchContact(id,screen='profile') {
     if (!validContactId(root,id)) return setStatus('联系人不存在','error');
     activeContactId=id;
     if(nodes?.timeJumpPanel)nodes.timeJumpPanel.hidden=true;
+    if(nodes?.paymentPanel)nodes.paymentPanel.hidden=true;
     clearQuote();
     statusText='';
     statusKind='info';
@@ -3694,6 +3701,7 @@ async function handleMessageOperation(action) {
         nodes.quotedPreview.hidden=false;
         nodes.input.focus();
     } else if(action==='edit'){
+        if(msg.paymentId)return setStatus('转账与红包内容不能直接编辑','error');
         if(msg.from!=='user')return setStatus('只能编辑自己发送的消息','error');
         const replacement=window.prompt('编辑这条消息',msg.text);
         if(replacement===null)return;
@@ -4024,6 +4032,8 @@ async function deleteIndividualMessage(id) {
     if (busy) return;
     const ctx=context();
     if (!selectedCharacter(ctx)) return;
+    const original=readData(ctx).messages.find(item=>item.id===id);
+    if(original?.paymentId)return setStatus('转账与红包记录不能直接删除，请在交易卡片中处理','error');
     if (!window.confirm('删除这条消息？')) return;
     const data=structuredClone(readData(ctx));
     const before=data.messages.length;
@@ -4573,9 +4583,33 @@ function makeUI() {
             <div class="lp-app-tile lp-app-soon" aria-label="外卖，待开发"><span class="lp-app-icon" data-lp-icon="takeout">🥡</span><span>外卖</span><small>待开发</small></div>
           </div>
         </section>
-        <section class="lp-screen lp-wallet" data-lp-screen="wallet" aria-label="吱付宝" hidden>
-          <div class="lp-wallet-hero"><span class="lp-wallet-logo">💠</span><h2>吱付宝</h2><p>故事里的虚拟支付应用</p></div>
-          <div class="lp-wallet-placeholder"><strong>功能筹备中</strong><p>先保留应用入口和独立界面，具体钱包、账单、转账功能之后再设计。这里不会连接真实支付或操作真实资金。</p></div>
+        <section class="lp-screen lp-wallet lp-wallet-screen" data-lp-screen="wallet" aria-label="吱付宝" hidden>
+          <div class="lp-wallet-main">
+            <div class="lp-wallet-head">
+              <div class="lp-wallet-heading"><span>💠</span><strong>吱付宝</strong></div>
+              <div class="lp-wallet-caption">账户余额</div>
+              <div class="lp-wallet-number">¥ <span data-lp="walletBalance">0.00</span></div>
+              <button type="button" class="lp-wallet-shortcut" data-lp="walletToChat">转账 / 红包</button>
+            </div>
+            <details class="lp-wallet-adjust">
+              <summary>调整余额</summary>
+              <div class="lp-wallet-adjust-controls">
+                <label for="lp-wallet-adjust-input">设定余额</label>
+                <input id="lp-wallet-adjust-input" data-lp="walletAdjustInput" type="number" min="0" max="1000000000" step="0.01" inputmode="decimal" placeholder="0.00" />
+                <button type="button" data-lp="walletSaveBalance">保存</button>
+              </div>
+            </details>
+            <section class="lp-wallet-section" aria-label="待处理">
+              <h3>待处理</h3><div data-lp="walletPending" class="lp-wallet-bills"></div>
+            </section>
+            <section class="lp-wallet-section" aria-label="账单">
+              <h3>账单记录</h3><div data-lp="walletBills" class="lp-wallet-bills"></div>
+            </section>
+            <details class="lp-wallet-events">
+              <summary>事件记录</summary><div data-lp="bridgeEvents" class="lp-wallet-event-list"></div>
+            </details>
+            <div data-lp="walletStatus" class="lp-wallet-inline-status" role="status"></div>
+          </div>
         </section>
         <section class="lp-screen lp-chatlist" data-lp-screen="chatList" aria-label="消息列表" hidden>
           <div class="lp-list-body">
@@ -4784,10 +4818,21 @@ function makeUI() {
             <button type="button" data-chat-tool="photo">相册</button>
             <button type="button" data-chat-tool="call">电话</button>
             <button type="button" data-chat-tool="transfer">转账</button>
+            <button type="button" data-chat-tool="redpacket">红包</button>
             <button type="button" data-chat-tool="location">定位</button>
             <button type="button" data-chat-tool="time">跳转时间</button>
           </div>
           <input type="file" accept="image/png,image/jpeg,image/webp" data-lp="chatImageInput" hidden />
+          <div class="lp-payment-panel" data-lp="paymentPanel" hidden>
+            <div class="lp-payment-panel-head"><strong data-lp="paymentTitle">转账</strong><button type="button" data-lp="paymentClose" aria-label="关闭">×</button></div>
+            <label>类型 <select data-lp="paymentKind">
+              <option value="transfer">转账</option>
+              <option value="redpacket">红包</option>
+            </select></label>
+            <label>金额 <input type="number" data-lp="paymentAmount" step="0.01" min="0.01" inputmode="decimal" placeholder="0.00" /></label>
+            <label>备注 <input type="text" data-lp="paymentNote" maxlength="120" placeholder="添加备注（选填）" /></label>
+            <div class="lp-payment-panel-foot"><small data-lp="paymentBalance">可用余额</small><button type="button" data-lp="paymentSend">确认发送</button></div>
+          </div>
           <div class="lp-time-jump-hint" data-lp="timeJumpHint" role="status" hidden></div>
           <div class="lp-time-jump-panel" data-lp="timeJumpPanel" aria-label="跳转剧情时间" hidden>
             <div class="lp-time-jump-head">
@@ -4872,6 +4917,7 @@ function makeUI() {
             <option value="off">不读取</option>
           </select></label>
           <label class="lp-entry-option"><input type="checkbox" data-lp="phoneToMainline" /> 将手机聊天记录作为独立经历注入正文（默认关闭）</label>
+          <label class="lp-entry-option"><input type="checkbox" data-lp="eventBridge" checked /> 正文与小手机同步已确认事件（交易、好友状态等）</label>
           <p class="lp-settings-hint">正文记忆不会写回其他插件；主线过去模式会屏蔽记忆。手机记录影响正文可随时关闭，不会修改正文消息。实际每次注入数量见首页「运行日志」。</p>
           <button type="button" class="lp-settings-link" data-lp="saveContextSettings">保存记忆与互通设置</button>
           <h2>打开方式</h2>
@@ -5007,9 +5053,10 @@ function mount() {
         'friendLabel', 'friendActions','profileAvatar','profileName','profileDescription','contactEvidence','contactExchange','contactLinks','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcScanState','npcCandidates','npcSaveCandidates','storyPeopleList','viewPrimaryContact','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','avatarUserFile','resetCharAvatar','resetUserAvatar',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
-        'presetSource','presetInfo','presetEntries','worldBookList','worldSelectionSummary','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','saveSelections','savePresetPicker','saveWorldPicker','selectionSaveStatus','readMainlineMemory','memorySource','phoneToMainline','saveContextSettings','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themeIcons',
+        'walletBalance','walletPending','walletBills','walletAdjustInput','walletSaveBalance','walletToChat','walletStatus','bridgeEvents',
+        'presetSource','presetInfo','presetEntries','worldBookList','worldSelectionSummary','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','saveSelections','savePresetPicker','saveWorldPicker','selectionSaveStatus','readMainlineMemory','memorySource','phoneToMainline','eventBridge','saveContextSettings','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themeIcons',
         'diagnostics', 'diagnosticState', 'copyDiagnostics', 'clearDiagnostics',
-        'messages','messageActions','quotedPreview','quotedText','cancelQuote','emojiPanel','morePanel','chatImageInput','timeJumpPanel','timeJumpHint','timeJumpCurrent','timeJumpAmount','timeJumpUnit','timeJumpApply','timeJumpClose','input', 'generate', 'send', 'launcher']
+        'messages','messageActions','quotedPreview','quotedText','cancelQuote','emojiPanel','morePanel','chatImageInput','timeJumpPanel','timeJumpHint','timeJumpCurrent','timeJumpAmount','timeJumpUnit','timeJumpApply','timeJumpClose','paymentPanel','paymentTitle','paymentKind','paymentAmount','paymentNote','paymentBalance','paymentClose','paymentSend','input', 'generate', 'send', 'launcher']
         .map(key => [key, key === 'launcher' ? floating : root.querySelector(`[data-lp="${key}"]`)]));
 
     const draggedClick=enableLauncherDragging(nodes.launcher);
@@ -5115,6 +5162,17 @@ function mount() {
     });
     nodes.floatingLauncher.addEventListener('change', event => setFloatLauncherEnabled(event.target.checked));
     nodes.send.addEventListener('click',send);
+    nodes.walletSaveBalance.addEventListener('click',()=>void saveWalletBalance());
+    nodes.walletToChat.addEventListener('click',()=>{
+        switchContact(PRIMARY_CONTACT_ID,'chat');
+        if(friendshipState(readData(context(),PRIMARY_CONTACT_ID))==='friends')openPaymentForm('transfer');
+        else setStatus('请先添加对方为好友','error');
+    });
+    nodes.paymentSend.addEventListener('click',()=>void sendPhonePayment());
+    nodes.paymentClose.addEventListener('click',()=>{nodes.paymentPanel.hidden=true;});
+    nodes.paymentKind.addEventListener('change',()=>{
+        nodes.paymentTitle.textContent=nodes.paymentKind.value==='redpacket'?'发送红包':'发起转账';
+    });
     nodes.timeJumpPanel.addEventListener('click',event=>{
         const shortcut=event.target.closest('button[data-jump-amount][data-jump-unit]');
         if(shortcut&&nodes.timeJumpPanel.contains(shortcut))
@@ -5134,6 +5192,11 @@ function mount() {
         if(tool&&root.contains(tool)){startChatTool(tool.dataset.chatTool);return;}
         const sticker=event.target.closest('button[data-sticker-id]');
         if(sticker&&root.contains(sticker)){void useSticker(sticker.dataset.stickerId,sticker.dataset.stickerAction);return;}
+        const paymentButton=event.target.closest('button[data-payment-action][data-payment-id]');
+        if(paymentButton&&root.contains(paymentButton)){
+            void handlePaymentAction(paymentButton.dataset.paymentId,paymentButton.dataset.paymentAction);
+            return;
+        }
         const action=event.target.closest('button[data-message-action]');
         if(action&&root.contains(action)){if(action.dataset.messageAction==='cancel')closeMessageActions();else void handleMessageOperation(action.dataset.messageAction);}
     });
