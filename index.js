@@ -1710,7 +1710,8 @@ function shortText(value, maxLength = CHARACTER_TEXT_LIMIT) {
 
 /* Shared account used by messages, gifts, orders and future apps. Amounts stay
    integer cents; transfer status transitions and ledger IDs are idempotent. */
-const PHONE_WALLET_MAX_CENTS=100000000000;
+// No product-imposed transfer ceiling; only integer precision / available balance apply.
+const PHONE_WALLET_MAX_CENTS=Number.MAX_SAFE_INTEGER;
 const PHONE_PAYMENT_KINDS=new Set(['transfer','redpacket']);
 const PHONE_PAYMENT_STATES=new Set(['pending','accepted','declined','cancelled','expired','invalidated','conflict']);
 
@@ -1871,7 +1872,7 @@ function walletEnsure(data) {
 }
 function walletCents(value,allowZero=false) {
     const text=String(value??'').trim().replace(/,/g,'');
-    if(!/^(?:0|[1-9]\d{0,8})(?:\.\d{1,2})?$/.test(text))throw new Error('请输入正确的金额，最多保留两位小数');
+    if(!/^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(text))throw new Error('请输入正确的金额，最多保留两位小数');
     const [yuan,fen='']=text.split('.');
     const cents=Number(yuan)*100+Number(fen.padEnd(2,'0'));
     if(!Number.isSafeInteger(cents)||cents>PHONE_WALLET_MAX_CENTS||(!allowZero&&cents<=0))
@@ -1879,7 +1880,8 @@ function walletCents(value,allowZero=false) {
     return cents;
 }
 function walletMoney(cents) {
-    return (Math.round(cents)/100).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2});
+    const amount=Math.abs(Math.trunc(cents));
+    return (cents<0?'−':'')+Math.floor(amount/100).toLocaleString('zh-CN')+'.'+String(amount%100).padStart(2,'0');
 }
 function walletOperationId(prefix='wallet') {
     return prefix+':'+Date.now().toString(36)+':'+Math.random().toString(36).slice(2,11);
@@ -4349,7 +4351,7 @@ function walletLedgerDisplay(ctx,entry,wallet){
  if(kind==='redpacket'||kind==='transfer'){
   const kindName=kind==='redpacket'?'红包':'转账';
   if(refund)label=kindName+'退款'+(name?' · '+name:'');
-  else if(name)label=(received?'收到':'转给')+name+'的'+kindName;
+  else if(name)label=received?'收到'+name+'的'+kindName:(kind==='redpacket'?'发给'+name+'的红包':'转账给'+name);
   else label=received?'收到'+kindName:'发出'+kindName;
  }
  const note=entry.note||transfer?.note||'';
