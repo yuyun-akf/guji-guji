@@ -35,10 +35,10 @@ export function createWeiboModule(api) {
   state.trends=[];state.nearbyTrends=[];state.attempted={};state.loading=false;state.token++;
  }
  const actionState=p=>data().posts.find(x=>x.id===p.id)?.actions||p.actions||{};
- const actor=p=>data().accounts.find(a=>a.id===p.authorId||a.name===p.author||a.handle===p.handle);
+ const actor=p=>data().accounts.find(a=>(p.authorId&&a.id===p.authorId)||(p.author&&a.name===p.author)||(p.handle&&a.handle===p.handle));
  function allPosts(){
   const q=data();
-  const legacy=(root().weiboSaved||[]).filter(p=>p?.id).map(p=>({...p,zone:p.zone||'world'}));
+  const legacy=(Array.isArray(root().weiboSaved)?root().weiboSaved:[]).filter(p=>p?.id).map(p=>({...p,zone:p.zone||'world'}));
   const combined=[...q.posts,...legacy,...state.posts.home,...state.posts.nearby],seen=new Set();
   return combined.filter(p=>p?.id&&!seen.has(p.id)&&seen.add(p.id));
  }
@@ -71,7 +71,7 @@ export function createWeiboModule(api) {
   return [
    '你正在生成故事世界的公共社交平台「群星」信息流。剧情时间：'+(r.storyTime||'未设定')+'。区域：'+(nearby?'周边，围绕用户和角色所处学校/公司/剧组/熟人社会':'世界，面向广泛社会')+'。',
    '当前主角：'+(char?.name||'未选择')+'。角色资料：'+clean(char?.description,850)+'。已知人物：'+known,
-   '用户手动建立的群星账号（这些身份不可随意改名、捏造性格）：'+(accounts||'尚未建立')+'。已关注：'+(followed||'无')+'。',
+   '用户手动建立的群星账号（这些身份不可随意改名、捏造性格）：'+(accounts||'尚未建立')+'。已关注：'+(followed||'无')+'。周边补充设定：'+clean(q.settings.nearbyHint,220)+'。',
    '近期剧情（仅作为已发生事件的依据）：'+scene+'。用户已经公开互动的动态：'+interactions,
    '遵循角色的职业、公众身份与社交边界。已建立的公众人物可以被媒体、粉丝、社交圈讨论，也可能合理上热搜，但不必每次上；普通人不要被无端全国关注。',
    '绝不把私聊、内心想法、未公开的恋爱关系或未发生的剧情编成公开事实。用户行为只能依据已明确发生的内容。允许陌生网友讨论无关话题，不能每条都围绕角色。',
@@ -375,14 +375,24 @@ export function createWeiboModule(api) {
  function handleFile(event){
   const input=event.target?.closest?.('[data-wb-field="accountAvatar"],[data-wb-field="ownerAvatar"]');
   if(!input||!input.files?.[0])return false;
-  const file=input.files[0];if(!/^image\/(?:png|jpeg|webp)$/.test(file.type)||file.size>220*1024){feedback('头像请选择不超过 220KB 的 PNG/JPG/WebP');return true;}
-  const reader=new FileReader();reader.onload=()=>{
-   if(typeof reader.result==='string'){
-    if(input.dataset.wbField==='accountAvatar')state.avatarDraft=reader.result;
-    else state.avatarOwnerDraft=reader.result;
+  const file=input.files[0];
+  if(!/^image\/(?:png|jpeg|webp)$/.test(file.type)||file.size>8*1024*1024){feedback('头像请选择不超过 8MB 的图片');return true;}
+  const reader=new FileReader();
+  reader.onload=()=>{
+   const img=new Image();
+   img.onload=()=>{
+    const canvas=document.createElement('canvas'),scale=Math.min(1,320/img.width,320/img.height);
+    canvas.width=Math.max(1,Math.round(img.width*scale));canvas.height=Math.max(1,Math.round(img.height*scale));
+    canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
+    const result=canvas.toDataURL('image/webp',.8);
+    if(input.dataset.wbField==='accountAvatar')state.avatarDraft=result;
+    else state.avatarOwnerDraft=result;
     feedback('头像已选择，点击保存后生效');
-   }
+   };
+   img.onerror=()=>feedback('头像解码失败');
+   img.src=String(reader.result||'');
   };
+  reader.onerror=()=>feedback('头像读取失败');
   reader.readAsDataURL(file);return true;
  }
  async function tick(force=false){
