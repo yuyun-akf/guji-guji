@@ -1297,6 +1297,176 @@ function shortText(value, maxLength = CHARACTER_TEXT_LIMIT) {
     return value.slice(0, maxLength).trim();
 }
 
+
+/* Shared account used by messages, gifts, orders and future apps. Amounts stay
+   integer cents; transfer status transitions and ledger IDs are idempotent. */
+const PHONE_WALLET_MAX_CENTS=100000000000;
+const PHONE_PAYMENT_KINDS=new Set(['transfer','redpacket']);
+const PHONE_PAYMENT_STATES=new Set(['pending','accepted','declined','cancelled','expired','invalidated','conflict']);
+function walletState(data) {
+    const saved=data?.wallet;
+    return {
+        balanceCents:Number.isSafeInteger(saved?.balanceCents)&&saved.balanceCents>=0?saved.balanceCents:0,
+        ledger:Array.isArray(saved?.ledger)?saved.ledger:[],
+        transfers:Array.isArray(saved?.transfers)?saved.transfers:[],
+        events:Array.isArray(saved?.events)?saved.events:[],
+    };
+}
+function walletEnsure(data) {
+    if(!data.wallet||typeof data.wallet!=='object')data.wallet=walletState(data);
+    if(!Array.isArray(data.wallet.ledger))data.wallet.ledger=[];
+    if(!Array.isArray(data.wallet.transfers))data.wallet.transfers=[];
+    if(!Array.isArray(data.wallet.events))data.wallet.events=[];
+    if(!Number.isSafeInteger(data.wallet.balanceCents)||data.wallet.balanceCents<0)data.wallet.balanceCents=0;
+    return data.wallet;
+}
+function walletCents(value,allowZero=false) {
+    const text=String(value??'').trim().replace(/,/g,'');
+    if(!/^(?:0|[1-9]\d{0,8})(?:\.\d{1,2})?$/.test(text))throw new Error('请输入正确的金额，最多保留两位小数');
+    const [yuan,fen='']=text.split('.');
+    const cents=Number(yuan)*100+Number(fen.padEnd(2,'0'));
+    if(!Number.isSafeInteger(cents)||cents>PHONE_WALLET_MAX_CENTS||(!allowZero&&cents<=0))
+        throw new Error('金额超出范围');
+    return cents;
+}
+function walletMoney(cents) {
+    return (Math.round(cents)/100).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+function walletOperationId(prefix='wallet') {
+    return prefix+':'+Date.now().toString(36)+':'+Math.random().toString(36).slice(2,11);
+}
+function walletApplyEntry(data,{id,amountCents,label,kind,contactId='',storyTime='',relatedId=''}) {
+    const wallet=walletEnsure(data);
+    if(!id||typeof id!=='string')throw new Error('账单编号缺失');
+    const existing=wallet.ledger.find(item=>item.id===id);
+    if(existing)return existing;
+    if(!Number.isSafeInteger(amountCents)||Math.abs(amountCents)>PHONE_WALLET_MAX_CENTS)
+        throw new Error('金额不合法');
+    const next=wallet.balanceCents+amountCents;
+    if(!Number.isSafeInteger(next)||next<0||next>PHONE_WALLET_MAX_CENTS)
+        throw new Error(amountCents<0?'余额不足，无法付款':'余额超出上限');
+    wallet.balanceCents=next;
+    const entry={id,amountCents,balanceAfterCents:next,label:String(label||'交易').slice(0,120),
+        kind:String(kind||'payment'),contactId,relatedId,storyTime:storyTime||data.storyTime||localDateTime()};
+    wallet.ledger.push(entry);
+    return entry;
+}
+function walletEvent(data,{id,type,detail,storyTime='',origin='phone',reference=''}) {
+    const wallet=walletEnsure(data);
+    if(wallet.events.some(entry=>entry.id===id))return false;
+    wallet.events.push({id,type,detail:String(detail||'').slice(0,240),storyTime:storyTime||data.storyTime||localDateTime(),origin,reference});
+    if(wallet.events.length>300)wallet.events=wallet.events.slice(-300);
+    return true;
+}
+function walletAdjustBalance(data,targetCents,reason='余额调整') {
+    if(!Number.isSafeInteger(targetCents)||targetCents<0||targetCents>PHONE_WALLET_MAX_CENTS)throw new Error('余额不合法');
+    const before=walletState(data).balanceCents;
+    const difference=targetCents-before;
+    if(!difference)return null;
+    const id=walletOperationId('balance');
+    const entry=walletApplyEntry(data,{id,amountCents:difference,label:reason,kind:'adjustment'});
+    walletEvent(data,{id:'evt:'+id,type:'wallet.adjusted',
+        detail:'余额调整 '+(difference>0?'+':'−')+'¥'+walletMoney(Math.abs(difference)),reference:id});
+    return entry;
+}
+function walletThread(data,contactId) {
+    if(contactId===PRIMARY_CONTACT_ID)return data;
+    if(!data.conversations||!data.conversations[contactId])throw new Error('找不到联系人会话');
+    return data.conversations[contactId];
+}
+function walletCreateTransfer(data,{id=walletOperationId('payment'),kind='transfer',from='user',
+    contactId=PRIMARY_CONTACT_ID,amountCents,note='',origin='phone',sourceIndex=null,sourceHash='',sourceKey='',storyTime=''}) {
+    const wallet=walletEnsure(data);
+    const old=wallet.transfers.find(item=>item.id===id);
+    if(old)return old;
+    if(!PHONE_PAYMENT_KINDS.has(kind)||!['user','contact'].includes(from))throw new Error('不支持的转账类型');
+    if(!Number.isSafeInteger(amountCents)||amountCents<1||amountCents>PHONE_WALLET_MAX_CENTS)
+        throw new Error('转账金额错误');
+    const time=storyTime||data.storyTime||localDateTime();
+    if(from==='user'){
+        walletApplyEntry(data,{id:'reserve:'+id,amountCents:-amountCents,
+            label:(kind==='redpacket'?'发红包':'转账')+' · '+note.slice(0,60),
+            kind,contactId,storyTime:time,relatedId:id});
+    }
+    const payment={id,kind,from,contactId,amountCents,note:String(note||'').slice(0,120),
+        status:'pending',origin,sourceIndex,sourceHash,sourceKey,storyTime:time};
+    wallet.transfers.push(payment);
+    walletEvent(data,{id:'evt:'+id,type:kind+'.created',
+        detail:(from==='user'?'发出':'收到')+(kind==='redpacket'?'红包':'转账')+' ¥'+walletMoney(amountCents),
+        storyTime:time,origin,reference:id});
+    return payment;
+}
+function walletSettleTransfer(data,id,nextStatus,{origin='phone'}={}) {
+    const wallet=walletEnsure(data);
+    const payment=wallet.transfers.find(item=>item.id===id);
+    if(!payment)throw new Error('找不到这笔交易');
+    if(!PHONE_PAYMENT_STATES.has(nextStatus))throw new Error('交易状态不合法');
+    if(payment.status===nextStatus)return payment;
+    if(payment.status!=='pending')throw new Error('这笔交易已经处理，不能再次操作');
+    if(nextStatus==='accepted'){
+        if(payment.from==='contact')walletApplyEntry(data,{id:'receive:'+id,amountCents:payment.amountCents,
+            label:'收到'+(payment.kind==='redpacket'?'红包':'转账'),
+            kind:payment.kind,contactId:payment.contactId,relatedId:id});
+    }else if(payment.from==='user'){
+        walletApplyEntry(data,{id:'refund:'+id,amountCents:payment.amountCents,
+            label:(payment.kind==='redpacket'?'红包':'转账')+'退款',
+            kind:'refund',contactId:payment.contactId,relatedId:id});
+    }
+    payment.status=nextStatus;
+    walletEvent(data,{id:'evt:'+id+':'+nextStatus,type:payment.kind+'.'+nextStatus,
+        detail:(nextStatus==='accepted'?'已收款':nextStatus==='expired'?'已过期':
+            nextStatus==='declined'?'已拒收':nextStatus==='cancelled'?'已撤回':'已作废')+
+            ' ¥'+walletMoney(payment.amountCents),origin,reference:id});
+    return payment;
+}
+function walletInvalidateMainlinePayment(data,payment) {
+    if(payment.origin!=='mainline'||payment.status==='invalidated'||payment.status==='conflict')return false;
+    const wallet=walletEnsure(data);
+    if(payment.status==='accepted'&&payment.from==='contact'){
+        if(wallet.balanceCents<payment.amountCents){
+            payment.status='conflict';
+            walletEvent(data,{id:'evt:'+payment.id+':conflict',type:'payment.conflict',
+                detail:'已收款的原剧情消息发生变化，请核对 ¥'+walletMoney(payment.amountCents),
+                origin:'mainline',reference:payment.id});
+            return true;
+        }
+        walletApplyEntry(data,{id:'reverse:'+payment.id,amountCents:-payment.amountCents,
+            label:'剧情修改 · 交易冲正',kind:'reversal',contactId:payment.contactId,relatedId:payment.id});
+    }
+    payment.status='invalidated';
+    walletEvent(data,{id:'evt:'+payment.id+':invalidated',type:'payment.invalidated',
+        detail:'原剧情消息已更改 · '+payment.kind+' ¥'+walletMoney(payment.amountCents),
+        origin:'mainline',reference:payment.id});
+    return true;
+}
+function walletExpireTransfers(data) {
+    const now=new Date(data.storyTime||localDateTime()).getTime();
+    if(!Number.isFinite(now))return 0;
+    let count=0;
+    for(const payment of walletState(data).transfers){
+        if(payment.status!=='pending')continue;
+        const issued=new Date(payment.storyTime).getTime();
+        if(Number.isFinite(issued)&&now-issued>=86400000){
+            walletSettleTransfer(data,payment.id,'expired',{origin:'clock'});count++;
+        }
+    }
+    return count;
+}
+// Reserved for future shopping/takeout modules: one payment authorization and one
+// settled ledger row for each unique order ID. No separate app balance.
+function walletChargeOrder(data,{orderId,amountCents,shop,category='shopping'}) {
+    if(!orderId||!['shopping','takeout','service'].includes(category))throw new Error('订单类型无效');
+    return walletApplyEntry(data,{id:'order:'+category+':'+orderId,amountCents:-amountCents,
+        label:String(shop||'订单付款').slice(0,100),kind:category,relatedId:orderId});
+}
+function walletRefundOrder(data,{orderId,amountCents,category='shopping'}) {
+    if(!orderId||!['shopping','takeout','service'].includes(category))throw new Error('退款类型无效');
+    const paid=walletState(data).ledger.find(entry=>entry.id==='order:'+category+':'+orderId);
+    if(!paid||amountCents<=0||amountCents>-paid.amountCents)throw new Error('找不到可退款的订单');
+    return walletApplyEntry(data,{id:'order-refund:'+category+':'+orderId,amountCents,
+        label:'订单退款',kind:'refund',relatedId:orderId});
+}
+
 function contextSettings(data) {
     return {
         readMainlineMemory:data?.config?.readMainlineMemory !== false,
