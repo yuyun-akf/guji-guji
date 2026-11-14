@@ -78,8 +78,44 @@ const STICKER_PAGE_SIZE = 24;
 const stickerPages = {manage:1,send:1};
 let notificationTimer = null;
 const transientApiKeys = new Map();
-const APP_ICONS = {chat:'💬',wallet:'💠',diagnostics:'🛠️',settings:'⚙️',calendar:'📅',theme:'🎨',album:'🖼️',shopping:'🛍️',takeout:'🥡'};
-const SCREENS = new Set(['home', 'wallet', 'chat', 'chatList', 'contacts', 'requests', 'profile', 'addNpc', 'discoverNpc', 'discover', 'me', 'chatOptions', 'settings', 'diagnostics', 'calendar', 'theme', 'presetPicker', 'worldPicker']);
+const APP_CATALOG=[
+ {key:'chat',screen:'chatList',name:'咕叽聊',ready:true},
+ {key:'wallet',screen:'wallet',name:'吱付宝',ready:true},
+ {key:'weibo',screen:'weibo',name:'微博',ready:true},
+ {key:'calendar',screen:'calendar',name:'日历',ready:true},
+ {key:'settings',screen:'settings',name:'设置',ready:true},
+ {key:'diagnostics',screen:'diagnostics',name:'运行日志',ready:true},
+ {key:'shopping',screen:'shopping',name:'购物',ready:false},
+ {key:'takeout',screen:'takeout',name:'外卖',ready:false},
+ {key:'theme',screen:'theme',name:'主题',ready:true}
+];
+const APP_ICONS=Object.fromEntries(APP_CATALOG.map(item=>[item.key,item.key]));
+const APP_SHAPES={
+ chat:'<path d="M20 11.5a8 8 0 0 1-8 8c-1.3 0-2.6-.3-3.7-.9L3.5 20l1.4-4.7A8 8 0 1 1 20 11.5Z"/><circle cx="8" cy="11.5" r=".8" fill="currentColor"/><circle cx="12" cy="11.5" r=".8" fill="currentColor"/><circle cx="16" cy="11.5" r=".8" fill="currentColor"/>',
+ wallet:'<path d="M12 2 17 7l-5 5-5-5Z M5 9l5 5-5 5-5-5Z M19 9l5 5-5 5-5-5Z M12 16l5 5-5 5-5-5Z" transform="translate(0 -2) scale(.95)"/>',
+ weibo:'<rect x="3" y="3.5" width="18" height="17" rx="2"/><rect x="6" y="7" width="6" height="5" rx=".5"/><path d="M14.5 7h4M14.5 10h4M6 15h12M6 18h12"/>',
+ diagnostics:'<path d="m12 3 9.1 16a1.3 1.3 0 0 1-1.1 2H4a1.3 1.3 0 0 1-1.1-2L12 3Z"/><path d="M12 9v5"/><circle cx="12" cy="17.5" r=".85" fill="currentColor" stroke="none"/>',
+ settings:'<circle cx="12" cy="12" r="3"/><path d="m10 2-.6 2.3-2 1L5 4 3.7 6l1.6 2.1-.3 2.1-2.3 1.1v2.4L5 14.8l.3 2.1L3.7 19 5 21l2.4-1.3 2 1 .6 2.3h4l.6-2.3 2-1L19 21l1.3-2-1.6-2.1.3-2.1 2.3-1.1v-2.4L19 10.2l-.3-2.1L20.3 6 19 4l-2.4 1.3-2-1L14 2Z"/>',
+ calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18M8 14h2M13 14h2M8 18h2"/>',
+ theme:'<path d="M12 3a9 9 0 1 0 0 18h2a2 2 0 0 0 1-3.7c-.5-.2-.8-.6-.8-1.1 0-.8.6-1.4 1.4-1.4H18A4 4 0 0 0 22 11c0-4.4-4.3-8-10-8Z"/><circle cx="7.5" cy="10" r=".8" fill="currentColor"/><circle cx="11" cy="7.5" r=".8" fill="currentColor"/><circle cx="16" cy="8.5" r=".8" fill="currentColor"/>',
+ shopping:'<path d="M4 8h16l-1 13H5L4 8Z"/><path d="M8 9V6a4 4 0 0 1 8 0v3"/>',
+ takeout:'<path d="M4 3v8c0 2 4 2 4 0V3M6 3v18M15 3c4 0 5 4 5 7 0 3-2 4-5 4V3ZM18 14v7"/>',
+ phone:'<path d="M5 3h4l2 5-3 2c1 3 3 5 6 6l2-3 5 2v4c0 1-1 2-3 2A16 16 0 0 1 3 6c0-2 1-3 2-3Z"/>',
+ profile:'<circle cx="12" cy="7" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2Z"/>'
+};
+function phoneIconMarkup(key){
+ const shape=APP_SHAPES[key]||APP_SHAPES.settings;
+ return '<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+shape+'</svg>';
+}
+const DESKTOP_PAGE_SIZE=8;
+let desktopPage=0;
+let desktopEditMode=false;
+let desktopTouchX=null;
+let securityUnlocked=false;
+let clockTicker=null;
+let clockTickBusy=false;
+const weiboState={scope:'',posts:[],trending:[],tab:'feed',loading:false,selectedId:'',generationId:0};
+const SCREENS = new Set(['lock', 'home', 'weibo', 'wallet', 'chat', 'chatList', 'contacts', 'requests', 'profile', 'addNpc', 'discoverNpc', 'discover', 'me', 'chatOptions', 'settings', 'diagnostics', 'calendar', 'theme', 'presetPicker', 'worldPicker']);
 
 function context() {
     try {
@@ -285,15 +321,9 @@ function applyTheme() {
     const theme = themeData();
     root.dataset.font = ['system','serif','rounded'].includes(theme.font) ? theme.font : 'system';
     root.style.setProperty('--lp-wallpaper', theme.wallpaper?.startsWith('data:image/') ? 'url("' + theme.wallpaper + '")' : 'none');
-    for (const span of root.querySelectorAll('[data-lp-icon]')) {
-        span.textContent = typeof theme.icons?.[span.dataset.lpIcon] === 'string' ? theme.icons[span.dataset.lpIcon] : APP_ICONS[span.dataset.lpIcon];
-    }
-    if (nodes?.themeFont) nodes.themeFont.value = root.dataset.font;
-    if (nodes?.themeIcons) {
-        for (const input of nodes.themeIcons.querySelectorAll('[data-theme-icon]')) {
-            input.value = theme.icons?.[input.dataset.themeIcon] || APP_ICONS[input.dataset.themeIcon];
-        }
-    }
+    for(const span of root.querySelectorAll('[data-lp-icon]'))
+        span.innerHTML=phoneIconMarkup(span.dataset.lpIcon);
+    if(nodes?.themeFont)nodes.themeFont.value=root.dataset.font;
 }
 function changeTheme(partial) {
     const ctx = context();
