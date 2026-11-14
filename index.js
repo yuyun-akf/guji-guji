@@ -112,6 +112,9 @@ let desktopPage=0;
 let desktopEditMode=false;
 let desktopTouchX=null;
 let securityUnlocked=false;
+let desktopSwipedAt=0;
+let weiboController=null;
+let weiboLoadPromise=null;
 let clockTicker=null;
 let clockTickBusy=false;
 const weiboState={scope:'',posts:[],trending:[],tab:'feed',loading:false,selectedId:'',generationId:0};
@@ -2314,18 +2317,41 @@ function renderDiagnostics() {
     }
 }
 
+async function loadWeiboController(){
+ if(weiboController)return weiboController;
+ if(weiboLoadPromise)return weiboLoadPromise;
+ weiboLoadPromise=import('./weibo.js?v=0.10.0').then(module=>{
+  weiboController=module.createWeiboModule({
+   context,getNodes:()=>nodes,readRootData,writeData,readData,phoneGenerate,
+   selectedCharacter,currentPersona,stripModelReasoning,publishPhoneAppEvent,
+   recordActivity,recordError
+  });return weiboController;
+ }).catch(error=>{
+  if(nodes?.weiboFeedback)nodes.weiboFeedback.textContent='微博加载失败：'+String(error.message||error);
+  recordError('加载微博',error);weiboLoadPromise=null;return null;
+ });
+ return weiboLoadPromise;
+}
+
 function setScreen(screen) {
     if (!SCREENS.has(screen) || !nodes) return;
+    if(root?.classList.contains('lp-open')&&phoneLockSettings().enabled&&!securityUnlocked&&screen!=='lock')screen='lock';
     const previous = activeScreen;
     activeScreen = screen;
     root.dataset.screen = screen;
     for (const section of root.querySelectorAll('[data-lp-screen]')) {
         section.hidden = section.dataset.lpScreen !== screen;
     }
-    nodes.back.hidden = screen === 'home';
-    const titles = { home:'咕叽咕机',wallet:'吱付宝',chat:'',chatList:'咕叽聊',contacts:'通讯录',discover:'发现',me:'我',requests:'新的朋友',profile:'联系人资料',addNpc:'添加 NPC',discoverNpc:'发现故事人物',chatOptions:'聊天设置',settings:'设置',diagnostics:'运行日志',calendar:'日历',theme:'主题',presetPicker:'选择预设条目',worldPicker:'选择世界书条目' };
+    nodes.back.hidden = screen === 'home'||screen==='lock';
+    const titles = {lock:'锁屏',home:'咕叽咕机',weibo:'微博',wallet:'吱付宝',chat:'',chatList:'咕叽聊',contacts:'通讯录',discover:'发现',me:'我',requests:'新的朋友',profile:'联系人资料',addNpc:'添加 NPC',discoverNpc:'发现故事人物',chatOptions:'聊天设置',settings:'设置',diagnostics:'运行日志',calendar:'日历',theme:'主题',presetPicker:'选择预设条目',worldPicker:'选择世界书条目' };
     nodes.title.textContent = screen === 'chat' ? contactDisplayName(context()) : titles[screen];
     nodes.chatMenu.hidden = screen !== 'chat';
+    if(screen==='lock')renderLock();
+    if(screen==='home')renderDesktop();
+    if(screen==='weibo'){
+        if(weiboController)weiboController.open();
+        else void loadWeiboController().then(w=>{if(w&&activeScreen==='weibo')w.open();});
+    }
     if (screen === 'diagnostics') renderDiagnostics();
     if (screen === 'wallet')renderWallet(context());
     if (screen === 'calendar'){
@@ -2340,7 +2366,10 @@ function setScreen(screen) {
     if (['chatList','contacts','discover','me'].includes(screen)) {
         root.querySelectorAll('.lp-tabbar button[data-lp-open]').forEach(button=>button.classList.toggle('lp-tab-active',button.dataset.lpOpen===screen));
     }
-    if (screen === 'settings' && screen !== previous) { loadPhoneApiUI(); loadPhoneMessageStyle(); loadContextSettings(); void populateConfigLists(); }
+    if (screen === 'settings' && screen !== previous) {
+        loadPhoneApiUI();loadPhoneMessageStyle();loadContextSettings();loadPhoneClockPrefs();
+        renderDesktopSort();void populateConfigLists();
+    }
     if (screen === 'theme') applyTheme();
     if (screen === 'discoverNpc' && screen !== previous) {populateNpcWorldSelect();renderNpcCandidates();}
     if (screen === 'presetPicker') {nodes.presetSearch.value=''; showPresetEntries();}
@@ -4483,13 +4512,14 @@ function render() {
     nodes.subtitle.textContent = char ? '故事中的小手机 · 独立聊天' : '请先选择单人角色存档';
     nodes.homeCharacter.textContent = primary ? resolvePhonePlaceholders('与 {{char}} 的故事',ctx,primary) : '等待进入角色存档';
     nodes.npcRelation.placeholder=resolvePhonePlaceholders('如：{{char}}的母亲、{{user}}的同学',ctx,primary);
-    nodes.homeTime.textContent = (data?.storyTime || localDateTime()).replace('T', ' ');
+    nodes.homeTime.textContent = String(data?.storyTime||localDateTime()).slice(11,16);
     if(activeScreen!=='calendar')nodes.time.value = data?.storyTime || localDateTime();
     if(data)updateTimeJumpUI(data);
     updateApiInfo();
     renderFriendship(data);
     updateLauncherVisibility();
     applyTheme();
+    renderDesktop();
     if (data) renderMessages(data);
     else {
         nodes.messages.replaceChildren();
@@ -4802,8 +4832,10 @@ function openPhone() {
         if (typeof panel.showModal === 'function' && !panel.open) panel.showModal();
         syncPhoneViewport();
         nodes.launcher.setAttribute('aria-label', '隐藏咕叽咕机');
-        setScreen('home');
+        securityUnlocked=!phoneLockSettings().enabled;
+        setScreen(securityUnlocked?'home':'lock');
         render();
+        void tickStoryClock({onOpen:true});
         void syncStoryRelationships(context());
         void tickAutonomousActivity();
         void maybeAutoFriendRequest(context());
@@ -4832,6 +4864,8 @@ function openPhone() {
 function closePhone() {
     if (!mounted || !root) return;
     root.classList.remove('lp-open');
+    securityUnlocked=false;
+    void tickStoryClock({onClose:true});
     const panel = root.querySelector('.lp-panel');
     if (panel?.open && typeof panel.close === 'function') panel.close();
     nodes.launcher.setAttribute('aria-label', '打开咕叽咕机');
@@ -5447,7 +5481,10 @@ function mount() {
     floating.hidden = !floatLauncherEnabled();
     document.body.append(floating);
     nodes = Object.fromEntries(['title', 'subtitle', 'back', 'close', 'time',
-        'homeTime', 'homeCharacter', 'homeLogCount', 'homeUnreadCount','notification','inlineNotification','calendarPrev','calendarNext','calendarHeading','calendarViews','calendarGrid','calendarSelected','calendarSummary','calendarSelectedTime','calendarStoryToday','calendarRealToday','calendarSaveTime','calendarExactSave',
+        'homeTime','homeDate','homeScene','homePages','homeDots','homeSwipe','homeEdit','homeCharacter','homeLogCount','homeUnreadCount',
+        'lockTime','lockDate','lockPin','lockRepeat','lockRepeatRow','lockIntro','lockFeedback','lockAction',
+        'weiboGenerate','weiboFeedback','weiboFeed','weiboHot','weiboDetail','weiboTabs','weiboComposeText','weiboPublish','weiboDetailBack',
+        'desktopSortList','clockMode','clockRate','clockContinueClosed','clockCustomFields','clockSave','lockEnabled','lockSaveEnabled','notification','inlineNotification','calendarPrev','calendarNext','calendarHeading','calendarViews','calendarGrid','calendarSelected','calendarSummary','calendarSelectedTime','calendarStoryToday','calendarRealToday','calendarSaveTime','calendarExactSave',
         'momentsPost', 'momentsText', 'momentsFeed', 'momentFeedback','momentsPreview','momentImageUpload','momentRemovePhoto','myAvatarUpload','myAvatarFallback','myAvatarStatus','myIdentity', 'myAvatar', 'myPersona', 'autoMessagesMode','autoMessagesDays','autoMomentsMode','autoMomentsDays','relationAutoSync','phoneInPast','characterRequests','momentInteractions','autonomyStatus','autonomyFeedback','saveAutonomy','rescanRelations','testAutonomy', 'stickerUpload','stickerPackUpload', 'stickerStatus', 'stickerLibrary',
         'friendLabel', 'friendActions','profileAvatar','profileName','profileDescription','contactEvidence','contactExchange','contactLinks','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcScanState','npcCandidates','npcSaveCandidates','storyPeopleList','viewPrimaryContact','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','avatarUserFile','resetCharAvatar','resetUserAvatar',
@@ -5459,6 +5496,34 @@ function mount() {
         .map(key => [key, key === 'launcher' ? floating : root.querySelector(`[data-lp="${key}"]`)]));
 
     const draggedClick=enableLauncherDragging(nodes.launcher);
+    nodes.lockAction.addEventListener('click',()=>void phoneUnlock());
+    for(const field of [nodes.lockPin,nodes.lockRepeat])field.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();void phoneUnlock();}});
+    nodes.homeSwipe.addEventListener('touchstart',e=>{desktopTouchX=e.touches?.[0]?.clientX??null;},{passive:true});
+    nodes.homeSwipe.addEventListener('touchend',e=>{
+        if(desktopTouchX===null)return;
+        const delta=(e.changedTouches?.[0]?.clientX??desktopTouchX)-desktopTouchX;
+        desktopTouchX=null;
+        if(Math.abs(delta)>44){desktopSwipedAt=Date.now();switchDesktopPage(desktopPage+(delta<0?1:-1));}
+    },{passive:true});
+    nodes.homeDots.addEventListener('click',e=>{
+        const b=e.target.closest('[data-desktop-page]');if(b)switchDesktopPage(Number(b.dataset.desktopPage));
+    });
+    nodes.homeEdit.addEventListener('click',()=>{
+        setScreen('settings');nodes.desktopSortList.scrollIntoView?.({behavior:'smooth',block:'start'});
+    });
+    nodes.desktopSortList.addEventListener('click',e=>{
+        const b=e.target.closest('[data-desktop-move]');if(b)moveDesktopApp(b.dataset.desktopKey,Number(b.dataset.desktopMove));
+    });
+    nodes.clockMode.addEventListener('change',()=>{nodes.clockCustomFields.hidden=nodes.clockMode.value!=='custom';});
+    nodes.clockSave.addEventListener('click',()=>void savePhoneClockPrefs());
+    nodes.lockSaveEnabled.addEventListener('click',()=>void savePhoneLockEnabled());
+    nodes.weiboGenerate.addEventListener('click',()=>void loadWeiboController().then(w=>w?.generate()));
+    nodes.weiboPublish.addEventListener('click',()=>void loadWeiboController().then(w=>w?.publish()));
+    nodes.weiboDetailBack.addEventListener('click',()=>weiboController?.back());
+    nodes.weiboTabs.addEventListener('click',e=>{
+        const b=e.target.closest('[data-weibo-tab]');if(b)weiboController?.selectTab(b.dataset.weiboTab);
+    });
+    root.addEventListener('click',e=>{if(e.target.closest('[data-wb-action],[data-wb-topic]'))weiboController?.handleClick(e);});
     nodes.launcher.addEventListener('click', event => {
         if(draggedClick(event)){event.preventDefault?.();return;}
         const opening = !root.classList.contains('lp-open');
@@ -5508,7 +5573,7 @@ function mount() {
     }[activeScreen] || 'home'));
     root.addEventListener('click', event => {
         const button = event.target.closest('button[data-lp-open]');
-        if (button && root.contains(button)) setScreen(button.dataset.lpOpen);
+        if(button&&root.contains(button)&&Date.now()-desktopSwipedAt>350)setScreen(button.dataset.lpOpen);
     });
     nodes.calendarPrev.addEventListener('click',()=>phoneCalendarNavigate(-1));
     nodes.calendarNext.addEventListener('click',()=>phoneCalendarNavigate(1));
@@ -5553,12 +5618,7 @@ function mount() {
     nodes.themeFont.addEventListener('change', () => changeTheme({font:nodes.themeFont.value}));
     nodes.themeWallpaper.addEventListener('change', e => loadWallpaper(e.target.files?.[0]));
     nodes.themeResetWallpaper.addEventListener('click', () => changeTheme({wallpaper:''}));
-    nodes.themeIcons.addEventListener('change', e => {
-        const iconName = e.target.dataset?.themeIcon;
-        if (!iconName) return;
-        const str = e.target.value.trim().slice(0,12);
-        changeTheme({icons:{...(themeData().icons||{}),[iconName]:str || APP_ICONS[iconName]}});
-    });
+    // All default icons use the same single-color line style.
     nodes.floatingLauncher.addEventListener('change', event => setFloatLauncherEnabled(event.target.checked));
     nodes.send.addEventListener('click',send);
     nodes.walletSaveBalance.addEventListener('click',()=>void saveWalletBalance());
@@ -5658,6 +5718,8 @@ function mount() {
     });
 
     mounted = true;
+    if(clockTicker)clearInterval(clockTicker);
+    clockTicker=setInterval(()=>{void tickStoryClock();},10000);
     if (autonomousTicker)clearInterval(autonomousTicker);
     autonomousTicker=setInterval(()=>{
         void (async()=>{await syncMainlinePayments(context());await syncStoryRelationships(context());})();
@@ -5707,6 +5769,7 @@ function mount() {
 }
 
 function unmount() {
+    if(clockTicker){clearInterval(clockTicker);clockTicker=null;}
     if(launcherProbeTimer)clearTimeout(launcherProbeTimer);
     launcherProbeTimer=null;
     lastLauncherProbe='';
