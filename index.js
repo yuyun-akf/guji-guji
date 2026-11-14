@@ -1,5 +1,5 @@
 /**
- * GujiGuji v0.8.17: a modular phone shell with isolated per-chat context.
+ * GujiGuji v0.8.18: a modular phone shell with isolated per-chat context.
  * No direct host-module imports; uses only the documented context surface.
  */
 
@@ -813,6 +813,25 @@ function formatStoryTime(date) {
     const local=new Date(date.getTime()-date.getTimezoneOffset()*60000);
     return local.toISOString().slice(0,16);
 }
+function shiftStoryClock(time,amount,unit='minutes') {
+    if(!/^\d{4}-\d\d-\d\dT\d\d:\d\d$/.test(String(time||'')))
+        throw new Error('当前故事时间无效，请先在日历中设置时间');
+    const value=Number(amount);
+    const limits={minutes:525600,hours:8760,days:365};
+    if(!Object.prototype.hasOwnProperty.call(limits,unit)||!Number.isInteger(value)||value<1||value>limits[unit])
+        throw new Error('请输入有效的时间跨度（最大 365 天）');
+    const when=new Date(time);
+    if(!Number.isFinite(when.getTime())||formatStoryTime(when)!==time)
+        throw new Error('当前故事日期无效，无法计算时间跳转');
+    // Minutes and hours are elapsed time; days keep the in-story clock time,
+    // including across daylight-saving transitions.
+    if(unit==='days')when.setDate(when.getDate()+value);
+    else when.setMinutes(when.getMinutes()+value*(unit==='hours'?60:1));
+    const result=formatStoryTime(when);
+    if(!/^\d{4}-\d\d-\d\dT\d\d:\d\d$/.test(result))
+        throw new Error('跳转目标超出可支持的日期范围');
+    return result;
+}
 function nextMessageStoryTime(data,minutes=1) {
     const cursor=String(data?.storyTime||localDateTime());
     if(!Array.isArray(data?.messages)||!data.messages.length)return cursor;
@@ -1549,7 +1568,10 @@ function setScreen(screen) {
     if (screen === 'discoverNpc' && screen !== previous) {populateNpcWorldSelect();renderNpcCandidates();}
     if (screen === 'presetPicker') {nodes.presetSearch.value=''; showPresetEntries();}
     if (screen === 'worldPicker') {nodes.worldSearch.value=''; void showWorldEntries();}
-    if (screen === 'chat') nodes.messages.scrollTop = nodes.messages.scrollHeight;
+    if (screen === 'chat') {
+        nodes.messages.scrollTop = nodes.messages.scrollHeight;
+        updateTimeJumpUI(readData(context()));
+    }
     if (screen === 'chat' && previous !== 'chat' && unreadCount(readRootData(context()),activeContactId))
         void clearContactUnread(activeContactId);
     if (nodes?.status) nodes.status.textContent = statusKind==='error' ? statusText : '';
@@ -1564,9 +1586,11 @@ function updateBusy() {
     nodes.send.disabled = busy || !isFriend;
     nodes.input.disabled = busy || !isFriend;
     nodes.time.disabled = busy || !ready;
+    if(nodes.timeJumpApply)nodes.timeJumpApply.disabled=busy||!ready;
+    if(nodes.timeJumpPanel)nodes.timeJumpPanel.querySelectorAll('button[data-jump-unit]').forEach(button=>{button.disabled=busy||!ready;});
     nodes.send.textContent = '发送';
     nodes.diagnosticState.textContent = busy
-        ? `${busyKind === 'friend' ? '好友申请处理中' : busyKind === 'send' ? '正在保存玩家消息' : '正在请求模型回复'} · ${Math.floor((Date.now() - busyStartedAt) / 1000)} 秒`
+        ? `${busyKind === 'friend' ? '好友申请处理中' : busyKind === 'send' ? '正在保存玩家消息' : busyKind === 'time' ? '正在保存剧情时间' : '正在请求模型回复'} · ${Math.floor((Date.now() - busyStartedAt) / 1000)} 秒`
         : statusText || '空闲：当前没有正在运行的请求。';
     const lastMessage = data?.messages?.at(-1);
     const canGenerate = Boolean(isFriend && !busy && lastMessage?.from === 'user');
@@ -1673,6 +1697,7 @@ function switchContact(id,screen='profile') {
     const root=readRootData(ctx);
     if (!validContactId(root,id)) return setStatus('联系人不存在','error');
     activeContactId=id;
+    if(nodes?.timeJumpPanel)nodes.timeJumpPanel.hidden=true;
     clearQuote();
     statusText='';
     statusKind='info';
@@ -3261,8 +3286,44 @@ async function sendImageFile(file) {
 }
 function toggleChatTools(type) {
     if(!nodes)return;
+    if(nodes.timeJumpPanel)nodes.timeJumpPanel.hidden=true;
     nodes.emojiPanel.hidden=type!=='emoji' || !nodes.emojiPanel.hidden;
     nodes.morePanel.hidden=type!=='more' || !nodes.morePanel.hidden;
+}
+function updateTimeJumpUI(data=readData(context())) {
+    if(!nodes?.timeJumpCurrent||!data)return;
+    const time=String(data.storyTime||localDateTime()).replace('T',' ');
+    nodes.timeJumpCurrent.textContent='当前剧情时间：'+time;
+    const latest=[...(data.messages||[])].reverse().find(message=>
+        /^\d{4}-\d\d-\d\dT\d\d:\d\d$/.test(message?.storyTime||''));
+    const scheduled=Boolean(latest && latest.storyTime!==data.storyTime);
+    if(nodes.timeJumpHint){
+        nodes.timeJumpHint.hidden=!scheduled;
+        nodes.timeJumpHint.textContent=scheduled?'下条消息时间：'+time+'（剧情时间）':'';
+    }
+}
+async function jumpStoryTime(amount,unit='minutes') {
+    const ctx=context();
+    if(!mounted||activeScreen!=='chat'||!selectedCharacter(ctx))return;
+    if(busy)return setStatus('请等待当前操作完成，再跳转时间','error');
+    const session=captureSession(ctx);
+    const data=structuredClone(readData(ctx));
+    let next;
+    try{next=shiftStoryClock(data.storyTime||localDateTime(),amount,unit);}
+    catch(error){setStatus(error.message,'error');return;}
+    const previous=data.storyTime||localDateTime();
+    data.storyTime=next;
+    const job=startBusy('time');
+    try{
+        await writeData(ctx,data);
+        if(!sameSession(session))return;
+        if(nodes.timeJumpPanel)nodes.timeJumpPanel.hidden=true;
+        if(nodes.morePanel)nodes.morePanel.hidden=true;
+        recordActivity('剧情时间跳转',previous.replace('T',' ')+' → '+next.replace('T',' ')+
+            '；下一条消息使用新时间，旧消息不会修改。','success');
+        setStatus('已跳转至 '+next.replace('T',' ')+'；下一条消息会使用此剧情时间。');
+    }catch(error){if(sameSession(session))setStatus(recordError('剧情时间跳转',error),'error');}
+    finally{finishBusy(job);if(mounted&&sameSession(session))render();}
 }
 function startChatTool(action) {
     if(action==='photo'){nodes.chatImageInput.click();return;}
@@ -3276,6 +3337,11 @@ function startChatTool(action) {
         }
     } else if(action==='call'){
         nodes.input.value='[剧情语音通话邀请] 方便接电话吗？';nodes.input.focus();
+    } else if(action==='time'){
+        nodes.morePanel.hidden=true;
+        nodes.emojiPanel.hidden=true;
+        nodes.timeJumpPanel.hidden=!nodes.timeJumpPanel.hidden;
+        if(!nodes.timeJumpPanel.hidden)updateTimeJumpUI(readData(context()));
     } else if(action==='emoji'){
         renderStickerLibrary();
         toggleChatTools('emoji');
@@ -3399,6 +3465,7 @@ function render() {
     nodes.npcRelation.placeholder=resolvePhonePlaceholders('如：{{char}}的母亲、{{user}}的同学',ctx,primary);
     nodes.homeTime.textContent = (data?.storyTime || localDateTime()).replace('T', ' ');
     nodes.time.value = data?.storyTime || localDateTime();
+    if(data)updateTimeJumpUI(data);
     updateApiInfo();
     renderFriendship(data);
     updateLauncherVisibility();
@@ -3809,7 +3876,7 @@ function makeUI() {
         <button type="button" class="lp-inline-notification" data-lp="inlineNotification" aria-label="打开新消息" hidden></button>
         <section class="lp-screen lp-home" data-lp-screen="home" aria-label="手机桌面">
           <div class="lp-home-hero">
-            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.8.17</div>
+            <div class="lp-home-greeting">咕叽咕机 · GujiGuji · v0.8.18</div>
             <div class="lp-home-time" data-lp="homeTime">故事时间</div>
             <div class="lp-home-character" data-lp="homeCharacter">等待进入角色存档</div>
           </div>
@@ -4037,8 +4104,37 @@ function makeUI() {
             <button type="button" data-chat-tool="call">电话</button>
             <button type="button" data-chat-tool="transfer">转账</button>
             <button type="button" data-chat-tool="location">定位</button>
+            <button type="button" data-chat-tool="time">跳转时间</button>
           </div>
           <input type="file" accept="image/png,image/jpeg,image/webp" data-lp="chatImageInput" hidden />
+          <div class="lp-time-jump-hint" data-lp="timeJumpHint" role="status" hidden></div>
+          <div class="lp-time-jump-panel" data-lp="timeJumpPanel" aria-label="跳转剧情时间" hidden>
+            <div class="lp-time-jump-head">
+              <strong>跳转剧情时间</strong>
+              <button type="button" data-lp="timeJumpClose" aria-label="关闭时间跳转">×</button>
+            </div>
+            <div class="lp-time-jump-current" data-lp="timeJumpCurrent"></div>
+            <div class="lp-time-jump-shortcuts">
+              <button type="button" data-jump-amount="5" data-jump-unit="minutes">＋5 分钟</button>
+              <button type="button" data-jump-amount="15" data-jump-unit="minutes">＋15 分钟</button>
+              <button type="button" data-jump-amount="30" data-jump-unit="minutes">＋30 分钟</button>
+              <button type="button" data-jump-amount="1" data-jump-unit="hours">＋1 小时</button>
+              <button type="button" data-jump-amount="3" data-jump-unit="hours">＋3 小时</button>
+              <button type="button" data-jump-amount="1" data-jump-unit="days">＋1 天</button>
+              <button type="button" data-jump-amount="3" data-jump-unit="days">＋3 天</button>
+            </div>
+            <div class="lp-time-jump-custom">
+              <label for="lp-time-jump-amount">自定义</label>
+              <input type="number" min="1" max="525600" step="1" value="10" inputmode="numeric" id="lp-time-jump-amount" data-lp="timeJumpAmount" aria-label="跳转时间数量" />
+              <select data-lp="timeJumpUnit" aria-label="跳转时间单位">
+                <option value="minutes">分钟</option>
+                <option value="hours">小时</option>
+                <option value="days">天</option>
+              </select>
+              <button type="button" data-lp="timeJumpApply">确定</button>
+            </div>
+            <p>立即调整故事时间，不会定时发送，也不会修改以前的消息；下一条消息使用新时间。</p>
+          </div>
           <div class="lp-composer">
             <button type="button" class="lp-tool-btn" data-chat-tool="emoji" aria-label="表情包">☺</button>
             <textarea data-lp="input" rows="1" placeholder="发送消息" aria-label="手机消息内容"></textarea>
@@ -4203,7 +4299,7 @@ function mount() {
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
         'presetSource','presetInfo','presetEntries','worldBookList','worldSelectionSummary','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','saveSelections','savePresetPicker','saveWorldPicker','selectionSaveStatus','readMainlineMemory','memorySource','phoneToMainline','saveContextSettings','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themeIcons',
         'diagnostics', 'diagnosticState', 'copyDiagnostics', 'clearDiagnostics',
-        'messages','messageActions','quotedPreview','quotedText','cancelQuote','emojiPanel','morePanel','chatImageInput','input', 'generate', 'send', 'launcher']
+        'messages','messageActions','quotedPreview','quotedText','cancelQuote','emojiPanel','morePanel','chatImageInput','timeJumpPanel','timeJumpHint','timeJumpCurrent','timeJumpAmount','timeJumpUnit','timeJumpApply','timeJumpClose','input', 'generate', 'send', 'launcher']
         .map(key => [key, key === 'launcher' ? floating : root.querySelector(`[data-lp="${key}"]`)]));
 
     const draggedClick=enableLauncherDragging(nodes.launcher);
@@ -4286,6 +4382,13 @@ function mount() {
     });
     nodes.floatingLauncher.addEventListener('change', event => setFloatLauncherEnabled(event.target.checked));
     nodes.send.addEventListener('click',send);
+    nodes.timeJumpPanel.addEventListener('click',event=>{
+        const shortcut=event.target.closest('button[data-jump-amount][data-jump-unit]');
+        if(shortcut&&nodes.timeJumpPanel.contains(shortcut))
+            void jumpStoryTime(shortcut.dataset.jumpAmount,shortcut.dataset.jumpUnit);
+    });
+    nodes.timeJumpApply.addEventListener('click',()=>void jumpStoryTime(nodes.timeJumpAmount.value,nodes.timeJumpUnit.value));
+    nodes.timeJumpClose.addEventListener('click',()=>{nodes.timeJumpPanel.hidden=true;});
     nodes.stickerUpload.addEventListener('change',event=>{const files=[...event.target.files];event.target.value='';void uploadStickers(files);});
     nodes.stickerPackUpload.addEventListener('change',event=>{const files=[...event.target.files];event.target.value='';void uploadStickerPack(files);});
     nodes.chatImageInput.addEventListener('change',event=>{void sendImageFile(event.target.files?.[0]);event.target.value='';});
@@ -4369,6 +4472,7 @@ function mount() {
         listeningEvent = ctx.event_types.CHAT_CHANGED;
         chatChangedHandler = () => {
             activeContactId=PRIMARY_CONTACT_ID;
+            if(nodes?.timeJumpPanel)nodes.timeJumpPanel.hidden=true;
             clearQuote();
             npcCandidates=[];npcScanSession=null;
             momentImageDraft='';nodes?.momentsPreview?.replaceChildren();
