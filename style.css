@@ -1937,3 +1937,15 @@
 #st-little-phone-root .lp-payment-card,
 #st-little-phone-root .lp-payment-card *,
 #st-little-phone-root .lp-wallet-main *{box-sizing:border-box;}
+
+@keyframes lpRedPacketOpen {
+  0%{transform:scale(.94) rotateY(6deg);filter:brightness(1.18);}
+  55%{transform:scale(1.035) rotateY(-3deg);}
+  100%{transform:scale(1) rotateY(0);filter:brightness(1);}
+}
+#st-little-phone-root .lp-payment-redpacket.lp-payment-opened{
+  animation:lpRedPacketOpen .42s ease-out both;
+}
+@media (prefers-reduced-motion: reduce){
+  #st-little-phone-root .lp-payment-redpacket.lp-payment-opened{animation:none;}
+}
