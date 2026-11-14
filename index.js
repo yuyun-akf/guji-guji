@@ -81,7 +81,7 @@ const transientApiKeys = new Map();
 const APP_CATALOG=[
  {key:'chat',screen:'chatList',name:'咕叽聊',ready:true},
  {key:'wallet',screen:'wallet',name:'吱付宝',ready:true},
- {key:'weibo',screen:'weibo',name:'微博',ready:true},
+ {key:'weibo',screen:'weibo',name:'群星',ready:true},
  {key:'calendar',screen:'calendar',name:'日历',ready:true},
  {key:'settings',screen:'settings',name:'设置',ready:true},
  {key:'diagnostics',screen:'diagnostics',name:'运行日志',ready:true},
@@ -93,7 +93,7 @@ const APP_ICONS=Object.fromEntries(APP_CATALOG.map(item=>[item.key,item.key]));
 const APP_SHAPES={
  chat:'<path d="M20 11.5a8 8 0 0 1-8 8c-1.3 0-2.6-.3-3.7-.9L3.5 20l1.4-4.7A8 8 0 1 1 20 11.5Z"/><circle cx="8" cy="11.5" r=".8" fill="currentColor"/><circle cx="12" cy="11.5" r=".8" fill="currentColor"/><circle cx="16" cy="11.5" r=".8" fill="currentColor"/>',
  wallet:'<path d="M12 2 17 7l-5 5-5-5Z M5 9l5 5-5 5-5-5Z M19 9l5 5-5 5-5-5Z M12 16l5 5-5 5-5-5Z" transform="translate(0 -2) scale(.95)"/>',
- weibo:'<rect x="3" y="3.5" width="18" height="17" rx="2"/><rect x="6" y="7" width="6" height="5" rx=".5"/><path d="M14.5 7h4M14.5 10h4M6 15h12M6 18h12"/>',
+ weibo:'<path d="M12 1.5 14.25 9.75 22.5 12l-8.25 2.25L12 22.5l-2.25-8.25L1.5 12l8.25-2.25L12 1.5Z"/><path d="m4 3 .55 1.45L6 5l-1.45.55L4 7l-.55-1.45L2 5l1.45-.55L4 3ZM20 3l.45 1.55L22 5l-1.55.45L20 7l-.45-1.55L18 5l1.55-.45L20 3ZM20 17l.55 1.45L22 19l-1.45.55L20 21l-.55-1.45L18 19l1.45-.55L20 17Z"/>',
  diagnostics:'<path d="m12 3 9.1 16a1.3 1.3 0 0 1-1.1 2H4a1.3 1.3 0 0 1-1.1-2L12 3Z"/><path d="M12 9v5"/><circle cx="12" cy="17.5" r=".85" fill="currentColor" stroke="none"/>',
  settings:'<circle cx="12" cy="12" r="3"/><path d="m10 2-.6 2.3-2 1L5 4 3.7 6l1.6 2.1-.3 2.1-2.3 1.1v2.4L5 14.8l.3 2.1L3.7 19 5 21l2.4-1.3 2 1 .6 2.3h4l.6-2.3 2-1L19 21l1.3-2-1.6-2.1.3-2.1 2.3-1.1v-2.4L19 10.2l-.3-2.1L20.3 6 19 4l-2.4 1.3-2-1L14 2Z"/>',
  calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18M8 14h2M13 14h2M8 18h2"/>',
@@ -112,6 +112,7 @@ let desktopPage=0;
 let desktopEditMode=false;
 let desktopTouchX=null;
 let securityUnlocked=false;
+let lockSetupStep=0;
 let desktopSwipedAt=0;
 let weiboController=null;
 let weiboLoadPromise=null;
@@ -330,41 +331,77 @@ async function phonePinDigest(pin,salt){
  const hash=await crypto.subtle.digest('SHA-256',bytes);
  return Array.from(new Uint8Array(hash),byte=>byte.toString(16).padStart(2,'0')).join('');
 }
+
 async function phoneUnlock(){
  if(!nodes||busy)return;
  const ctx=context(),lock=phoneLockSettings(ctx);
- const pin=nodes.lockPin.value;
+ const pin=nodes.lockPin.value,repeat=nodes.lockRepeat.value;
  try{
   if(!lock.hash){
-   const repeat=nodes.lockRepeat.value;
-   if(pin!==repeat)throw new Error('两次输入的密码不一致');
+   if(lockSetupStep===0){
+    if(!/^\d{4,6}$/.test(pin))throw Error('请设置 4～6 位数字密码');
+    lockSetupStep=1;nodes.lockFeedback.textContent='请再次输入密码确认';
+    renderLock();return;
+   }
+   if(pin!==repeat)throw Error('两次密码不一致，请重新输入');
    const random=globalThis.crypto?.getRandomValues?.(new Uint8Array(12));
-   const salt=random?Array.from(random,byte=>byte.toString(16).padStart(2,'0')).join(''):
-     Date.now().toString(36)+Math.random().toString(36);
+   const salt=random?Array.from(random,b=>b.toString(16).padStart(2,'0')).join(''):Date.now().toString(36);
    const hash=await phonePinDigest(pin,salt);
-   if(!ctx?.extensionSettings||typeof ctx.saveSettingsDebounced!=='function')throw new Error('无法保存解锁设置');
+   if(!ctx?.extensionSettings||typeof ctx.saveSettingsDebounced!=='function')throw Error('无法保存密码');
    (ctx.extensionSettings[SETTINGS_KEY]||={}).lock={enabled:true,salt,hash};
    ctx.saveSettingsDebounced();
   }else{
-   const actual=await phonePinDigest(pin,lock.salt);
-   if(actual!==lock.hash)throw new Error('密码不正确');
+   if(await phonePinDigest(pin,lock.salt)!==lock.hash)throw Error('密码不正确');
   }
   nodes.lockPin.value='';nodes.lockRepeat.value='';
-  securityUnlocked=true;
-  nodes.lockFeedback.textContent='';
+  lockSetupStep=0;securityUnlocked=true;nodes.lockFeedback.textContent='';
   setScreen('home');
- }catch(error){nodes.lockFeedback.textContent=String(error.message||error);}
+ }catch(error){
+  nodes.lockFeedback.textContent=String(error.message||error);
+  if(!lock.hash&&lockSetupStep===1){lockSetupStep=0;nodes.lockPin.value='';nodes.lockRepeat.value='';}
+  else if(lock.hash)nodes.lockPin.value='';
+  updateLockDots();
+ }
+}
+function updateLockDots(){
+ if(!nodes?.lockDots)return;
+ const input=(!phoneLockSettings().hash&&lockSetupStep===1)?nodes.lockRepeat:nodes.lockPin;
+ const count=input.value.length;
+ nodes.lockDots.querySelectorAll('i').forEach((dot,i)=>dot.classList.toggle('filled',i<count));
+}
+function lockDigit(value){
+ const field=(!phoneLockSettings().hash&&lockSetupStep===1)?nodes.lockRepeat:nodes.lockPin;
+ if(value==='del')field.value=field.value.slice(0,-1);
+ else if(/^\d$/.test(value)&&field.value.length<6)field.value+=value;
+ nodes.lockFeedback.textContent='';updateLockDots();
 }
 function renderLock(){
  if(!nodes?.lockPin)return;
- const lock=phoneLockSettings();
- const data=readRootData(context());
+ const lock=phoneLockSettings(),data=readRootData(context());
  nodes.lockTime.textContent=String(data.storyTime||localDateTime()).slice(11,16);
  nodes.lockDate.textContent=String(data.storyTime||localDateTime()).slice(0,10);
- nodes.lockRepeatRow.hidden=Boolean(lock.hash);
- nodes.lockIntro.textContent=lock.hash?'输入密码解锁':'第一次使用，请设置 4～6 位解锁密码';
- nodes.lockAction.textContent=lock.hash?'解锁':'设置密码并进入';
+ nodes.lockIntro.textContent=lock.hash?'输入密码':lockSetupStep?'再次输入新密码':'设置 4～6 位密码';
+ nodes.lockAction.textContent=lock.hash?'解锁':lockSetupStep?'确认并解锁':'下一步';
+ updateLockDots();
 }
+async function changePhonePin(){
+ const ctx=context(),lock=phoneLockSettings(ctx);
+ const old=nodes.lockOldPin.value,newPin=nodes.lockNewPin.value,repeat=nodes.lockConfirmPin.value;
+ try{
+  if(lock.hash&&await phonePinDigest(old,lock.salt)!==lock.hash)throw Error('旧密码不正确');
+  if(!/^\d{4,6}$/.test(newPin))throw Error('新密码必须是 4～6 位数字');
+  if(newPin!==repeat)throw Error('两次新密码不一致');
+  const random=globalThis.crypto?.getRandomValues?.(new Uint8Array(12));
+  const salt=random?Array.from(random,b=>b.toString(16).padStart(2,'0')).join(''):Date.now().toString(36);
+  if(!ctx?.extensionSettings||typeof ctx.saveSettingsDebounced!=='function')throw Error('当前无法保存密码');
+  (ctx.extensionSettings[SETTINGS_KEY]||={}).lock={enabled:true,salt,hash:await phonePinDigest(newPin,salt)};
+  ctx.saveSettingsDebounced();
+  nodes.lockOldPin.value='';nodes.lockNewPin.value='';nodes.lockConfirmPin.value='';
+  nodes.lockChangeFeedback.textContent='新密码已保存';
+  nodes.lockEnabled.checked=true;
+ }catch(e){nodes.lockChangeFeedback.textContent=String(e.message||e);}
+}
+
 function desktopOrder(){
  const order=phoneSettings().desktopOrder;
  const keys=APP_CATALOG.map(item=>item.key);
@@ -409,7 +446,7 @@ function storyScenePreview(ctx,data){
 function renderDesktop(){
  if(!nodes?.homePages)return;
  const order=desktopOrder();
- const count=Math.ceil(order.length/DESKTOP_PAGE_SIZE);
+ const count=Math.max(1,Math.ceil(order.length/DESKTOP_PAGE_SIZE));
  desktopPage=Math.min(Math.max(0,desktopPage),count-1);
  nodes.homePages.replaceChildren();
  nodes.homeDots.replaceChildren();
@@ -2354,8 +2391,8 @@ async function loadWeiboController(){
    recordActivity,recordError
   });return weiboController;
  }).catch(error=>{
-  if(nodes?.weiboFeedback)nodes.weiboFeedback.textContent='微博加载失败：'+String(error.message||error);
-  recordError('加载微博',error);weiboLoadPromise=null;return null;
+  if(nodes?.weiboFeedback)nodes.weiboFeedback.textContent='群星加载失败：'+String(error.message||error);
+  recordError('加载群星',error);weiboLoadPromise=null;return null;
  });
  return weiboLoadPromise;
 }
@@ -2370,7 +2407,7 @@ function setScreen(screen) {
         section.hidden = section.dataset.lpScreen !== screen;
     }
     nodes.back.hidden = screen === 'home'||screen==='lock';
-    const titles = {lock:'锁屏',home:'咕叽咕机',weibo:'微博',wallet:'吱付宝',chat:'',chatList:'咕叽聊',contacts:'通讯录',discover:'发现',me:'我',requests:'新的朋友',profile:'联系人资料',addNpc:'添加 NPC',discoverNpc:'发现故事人物',chatOptions:'聊天设置',settings:'设置',diagnostics:'运行日志',calendar:'日历',theme:'主题',presetPicker:'选择预设条目',worldPicker:'选择世界书条目' };
+    const titles = {lock:'锁屏',home:'咕叽咕机',weibo:'群星',wallet:'吱付宝',chat:'',chatList:'咕叽聊',contacts:'通讯录',discover:'发现',me:'我',requests:'新的朋友',profile:'联系人资料',addNpc:'添加 NPC',discoverNpc:'发现故事人物',chatOptions:'聊天设置',settings:'设置',diagnostics:'运行日志',calendar:'日历',theme:'主题',presetPicker:'选择预设条目',worldPicker:'选择世界书条目' };
     nodes.title.textContent = screen === 'chat' ? contactDisplayName(context()) : titles[screen];
     nodes.chatMenu.hidden = screen !== 'chat';
     if(screen==='lock')renderLock();
@@ -5016,32 +5053,32 @@ function makeUI() {
             <nav class="lp-home-dock" aria-label="快捷应用">
               <button type="button" data-lp-open="chatList" aria-label="咕叽聊"><span data-lp-icon="chat"></span></button>
               <button type="button" data-lp-open="wallet" aria-label="吱付宝"><span data-lp-icon="wallet"></span></button>
-              <button type="button" data-lp-open="weibo" aria-label="微博"><span data-lp-icon="weibo"></span></button>
+              <button type="button" data-lp-open="weibo" aria-label="群星"><span data-lp-icon="weibo"></span></button>
               <button type="button" data-lp-open="calendar" aria-label="日历"><span data-lp-icon="calendar"></span></button>
             </nav>
           </div>
           <span data-lp="homeUnreadCount" hidden></span><span data-lp="homeLogCount" hidden></span>
         </section>
-        <section class="lp-screen lp-weibo-screen" data-lp-screen="weibo" aria-label="微博" hidden>
+        <section class="lp-screen lp-weibo-screen" data-lp-screen="weibo" aria-label="群星" hidden>
           <div class="lp-weibo-top">
-            <strong>微博</strong>
+            <strong>群星</strong>
             <button type="button" data-lp="weiboGenerate">刷新 10 条</button>
           </div>
-          <nav class="lp-weibo-tabs" data-lp="weiboTabs" aria-label="微博导航">
+          <nav class="lp-weibo-tabs" data-lp="weiboTabs" aria-label="群星导航">
             <button type="button" data-weibo-tab="feed" class="selected">推荐</button>
             <button type="button" data-weibo-tab="hot">热搜</button>
             <button type="button" data-weibo-tab="saved">我的互动</button>
           </nav>
           <div data-lp="weiboFeedback" class="lp-weibo-feedback" role="status"></div>
           <details class="lp-weibo-composer">
-            <summary>写微博</summary>
+            <summary>写群星</summary>
             <textarea data-lp="weiboComposeText" rows="3" maxlength="1000" placeholder="分享这一刻…"></textarea>
             <button type="button" data-lp="weiboPublish">发布</button>
           </details>
           <div data-lp="weiboFeed" class="lp-weibo-feed"></div>
           <div data-lp="weiboHot" class="lp-weibo-hot" hidden></div>
           <div data-lp="weiboDetail" class="lp-weibo-detail" hidden></div>
-          <button type="button" data-lp="weiboDetailBack" class="lp-weibo-detail-back" hidden>返回微博列表</button>
+          <button type="button" data-lp="weiboDetailBack" class="lp-weibo-detail-back" hidden>返回群星列表</button>
         </section>
         <section class="lp-screen lp-wallet lp-wallet-screen" data-lp-screen="wallet" aria-label="吱付宝" hidden>
           <div class="lp-wallet-main">
