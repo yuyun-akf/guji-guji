@@ -5284,7 +5284,7 @@ function makeUI() {
               <summary>调整余额</summary>
               <div class="lp-wallet-adjust-controls">
                 <label for="lp-wallet-adjust-input">设定余额</label>
-                <input id="lp-wallet-adjust-input" data-lp="walletAdjustInput" type="number" min="0" max="1000000000" step="0.01" inputmode="decimal" placeholder="0.00" />
+                <input id="lp-wallet-adjust-input" data-lp="walletAdjustInput" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00" />
                 <button type="button" data-lp="walletSaveBalance">保存</button>
               </div>
             </details>
