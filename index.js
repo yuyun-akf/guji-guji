@@ -1397,8 +1397,10 @@ async function syncMainlinePayments(ctx=context()) {
             // Do not revive invalidated transactions from another branch automatically.
             const payment=walletCreateTransfer(root,{...item,storyTime:root.storyTime||localDateTime()});
             const thread=walletThread(root,payment.contactId);
+            thread.storyTime=root.storyTime;
             const message=appendPhoneMessage(thread,'character',payment.kind==='redpacket'?'[红包]':'[转账]');
             message.paymentId=payment.id;
+            root.storyTime=thread.storyTime;
             created++;
         }
         if(!created&&!invalidated)return {status:'unchanged'};
@@ -3910,8 +3912,10 @@ async function sendPhonePayment() {
         const payment=walletCreateTransfer(root,{kind,amountCents,contactId,
             note:nodes.paymentNote.value.trim(),from:'user',origin:'phone'});
         const thread=walletThread(root,contactId);
+        thread.storyTime=root.storyTime;
         const msg=appendPhoneMessage(thread,'user',kind==='redpacket'?'[红包]':'[转账]');
         msg.paymentId=payment.id;
+        root.storyTime=thread.storyTime;
         const job=startBusy('wallet');
         try{
             await writeData(ctx,{...root,__contactId:PRIMARY_CONTACT_ID});
