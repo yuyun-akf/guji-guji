@@ -299,7 +299,9 @@ export function createWeiboModule(api) {
   if(!list.length){parent.append(el('p','lp-wb-empty','刷新后显示热门话题'));return;}
   list.forEach((t,i)=>{
    const b=el('button','lp-wb-hot-item');b.type='button';b.dataset.wbTopic=t.title;b.dataset.wbZone=zone;
-   b.append(el('strong','',String(i+1)),el('span','',t.title),el('small','',t.category||''));parent.append(b);
+   b.append(el('strong','',String(i+1)),el('span','',t.title),el('small','',t.category||''));
+   if(t.preview)b.append(el('p','lp-wb-hot-preview',t.preview));
+   parent.append(b);
   });
  }
 
@@ -443,8 +445,8 @@ export function createWeiboModule(api) {
   reset();
   const pageNames={mine:'我的动态',interactions:'我的互动',following:'关注列表',profile:'个人资料',settings:'群星设置'};
   if(n.title)n.title.textContent=state.detail?'动态详情':state.topic?'热搜详情':state.tab==='me'&&state.subview?(pageNames[state.subview]||'群星'):'群星';
-  n.weiboGenerate.disabled=state.loading;
-  n.weiboGenerate.textContent=state.tab==='nearby'?'刷新周边':state.tab==='discover'?'刷新热搜':'刷新更多';
+  n.weiboGenerate.disabled=state.loading||state.hotLoading;
+  n.weiboGenerate.textContent=state.tab==='nearby'?'刷新周边帖子':state.tab==='discover'?'重新生成15条热搜':'刷新更多';
   n.weiboTabs.querySelectorAll('[data-weibo-tab]').forEach(b=>b.classList.toggle('selected',b.dataset.weiboTab===state.tab));
   const expanded=Boolean(state.detail||state.topic);
   const panels={home:n.weiboFeed,discover:n.weiboHot,nearby:n.weiboNearby,compose:n.weiboCompose,me:n.weiboMe};
@@ -471,9 +473,9 @@ export function createWeiboModule(api) {
     const t=state.topic;
     n.weiboDetail.append(heading('#'+t.title+'#',t.zone==='nearby'?'周边热议':'世界热搜'));
     if(t.summary)n.weiboDetail.append(el('p','lp-wb-topic-summary',t.summary));
-    if(t.loading)n.weiboDetail.append(el('p','lp-wb-empty','正在生成该话题下的帖子和评论…'));
     if(t.error)n.weiboDetail.append(el('p','lp-wb-topic-error',t.error));
-    if(t.error||(!t.loading&&!t.posts.length))n.weiboDetail.append(control('重新加载话题','retryTopic'));
+    if(t.error||(!t.posts||!t.posts.length))
+     n.weiboDetail.append(control('重新生成热搜榜','retryTopic'));
     for(const p of t.posts){
      n.weiboDetail.append(card(p,true),control('查看评论并参与讨论','detail',p.id));
     }
@@ -489,15 +491,15 @@ export function createWeiboModule(api) {
    if(!seen.size)n.weiboFeed.append(el('p','lp-wb-empty','点击下方按钮，查看故事世界的最新动态'));
   }else if(state.tab==='discover'){
    n.weiboHot.append(heading('世界热搜','公共话题与热门讨论'));
-   trendList(n.weiboHot,state.trends.length?state.trends:data().trends,'home');
+   if(state.hotLoading)n.weiboHot.append(el('p','lp-wb-empty','正在一次生成15条热搜、帖子及评论…'));
+   trendList(n.weiboHot,state.trends,'home');
   }else if(state.tab==='nearby'){
    n.weiboNearby.append(heading('周边','校园、公司、剧组与身边的人'));
-   const trends=state.nearbyTrends.length?state.nearbyTrends:data().nearbyTrends;
-   if(trends.length){n.weiboNearby.append(heading('周边热议'));trendList(n.weiboNearby,trends,'nearby');}
+   if(state.loading&&state.attempted.nearby)n.weiboNearby.append(el('p','lp-wb-empty','正在生成周边动态及评论…'));
    const list=[...state.posts.nearby,
     ...data().posts.filter(p=>p.zone==='nearby'&&(p.actions?.owned||p.autoPublished)).slice(-12).reverse()];
    const seen=new Set();for(const p of list)if(!seen.has(p.id)){seen.add(p.id);n.weiboNearby.append(card(p,false));}
-   if(!list.length)n.weiboNearby.append(el('p','lp-wb-empty','刷新周边，查看身边的动态'));
+   if(!list.length&&!state.loading)n.weiboNearby.append(el('p','lp-wb-empty','点击刷新周边，生成身边人的帖子和评论'));
   }else if(state.tab==='me')renderMine(n);
   const target={home:n.weiboFeed,discover:n.weiboHot,nearby:n.weiboNearby}[state.tab];
   if(target){n.weiboGenerate.hidden=false;n.weiboGenerate.classList.add('lp-wb-refresh-button');target.append(n.weiboGenerate);}
@@ -547,7 +549,7 @@ if(type==='clearInteractions'){
   }
 if(type==='subview'){state.subview=id;state.editing='';render();nodes().weiboMe.parentElement.scrollTop=0;return;}
   if(type==='backMe'){state.subview='';state.editing='';render();nodes().weiboMe.parentElement.scrollTop=0;return;}
-  if(type==='retryTopic'){await loadTopic();return;}
+  if(type==='retryTopic'){state.topic=null;state.tab='discover';await generateHot();return;}
   if(type==='scanAccounts'){
    if(state.scanLoading)return;
    if(typeof api.scanAccounts!=='function'){feedback('当前无法读取角色资料');return;}
@@ -685,14 +687,25 @@ if(type==='subview'){state.subview=id;state.editing='';render();nodes().weiboMe.
  function selectTab(t){
   const alias={feed:'home',hot:'discover',saved:'me'};
   t=alias[t]||t;
-  if(['home','discover','nearby','compose','me'].includes(t)){
-   if(t!==state.tab)feedback('');
-   if(t==='me'&&state.tab==='me')state.subview='';
-    if(t!=='me')state.subview='';
-    state.tab=t;state.detail='';state.topic=null;render();
-    if(nodes()?.weiboFeed?.parentElement)nodes().weiboFeed.parentElement.scrollTop=0;
-   if((t==='home'||t==='discover')&&!state.attempted.world){state.attempted.world=true;void generate('home');}
-   if(t==='nearby'&&!state.attempted.nearby){state.attempted.nearby=true;void generate('nearby');}
+  if(!['home','discover','nearby','compose','me'].includes(t))return;
+  if(t==='discover'){
+   void (async()=>{
+    // A paid hot-trend generation must be confirmed by the user first.
+    if(!state.trends.length&&!state.hotLoading&&!(await confirmHotSearch()))return;
+    state.tab='discover';state.detail='';state.topic=null;state.subview='';
+    feedback('');render();
+    if(!state.trends.length&&!state.hotLoading)await generateHot();
+   })();
+   return;
+  }
+  if(t!==state.tab)feedback('');
+  if(t==='me'&&state.tab==='me')state.subview='';
+  if(t!=='me')state.subview='';
+  state.tab=t;state.detail='';state.topic=null;render();
+  if(nodes()?.weiboFeed?.parentElement)nodes().weiboFeed.parentElement.scrollTop=0;
+  if(t==='home'&&!state.attempted.world){state.attempted.world=true;void generate('home');}
+  if(t==='nearby'&&!state.attempted.nearby){
+   state.attempted.nearby=true;void generate('nearby');
   }
  }
  function back(){
@@ -756,14 +769,19 @@ if(type==='subview'){state.subview=id;state.editing='';render();nodes().weiboMe.
   }catch(e){feedback('主动发布失败：'+String(e.message||e));api.recordError('群星主动发帖',e);}
   finally{autoBusy=false;}
  }
- function open(){
+ function open(options={}){
   reset();
-  state.token++;state.loading=false;
-  state.tab='home';state.detail='';state.topic=null;state.subview='';
-  state.posts={home:[],nearby:[]};state.trends=[];state.nearbyTrends=[];state.attempted={};
+  state.detail='';state.topic=null;state.subview='';
+  // Returning from another app within this phone session MUST NOT reset posts
+  // or spend another API call. A new phone session is reset by endPhoneSession().
+  state.tab=options.tab==='discover'?'discover':'home';
   render();
-  state.attempted.world=true;
-  void generate('home');
+  if(state.tab==='discover'){
+   if(options.confirmed&&!state.trends.length&&!state.hotLoading)
+    void generateHot();
+  }else if(!state.attempted.world){
+   state.attempted.world=true;void generate('home');
+  }
  }
- return {open,render,generate,selectTab,back,publish,handleClick,handleFile,tick,state,parse,normalize};
+ return {open,render,generate,generateHot,confirmHotSearch,endPhoneSession,headline,selectTab,back,publish,handleClick,handleFile,tick,state,parse,normalize,openTopic};
 }
