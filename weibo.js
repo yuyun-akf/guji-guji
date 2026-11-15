@@ -1,6 +1,6 @@
 /* 群星 · story-aware public social feed. Persists identities and interactions per story chat. */
 export function createWeiboModule(api) {
- const state={scope:'',tab:'home',detail:'',topic:null,subview:'',posts:{home:[],nearby:[]},trends:[],nearbyTrends:[],loading:false,attempted:{},token:0,editing:'',avatarDraft:'',avatarOwnerDraft:'',candidates:[],scanLoading:false,scanMessage:''};
+ const state={scope:'',tab:'home',detail:'',topic:null,subview:'',posts:{home:[],nearby:[]},trends:[],nearbyTrends:[],loading:false,hotLoading:false,attempted:{},token:0,sessionId:0,headline:'',hotBundles:{},queuedNearby:false,confirming:false,editing:'',avatarDraft:'',avatarOwnerDraft:'',candidates:[],scanLoading:false,scanMessage:''};
  let writes=Promise.resolve(), autoBusy=false;
  const context=()=>api.context(), nodes=()=>api.getNodes(), root=()=>api.readRootData(context());
  const uid=(prefix='qx')=>prefix+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
@@ -40,15 +40,30 @@ export function createWeiboModule(api) {
  function reset(){
   const next=scope();if(next===state.scope)return;
   state.scope=next;state.tab='home';state.detail='';state.topic=null;state.subview='';state.posts={home:[],nearby:[]};state.candidates=[];state.scanMessage='';state.scanLoading=false;
-  state.trends=[];state.nearbyTrends=[];state.attempted={};state.loading=false;state.token++;
+  state.trends=[];state.nearbyTrends=[];state.hotBundles={};state.headline='';
+  state.attempted={};state.loading=false;state.hotLoading=false;state.queuedNearby=false;
+  state.token++;state.sessionId++;
+ }
+ function endPhoneSession(){
+  // Only closing the entire phone clears transient generated content.
+  reset();state.sessionId++;state.token++;state.loading=false;state.hotLoading=false;
+  state.posts={home:[],nearby:[]};state.trends=[];state.nearbyTrends=[];
+  state.hotBundles={};state.headline='';state.queuedNearby=false;state.attempted={};
+  state.topic=null;state.detail='';state.tab='home';state.subview='';
+ }
+ function headline(){
+  return state.trends[0]?.title||state.headline||data().trends?.[0]?.title||'今天有什么新鲜事';
+ }
+ function updateHomeHeadline(){
+  api.updateHomeHotSearch?.();
  }
  const actionState=p=>data().posts.find(x=>x.id===p.id)?.actions||p.actions||{};
  const actor=p=>data().accounts.find(a=>(p.authorId&&a.id===p.authorId)||(p.author&&a.name===p.author)||(p.handle&&a.handle===p.handle));
  function allPosts(){
   const q=data();
   const legacy=(Array.isArray(root().weiboSaved)?root().weiboSaved:[]).filter(p=>p?.id).map(p=>({...p,zone:p.zone||'world'}));
-  const cached=Object.values(q.topicDetails).flatMap(t=>Array.isArray(t?.posts)?t.posts:[]);
-  const combined=[...q.posts,...legacy,...state.posts.home,...state.posts.nearby,...cached,...(state.topic?.posts||[])],seen=new Set();
+  const generatedHot=Object.values(state.hotBundles).flatMap(t=>t.posts||[]);
+  const combined=[...q.posts,...legacy,...state.posts.home,...state.posts.nearby,...generatedHot,...(state.topic?.posts||[])],seen=new Set();
   return combined.filter(p=>p?.id&&!seen.has(p.id)&&seen.add(p.id));
  }
  function byId(id){return allPosts().find(p=>p.id===id);}
@@ -71,94 +86,181 @@ export function createWeiboModule(api) {
  }
  function prompt(count,zone,topic='',withTrend=false){
   const q=data(),r=root(),char=api.selectedCharacter(context()),nearby=zone==='nearby';
-  const accounts=q.accounts.slice(0,25).map(a=>(a.name+'（@'+(a.handle||a.id)+'；'+(a.kind||'人物')+'；'+(a.publicFigure?'公众人物；':'')+clean(a.bio,90)+'）')).join('、');
+  const accounts=q.accounts.slice(0,25).map(a=>a.name+'（@'+(a.handle||a.id)+'；'+(a.kind||'人物')+'；'+clean(a.bio,80)+'）').join('、');
   const followed=q.accounts.filter(a=>q.following.includes(a.id)).map(a=>a.name).join('、');
-  const known=(r.contacts||[]).slice(0,20).map(a=>a.name+'：'+clean(a.description,90)).join('；');
-  const interactions=q.posts.filter(p=>(p.actions?.comments||[]).length).slice(-3).map(p=>p.author+':'+clean(p.text,60)).join(' / ');
-  const scene=clean(api.storyContext?.()||'',2200);
-  const media=nearby?'校园、公司、剧组、社团、朋友圈、同事、校内论坛、附近生活':'娱乐圈、社会、科技、时尚、体育、影视、游戏、音乐、生活、新闻';
+  const known=(r.contacts||[]).slice(0,18).map(a=>a.name+'：'+clean(a.description,80)).join('；');
+  const contextText=clean(api.storyContext?.()||'',2100);
   return [
-   '你正在生成故事世界的公共社交平台「群星」信息流。剧情时间：'+(r.storyTime||'未设定')+'。区域：'+(nearby?'周边，围绕用户和角色所处学校/公司/剧组/熟人社会':'世界，面向广泛社会')+'。',
-   '当前主角：'+(char?.name||'未选择')+'。角色资料：'+clean(char?.description,850)+'。已知人物：'+known,
-   '用户手动建立的群星账号（这些身份不可随意改名、捏造性格）：'+(accounts||'尚未建立')+'。已关注：'+(followed||'无')+'。周边补充设定：'+clean(q.settings.nearbyHint,220)+'。',
-   '近期剧情（仅作为已发生事件的依据）：'+scene+'。用户已经公开互动的动态：'+interactions,
-   '遵循角色的职业、公众身份与社交边界。已建立的公众人物可以被媒体、粉丝、社交圈讨论，也可能合理上热搜，但不必每次上；普通人不要被无端全国关注。',
-   '绝不把私聊、内心想法、未公开的恋爱关系或未发生的剧情编成公开事实。用户行为只能依据已明确发生的内容。允许陌生网友讨论无关话题，不能每条都围绕角色。',
-   '内容应包含'+media+'等领域。'+(nearby?'如果没有明确校园/公司地点，不要虚构具体地名；可写故事环境中的日常近况。':'世界版普通推荐帖子不是热搜榜，避免全是重大新闻。'),
-   topic?'本次围绕话题：'+topic:'',
-   '只输出合法 JSON：{"posts":[{"author":"作者昵称","handle":"@账号","category":"分类","text":"微博正文","likes":28,"comments":[{"name":"评论者","text":"评论内容"}]}],"trending":[{"title":"话题标题","category":"分类"}]}。',
-   '生成 '+count+' 条不重复的帖子，每条建议 3～6 条观点不同的评论。'+(withTrend?'另生成 15 条多样化热搜话题，可有少量与已知公众人物有关。':'trending 可为空数组。'),
-   'JSON 尽量紧凑，不要 markdown、不输出思维过程。'
+   '你正在生成完全虚构的剧情世界社交平台「群星」内容。故事日期：'+(r.storyTime||'未设定')+'。',
+   '范围：'+(nearby?'周边：学校、公司、剧组、社团、邻里与其他身边人的公开动态':'世界：新闻、社会、影视、生活、时尚、体育、游戏、科技、音乐等公共动态')+'。',
+   '主角：'+(char?.name||'未选择')+'；角色简介：'+clean(char?.description,750)+'；已知人物：'+known+'。',
+   '已建立的公众/普通账号：'+(accounts||'暂无')+'；用户关注：'+(followed||'暂无')+'；周边补充设定：'+clean(q.settings.nearbyHint,210)+'。',
+   '近期剧情：'+contextText+'。必须区分已公开事实与私聊秘密；绝不杜撰用户言行、心理、地下恋情、未发生事件。',
+   '允许陌生网友完全讨论无关主题，勿全围绕角色。公众人物可以合理上热搜，但不要每条都写成公共事件。',
+   '营造真实复杂的互联网：多数网友正常且观点各异，偶尔可以有0至1个理直气壮、反常识到令人怀疑的“神人”发言，让其他网友有自然吐槽或反驳；题材随机覆盖职场、学习、生活、饭圈、科技、性别刻板印象等，不要总围绕男女关系，也不要把偏激观点当事实。',
+   '每条帖子配2至5条不同语气的评论，允许争论与冷幽默、网络流行语，但不要每条都是段子。',
+   nearby?'周边内容应体现身边普通人的真实生活；没有明确地点不要编造具体城市、校园或住址。':'全球动态有大小事之分，不要人人都在热榜。',
+   topic?'帖子主题：'+topic:'',
+   '只输出合法紧凑 JSON：{"posts":[{"author":"作者昵称","handle":"@账号","category":"类别","text":"正文","likes":32,"comments":[{"name":"评论昵称","text":"内容"}]}],"headline":"本轮公开热议话题"}。',
+   '生成'+count+'条相互独立、有作者、正文和评论的帖子。headline仅是一个简短话题标题，用于小手机桌面入口，不要返回整张热榜。不要markdown、不要思维过程。'
   ].filter(Boolean).join('\n');
  }
+ function hotPrompt(){
+  const q=data(),r=root(),char=api.selectedCharacter(context());
+  return [
+   '为完全虚构的剧情社交平台「群星」一次性生成完整世界热搜榜。剧情时间：'+(r.storyTime||'未设置')+'。',
+   '主角：'+(char?.name||'未选择')+'；角色公开身份：'+clean(char?.description,650)+'。',
+   '故事已知人物：'+(r.contacts||[]).slice(0,15).map(p=>p.name+'：'+clean(p.description,65)).join('、')+'。',
+   '已有公众账号：'+q.accounts.slice(0,20).map(a=>a.name+'：'+clean(a.bio,60)).join('、')+'。近期剧情：'+clean(api.storyContext?.()||'',1400)+'。',
+   '所有话题和帖子都是故事中的公开内容，严禁曝光私聊、未公开身份、用户内心或虚构尚未发生的事件；普通人不可无缘无故成为全国热点。',
+   '热榜15条内容需分布在社会、影视、生活、搞笑、教育、科技、时尚、体育、游戏、音乐、娱乐等领域，不要15条都围绕主角。',
+   '每条热搜都必须同时给出标题、摘要、至少1篇完整帖子以及对应2至3条不同立场的评论；允许部分热搜有2篇帖子，但请优先确保15条齐全。',
+   '偶尔最多1条热搜或评论可以出现离谱却很自信的“神人”观点，其他网友可以反驳或吐槽；不能每条都刻意降智，不局限于性别话题。',
+   '只能调用这一次生成完成热榜与其讨论内容，点击具体话题时不允许还需要额外生成。',
+   '请仅输出JSON，不要markdown：{"topics":[{"title":"热搜短标题","category":"分类","summary":"一两句背景","posts":[{"author":"网友昵称","handle":"@账号","category":"分类","text":"完整帖子","likes":99,"comments":[{"name":"网友","text":"评论"}]}]}]}。',
+   '精确生成15个topics，标题互不重复，每个topic的posts必须非空。尽量紧凑。'
+  ].join('\n');
+ }
  async function generate(zone='home',topic=''){
-  reset();if(state.loading)return;
+  reset();
+  if(zone==='hot')return generateHot();
+  if(state.loading){
+   if(zone==='nearby')state.queuedNearby=true;
+   return;
+  }
   if(!api.selectedCharacter(context())){feedback('请先选择故事角色');return;}
-  const name=zone==='nearby'?'周边':'世界',token=++state.token,session=state.scope;
-  state.loading=true;feedback('正在刷新'+name+'内容…');render();
-  const arr=[],trends=[];
+  const nearby=zone==='nearby',name=nearby?'周边':'世界';
+  const session=scope(),sessionId=state.sessionId,token=++state.token;
+  state.loading=true;state.attempted[nearby?'nearby':'world']=true;
+  feedback('正在刷新'+name+'帖子…');render();
+  const all=[];let headlineCandidate='';
   try{
-   for(let i=0;i<2;i++){
+   // Home feed remains a two-batch request. Nearby uses exactly ONE API call.
+   for(let batch=0;batch<(nearby?1:2);batch++){
     let response;
-    try{response=await api.phoneGenerate(context(),{systemPrompt:'只输出合法 JSON，不输出分析。',prompt:[{role:'user',content:prompt(5,zone,topic,i===0)}]},api.readData(context()));}
-    catch(e){if(!arr.length)throw e;api.recordError('群星部分刷新',e);break;}
-    if(session!==scope()||token!==state.token)return;
+    try{
+     response=await api.phoneGenerate(context(),{
+      systemPrompt:'你是虚构社交平台的帖子生成器；只返回合法JSON。',
+      prompt:[{role:'user',content:prompt(nearby?12:5,zone,topic,false)}]
+     },api.readData(context()));
+    }catch(e){
+     if(!all.length)throw e;
+     api.recordError?.('群星部分刷新',e);break;
+    }
+    if(session!==scope()||sessionId!==state.sessionId||token!==state.token)return;
     const parsed=parse(response);
-    arr.push(...(Array.isArray(parsed.posts)?parsed.posts:[]).map(p=>normalize(p,zone)).filter(Boolean).slice(0,5));
-    if(i===0)for(const v of (Array.isArray(parsed.trending)?parsed.trending:[]).slice(0,20)){
-     const title=clean(v.title||v,65);if(title&&!trends.some(x=>x.title===title))trends.push({title,category:clean(v.category||'热门',22)});
+    all.push(...(Array.isArray(parsed.posts)?parsed.posts:[])
+      .map(post=>normalize(post,nearby?'nearby':'world')).filter(Boolean)
+      .slice(0,nearby?12:5));
+    if(!nearby&&!headlineCandidate){
+     headlineCandidate=clean(parsed.headline||parsed.trending?.[0]?.title||'',60);
     }
    }
-   if(arr.length<3)throw Error('有效内容不足，请重新刷新');
-   const slot=zone==='nearby'?'nearby':'home';
-   state.posts[slot]=[...state.posts[slot],...arr].slice(-80);
-   if(trends.length){if(zone==='nearby')state.nearbyTrends=trends;else state.trends=trends;}
-   await mutate(q=>{
-    if(trends.length){if(zone==='nearby')q.nearbyTrends=trends;else q.trends=trends;}
-    // Followed-account posts are part of the continuing story, not one-time random feed.
-    for(const p of arr)if(p.authorId&&q.following.includes(p.authorId)&&!q.posts.some(x=>x.id===p.id))q.posts.push(p);
-    q.posts=q.posts.slice(-180);
-   });
-   feedback('已更新 '+arr.length+' 条'+name+'动态');
-   api.recordActivity('群星刷新',name+'：'+arr.length+' 条','success');
-  }catch(e){feedback('刷新失败：'+String(e.message||e));api.recordError('群星生成',e);}
-  finally{if(token===state.token){state.loading=false;if(state.tab!=='me')render();else if(nodes()?.weiboGenerate)nodes().weiboGenerate.disabled=false;}}
+   if(all.length<3)throw Error('本次有效帖子不足，请点击刷新重试');
+   // Replaces this zone only on an explicit refresh or a new phone session.
+   state.posts[nearby?'nearby':'home']=all.slice(0,nearby?12:10);
+   if(headlineCandidate){state.headline=headlineCandidate;updateHomeHeadline();}
+   feedback('已更新 '+all.length+' 条'+name+'动态');
+   api.recordActivity?.('群星刷新',name+'：'+all.length+' 条','success');
+  }catch(e){
+   feedback('刷新失败：'+String(e.message||e));api.recordError?.('群星生成',e);
+  }finally{
+   if(token===state.token&&sessionId===state.sessionId){
+    state.loading=false;render();
+    if(state.queuedNearby){
+     state.queuedNearby=false;
+     if(!state.posts.nearby.length&&state.tab==='nearby')void generate('nearby');
+    }
+   }
+  }
  }
-
+ async function generateHot(){
+  reset();if(state.hotLoading)return;
+  if(!api.selectedCharacter(context())){feedback('请先选择故事角色');return;}
+  const session=scope(),sessionId=state.sessionId;
+  state.hotLoading=true;state.attempted.hot=true;
+  feedback('正在生成15条热搜及对应讨论…');render();
+  try{
+   // ONE model invocation generates both the topics and their actual conversations.
+   const response=await api.phoneGenerate(context(),{
+    systemPrompt:'只返回紧凑且合法的JSON，不输出推理。',
+    prompt:[{role:'user',content:hotPrompt()}]
+   },api.readData(context()));
+   if(session!==scope()||sessionId!==state.sessionId)return;
+   const parsed=parse(response);
+   const source=Array.isArray(parsed.topics)?parsed.topics:[];
+   const topics=[],bundles={};
+   for(const row of source.slice(0,15)){
+    const title=clean(row?.title,65);if(!title||topics.some(t=>t.title===title))continue;
+    const posts=(Array.isArray(row.posts)?row.posts:[])
+     .map(post=>normalize(post,'world')).filter(Boolean).slice(0,3);
+    if(!posts.length)continue;
+    const category=clean(row.category||'热议',22),summary=clean(row.summary,350);
+    topics.push({title,category,summary,preview:clean(posts[0].text,90),postCount:posts.length});
+    bundles[topicKey('home',title)]={title,zone:'home',summary,posts};
+   }
+   if(session!==scope()||sessionId!==state.sessionId)return;
+   if(!topics.length)throw Error('热搜生成没有返回可用的帖子与评论');
+   state.trends=topics;state.hotBundles=bundles;
+   state.headline=topics[0].title;updateHomeHeadline();
+   feedback('已生成 '+topics.length+'/15 条热搜及对应讨论'+(topics.length<15?'；可以手动刷新补全':''));
+   api.recordActivity?.('群星热搜','生成 '+topics.length+' 条热搜及对应帖子','success');
+  }catch(error){
+   state.attempted.hot=false;
+   feedback('热搜生成失败：'+String(error.message||error));
+   api.recordError?.('群星热搜',error);
+  }finally{
+   if(sessionId===state.sessionId){state.hotLoading=false;render();}
+  }
+ }
  const topicKey=(zone,title)=>JSON.stringify([zone,title]);
  async function openTopic(title,zone='home'){
   reset();
-  const key=topicKey(zone,title),cached=data().topicDetails[key];
+  const item=state.hotBundles[topicKey(zone,title)];
   state.detail='';
-  state.topic={title,zone,key,summary:cached?.summary||'',posts:cached?.posts||[],loading:false,error:''};
+  state.topic=item
+   ?{...item,key:topicKey(zone,title),loading:false,error:''}
+   :{title,zone,key:topicKey(zone,title),summary:'',posts:[],loading:false,
+     error:'本轮热榜未包含这个话题的帖子，请返回热搜列表刷新。'};
   render();
-  if(!cached?.posts?.length)await loadTopic();
  }
- async function loadTopic(){
-  const t=state.topic;if(!t||t.loading)return;
-  const session=scope(),key=t.key;
-  t.loading=true;t.error='';render();
-  try{
-   const raw=await api.phoneGenerate(context(),{systemPrompt:'只输出有效 JSON。',prompt:[{role:'user',content:
-    prompt(4,t.zone,t.title,false)+'\n现在是打开「'+t.title+'」话题详情页，不是刷新首页。请针对该话题生成4条不同视角的帖子，每条附3至6条评论。返回 JSON：{"summary":"话题概况","posts":[{"author":"昵称","text":"正文","comments":[{"name":"网友","text":"评论"}]}]}。请不要编造未公开的私事。'}]},api.readData(context()));
-   if(session!==scope()||state.topic?.key!==key)return;
-   const parsed=parse(raw),posts=(Array.isArray(parsed.posts)?parsed.posts:[])
-    .map(p=>normalize(p,t.zone==='nearby'?'nearby':'world')).filter(Boolean).slice(0,6);
-   if(!posts.length)throw Error('话题没有生成有效讨论');
-   const summary=clean(parsed.summary,500);
-   await mutate(q=>{
-    const details={...q.topicDetails,[key]:{title:t.title,zone:t.zone,summary,posts}};
-    const keys=Object.keys(details);
-    if(keys.length>30)for(const old of keys.slice(0,keys.length-30))delete details[old];
-    q.topicDetails=details;
+ async function confirmHotSearch(){
+  if(state.trends.length||state.hotLoading)return true;
+  if(state.confirming)return false;
+  const parent=nodes()?.weiboHot?.closest?.('.lp-panel')||
+   nodes()?.weiboFeed?.closest?.('.lp-panel');
+  if(!parent||typeof document?.createElement!=='function'){
+   return typeof window!=='undefined'&&typeof window.confirm==='function'
+    ?window.confirm('查看群星热搜？将调用一次模型生成15条热搜及对应帖子、评论。'):true;
+  }
+  state.confirming=true;
+  return new Promise(resolve=>{
+   const mask=el('div','lp-wb-confirm-overlay');
+   mask.setAttribute('role','presentation');
+   const dialog=el('div','lp-wb-confirm-dialog');
+   dialog.setAttribute('role','dialog');
+   dialog.setAttribute('aria-modal','true');
+   dialog.setAttribute('aria-label','查看群星热搜');
+   const title=el('strong','','查看群星热搜？');
+   const desc=el('p','','将调用一次 API，生成15条热搜词条及其帖子、评论。仅在你确认后请求。');
+   const actions=el('div','lp-wb-confirm-actions');
+   const cancel=el('button','','取消'),accept=el('button','lp-wb-confirm-yes','查看热搜');
+   cancel.type='button';accept.type='button';
+   let closed=false;
+   const finish=ok=>{
+    if(closed)return;closed=true;state.confirming=false;
+    mask.remove();resolve(ok);
+   };
+   cancel.addEventListener('click',()=>finish(false));
+   accept.addEventListener('click',()=>finish(true));
+   mask.addEventListener('click',event=>{if(event.target===mask)finish(false);});
+   mask.addEventListener('keydown',event=>{
+    if(event.key==='Escape'){event.preventDefault();finish(false);}
    });
-   if(state.topic?.key===key)state.topic={...t,summary,posts,loading:false,error:''};
-  }catch(e){
-   if(state.topic?.key===key){t.error='加载话题失败：'+String(e.message||e);t.loading=false;}
-   api.recordError('群星话题',e);
-  }finally{if(state.topic?.key===key){state.topic.loading=false;render();}}
+   actions.append(cancel,accept);dialog.append(title,desc,actions);mask.append(dialog);
+   parent.append(mask);accept.focus?.();
+  });
  }
-
  function control(label,act,id='',active=false){
   const b=el('button','lp-wb-action'+(active?' active':''),label);
   b.type='button';b.dataset.wbAction=act;b.dataset.wbPost=id;return b;
