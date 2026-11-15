@@ -485,11 +485,12 @@ export function createWeiboModule(api) {
   const knownLikes=history.reduce((n,item)=>n+Math.max(0,Number(item.likes)||0),0);
   const knownComments=history.reduce((n,item)=>n+(item.comments?.length||0),0);
   const stats=el('div','lp-wb-account-stats');
+  const pretty=value=>formatFollowers(value).replace(/粉丝$/,'');
   const display=[
    ['粉丝',account.followers==null?'未设置':formatFollowers(account.followers)],
-   ['关注',account.followingCount!=null&&Number.isFinite(+account.followingCount)?String(account.followingCount):'未设置'],
-   ['获赞',account.likesTotal!=null&&Number.isFinite(+account.likesTotal)?String(account.likesTotal):knownLikes+'（已记录）'],
-   ['获评',account.commentsTotal!=null&&Number.isFinite(+account.commentsTotal)?String(account.commentsTotal):knownComments+'（已记录）']
+   ['关注',account.followingCount!=null&&Number.isFinite(+account.followingCount)?pretty(account.followingCount):'未设置'],
+   ['获赞',account.likesTotal!=null&&Number.isFinite(+account.likesTotal)?pretty(account.likesTotal):pretty(knownLikes)+'（已记录）'],
+   ['获评',account.commentsTotal!=null&&Number.isFinite(+account.commentsTotal)?pretty(account.commentsTotal):pretty(knownComments)+'（已记录）']
   ];
   for(const [label,value] of display){const tile=el('div');tile.append(el('strong','',value),el('small','',label));stats.append(tile);}
   head.append(stats);container.append(head);
