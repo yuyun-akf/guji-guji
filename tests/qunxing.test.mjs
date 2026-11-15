@@ -27,17 +27,18 @@ function harness(){
  };
  return {module:make(api),ctx,calls:()=>calls};
 }
-test('群星世界推荐与周边分开刷新，热搜保存，已关注角色身份保持',async()=>{
+test('世界推荐保留两次请求，周边一次请求生成真实帖子；未互动内容不写进存档',async()=>{
  const h=harness();
  await h.module.generate('home');
  assert.equal(h.calls(),2);
  assert.equal(h.module.state.posts.home.length,10);
- assert.equal(h.ctx.chatMetadata.st_little_phone_v1.qunxing.trends.length,15);
- assert.equal(h.ctx.chatMetadata.st_little_phone_v1.qunxing.posts.length,2);
+ assert.equal(h.ctx.chatMetadata.st_little_phone_v1.qunxing.posts.length,0);
+ assert.equal(h.module.headline(),'话题 0');
  await h.module.generate('nearby');
- assert.equal(h.calls(),4);
- assert.equal(h.module.state.posts.nearby.length,10);
- assert.equal(h.ctx.chatMetadata.st_little_phone_v1.qunxing.nearbyTrends.length,15);
+ assert.equal(h.calls(),3,'周边只发起一次 API 请求');
+ assert.equal(h.module.state.posts.nearby.length,5,'模型返回的五条完整帖子均保留');
+ assert.equal(h.ctx.chatMetadata.st_little_phone_v1.qunxing.posts.length,0);
+ assert.equal(h.ctx.chatMetadata.st_little_phone_v1.qunxing.nearbyTrends,undefined);
  assert.equal(h.ctx.chatMetadata.st_little_phone_v1.qunxing.accounts[0].name,'林知远');
 });
 test('手动角色账号能自主营业，帖子保存且不代替 user 发布',async()=>{
