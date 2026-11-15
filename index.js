@@ -3686,6 +3686,7 @@ function createInteractionController({getRoot,getNodes,getMode,onError}){
       /正在|加载中|保存中|生成中|处理中/.test(text)?'pending':
       /已|完成|成功|保存/.test(text)?'success':'info';
      if(flavor==='error')toast(text,'error');
+     else if(/保存成功|已保存|保存完成/.test(text))toast(text,'success');
     }
    });
    for(const node of tracked.keys())statusObserver.observe(node,{
