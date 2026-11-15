@@ -190,6 +190,7 @@ export function createWeiboModule(api) {
   const headlineText=state.headline;
   return mutate(q=>{
    if(scope()!==session)throw Error('故事存档已切换，取消保存旧动态');
+   q.posts=q.posts.filter(p=>isPermanentPost(p,q));
    const previous=q.generated&&typeof q.generated==='object'?q.generated:{};
    const feeds={...(previous.feeds||{})};
    if(posts!==null){
