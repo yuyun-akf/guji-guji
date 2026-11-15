@@ -75,6 +75,36 @@ export function createWeiboModule(api) {
   return ['角色','NPC','人物','媒体','粉丝','组织','网友'].includes(kind)?'':kind;
  };
  const publicAccountDescription=account=>[savedProfession(account),clean(account?.bio,130)].filter(Boolean).join('；');
+
+ // Existing public account history predates the current feed; never infer totals
+ // only from one newly observed post.
+ const countValue=v=>v==null||v===''||!Number.isSafeInteger(Number(v))||Number(v)<0?null:Number(v);
+ const stableSeed=str=>{let h=2166136261;for(const c of String(str||'')){h^=c.charCodeAt(0);h=Math.imul(h,16777619);}return(h>>>0)/4294967295;};
+ const estimateMetrics=(account,{correctImplausible=false}={})=>{
+  const fans=countValue(account?.followers)??0,seed=stableSeed([account?.handle,account?.name,account?.kind].join('|'));
+  const media=/媒体|新闻|日报|观察|资讯|传媒|官方|工作室|报社|平台/.test([account?.name,account?.profession,account?.kind].join(' '));
+  const base=fans?Math.round(fans*(media?2.1+seed*7.0:.9+seed*5.1)):0;
+  const reportedLikes=countValue(account?.likesTotal);
+  const likesTotal=reportedLikes!=null&&!correctImplausible?reportedLikes:Math.max(reportedLikes??0,base);
+  const reportedComments=countValue(account?.commentsTotal);
+  const commentsTotal=reportedComments!=null&&!correctImplausible?reportedComments:
+   Math.max(reportedComments??0,likesTotal?Math.round(likesTotal*(.014+seed*.045)):0);
+  return {likesTotal,commentsTotal,followingCount:countValue(account?.followingCount)??(fans?Math.round(35+seed*410):0)};
+ };
+ const operatorMode=account=>['self','team','joint','other'].includes(account?.operatorMode)?account.operatorMode:'self';
+ const accountOperatorGuide=account=>{
+  const mode=operatorMode(account);
+  return mode==='team'?'工作室／经纪团队运营，官方公告与宣传为主，不默认每条都是本人亲写':
+   mode==='joint'?'本人和团队共同运营，依照具体帖子区分发布者':
+   mode==='other'?'由'+(clean(account?.operatorName,70)||'指定运营者')+'运营，不冒充本人':
+   '账号由本人运营，依照绑定人物性格发文';
+ };
+ const publicAccountInfo=account=>{
+  const detail=(account?.name||'')+'（@'+(account?.handle||account?.id)+'；'+publicAccountDescription(account)+'；'+accountOperatorGuide(account)+'）';
+  return (account?.identityVisibility||'public')==='public'?detail:
+   (account?.name||'匿名账号')+'（@'+(account?.handle||account?.id)+'；'+publicAccountDescription(account)+'；真实身份未公开，不得将此账号与其他角色关联）';
+ };
+
  const data=()=>{
   const r=root(),q=r.qunxing||{};
   // NPC/character identities are shared across chats of this character card.
