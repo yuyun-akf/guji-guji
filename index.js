@@ -6393,7 +6393,19 @@ function makeUI() {
           </div>
         </section>
         <section class="lp-screen lp-settings" data-lp-screen="settings" aria-label="设置" hidden>
-          <h2>手机与桌面</h2>
+          <div class="lp-settings-menu" data-lp="settingsMenu">
+            <p class="lp-settings-menu-intro">管理当前故事存档与小手机的各项功能</p>
+            <div class="lp-settings-menu-list">
+              <button type="button" class="lp-settings-nav" data-settings-nav="system"><span>系统设置<small>锁屏密码、故事时钟、打开方式</small></span><b>›</b></button>
+              <button type="button" class="lp-settings-nav" data-settings-nav="api"><span>API 连接<small>全局默认、各应用独立配置、已存连接</small></span><b>›</b></button>
+              <button type="button" class="lp-settings-nav" data-settings-nav="presets"><span>预设与世界书<small>预设选择、世界书条目与触发</small></span><b>›</b></button>
+              <button type="button" class="lp-settings-nav" data-settings-nav="chat"><span>聊天方式<small>消息显示与分条行为</small></span><b>›</b></button>
+              <button type="button" class="lp-settings-nav" data-settings-nav="memory"><span>记忆管理<small>剧情日自动总结、独立 API、正文互通</small></span><b>›</b></button>
+              <button type="button" class="lp-settings-nav" data-settings-nav="data"><span>数据与诊断<small>运行日志与现有存档管理入口</small></span><b>›</b></button>
+            </div>
+          </div>
+          <div class="lp-settings-category" data-settings-category="system" hidden>
+          <h2>系统设置</h2>
           <label class="lp-entry-option"><input type="checkbox" data-lp="lockEnabled" checked /> 开启锁屏与密码</label>
           <button type="button" class="lp-settings-link" data-lp="lockSaveEnabled">保存锁屏设置</button>
           <details class="lp-password-change">
@@ -6417,12 +6429,40 @@ function makeUI() {
           </div>
           <button type="button" data-lp="clockSave" class="lp-settings-link">保存时间设置</button>
           <p class="lp-settings-hint">剧情时间仍可通过日历或聊天快捷跳转单独调整，跨午夜会自动更新日期。</p>
-          <h2>API</h2>
+          <h3>打开方式</h3>
+          <label class="lp-entry-option"><input type="checkbox" data-lp="floatingLauncher" /> 显示悬浮按钮</label>
+          </div>
+          <div class="lp-settings-category" data-settings-category="api" hidden>
+          <h2>API 连接</h2>
+          <p class="lp-settings-hint">可为每个应用或记忆任务单独选择连接；未覆盖的应用继承全局默认。独立请求不会切换酒馆正文当前模型。</p>
+          <label class="lp-field">配置对象
+            <select data-lp="apiTask">
+              <option value="default">全部应用 · 默认连接</option>
+              <option value="chat">咕叽聊</option>
+              <option value="weibo">群星</option>
+              <option value="takeout">外卖</option>
+              <option value="shopping">购物</option>
+              <option value="wallet">吱付宝</option>
+              <option value="calendar">日历</option>
+              <option value="theme">主题</option>
+              <option value="settings">设置</option>
+              <option value="diagnostics">运行日志</option>
+              <option value="autonomy">角色自主活动</option>
+              <option value="memory">手机记忆</option>
+            </select>
+          </label>
+          <p class="lp-settings-hint">纯界面应用目前没有模型生成操作，配置会保留供将来的功能使用。</p>
           <div class="lp-settings-card" data-lp="apiInfo">当前酒馆连接</div>
           <label class="lp-field">连接方式<select data-lp="apiMode">
-            <option value="inherit">跟随酒馆当前连接</option>
+            <option value="follow">跟随小手机全局默认连接</option>
+            <option value="inherit">直接使用酒馆当前连接</option>
+            <option value="profile">使用酒馆已保存的连接档案</option>
             <option value="custom">独立 OpenAI 兼容 API</option>
           </select></label>
+          <div class="lp-api-custom" data-lp="apiProfileFields" hidden>
+            <label class="lp-field">酒馆已保存连接<select data-lp="apiProfile"></select></label>
+            <p class="lp-settings-hint" data-lp="apiProfileHint">正在读取可用连接…</p>
+          </div>
           <div class="lp-api-custom" data-lp="customApiFields" hidden>
             <label class="lp-field">API 地址（以 /v1 结尾）<input data-lp="apiUrl" type="url" placeholder="https://example.com/v1" autocomplete="off"/></label>
             <label class="lp-field">模型名称<input data-lp="apiModel" type="text" placeholder="模型 ID" autocomplete="off"/></label>
@@ -6430,9 +6470,14 @@ function makeUI() {
             <div class="lp-api-key-state" data-lp="apiKeyState"></div>
           </div>
           <button type="button" class="lp-settings-link" data-lp="saveApi">保存 API 配置</button>
+          <button type="button" class="lp-settings-link" data-lp="apiTest">测试当前选定的连接</button>
+          </div>
+          <div class="lp-settings-category" data-settings-category="chat" hidden>
           <h2>聊天方式</h2>
           <select data-lp="messageStyle" aria-label="消息显示方式"><option value="natural">自然即时聊天 · 可连续分条</option><option value="unrestricted">自由文本 · 不自动拆分</option></select>
           <button type="button" class="lp-settings-link" data-lp="saveMessageStyle">保存聊天方式</button>
+          </div>
+          <div class="lp-settings-category" data-settings-category="presets" hidden>
           <h2>预设条目</h2>
           <select data-lp="presetSource" aria-label="选择预设"></select>
           <p class="lp-settings-hint" data-lp="presetInfo"></p>
@@ -6443,6 +6488,25 @@ function makeUI() {
           <p class="lp-settings-hint">勾选一本世界书后，默认启用书中原本允许的条目，并在聊天时按关键词触发；可进条目列表单独关闭。暂停某本书不删除已保存的勾选。单次世界书注入限约 12,000 字符。</p>
           <button type="button" class="lp-settings-link" data-lp="saveSelections">保存预设与世界书配置</button>
           <div class="lp-settings-status" data-lp="selectionSaveStatus" role="status" aria-live="polite"></div>
+          </div>
+          <div class="lp-settings-category" data-settings-category="memory" hidden>
+          <h2>小手机独立记忆</h2>
+          <label class="lp-entry-option"><input data-lp="phoneMemoryEnabled" type="checkbox" /> 根据故事时间自动总结手机经历</label>
+          <label class="lp-field">总结间隔
+            <select data-lp="phoneMemoryInterval">
+              <option value="1">每经过 1 个剧情日</option>
+              <option value="3">每经过 3 个剧情日</option>
+              <option value="7">每经过 7 个剧情日</option>
+            </select>
+          </label>
+          <label class="lp-entry-option"><input data-lp="phoneMemoryInjectMainline" type="checkbox" /> 将保存的手机记忆注入正文（默认关闭）</label>
+          <p class="lp-settings-hint">独立记忆总结使用「API 连接 → 手机记忆」指定的模型，可与聊天使用不同 API。按剧情日期计算，无新消息不产生模型请求；不会修改嘎嘎小狗等插件的记录。</p>
+          <p class="lp-settings-hint" data-lp="phoneMemorySchedule"></p>
+          <button type="button" class="lp-settings-link" data-lp="phoneMemorySave">保存自动总结与互通设置</button>
+          <button type="button" class="lp-settings-link" data-lp="phoneMemoryRun">立即总结新增手机消息</button>
+          <div class="lp-settings-status" data-lp="phoneMemoryStatus" role="status" aria-live="polite"></div>
+          <h3>已保存的手机记忆</h3>
+          <div data-lp="phoneMemoryList" class="lp-memory-list"></div>
           <h2>正文记忆与互通</h2>
           <label class="lp-entry-option"><input type="checkbox" data-lp="readMainlineMemory" checked /> 只读获取已安装插件的正文记忆</label>
           <label class="lp-field">记忆来源<select data-lp="memorySource">
@@ -6456,10 +6520,15 @@ function makeUI() {
           <label class="lp-entry-option"><input type="checkbox" data-lp="eventBridge" checked /> 正文与小手机同步已确认事件（交易、好友状态等）</label>
           <p class="lp-settings-hint">正文记忆不会写回其他插件；主线过去模式会屏蔽记忆。手机记录影响正文可随时关闭，不会修改正文消息。实际每次注入数量见首页「运行日志」。</p>
           <button type="button" class="lp-settings-link" data-lp="saveContextSettings">保存记忆与互通设置</button>
-          <h2>打开方式</h2>
-          <label class="lp-entry-option"><input type="checkbox" data-lp="floatingLauncher" /> 显示悬浮按钮</label>
+          </div>
+          <div class="lp-settings-category" data-settings-category="data" hidden>
+          <h2>数据与诊断</h2>
+          <p class="lp-settings-hint">查看运行日志、API 错误及各应用的持久化记录。聊天导入导出请从咕叽聊的「聊天设置」进入。</p>
+          <button type="button" class="lp-settings-link" data-lp="settingsOpenDiagnostics">打开运行日志</button>
+          <p class="lp-settings-hint">记忆记录可在「记忆管理」中查看、修改、删除。删除操作只影响当前故事存档。</p>
+          </div>
           <div class="lp-settings-status" data-lp="settingsStatus" role="status" aria-live="polite"></div>
-          <p class="lp-settings-hint">咕叽咕机 · v0.10.0</p>
+          <p class="lp-settings-hint">咕叽咕机 · v0.19.0</p>
         </section>
         <section class="lp-screen lp-picker" data-lp-screen="presetPicker" hidden>
           <div class="lp-picker-head" data-lp="presetPickerTitle">预设</div>
