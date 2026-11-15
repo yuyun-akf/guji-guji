@@ -25,7 +25,7 @@ export function createPhoneMemoryModule(api){
    next[thread.id]=msgs.length;
    for(const m of msgs.slice(from)){
     if(!['user','character'].includes(m?.from)||!String(m.text||'').trim())continue;
-    lines.push({time:String(m.storyTime||d.storyTime||'').slice(0,19),
+    lines.push({contactId:thread.id,contactName:thread.name,time:String(m.storyTime||d.storyTime||'').slice(0,19),
      who:thread.name+'/'+(m.from==='user'?'user':'角色'),text:String(m.text).slice(0,650)});
    }
   }
@@ -53,7 +53,7 @@ export function createPhoneMemoryModule(api){
   if(!mem.entries.length){const p=document.createElement('p');p.textContent='暂无手机记忆，可设置周期或手动总结。';list.append(p);return;}
   for(const e of mem.entries.slice().reverse()){
    const d=document.createElement('details');d.className='lp-memory-entry';
-   const summary=document.createElement('summary');summary.textContent=e.from+' — '+e.to+' · '+e.count+' 条';
+   const summary=document.createElement('summary');summary.textContent=(e.contactName||'小手机')+' · '+e.from+' — '+e.to+' · '+e.count+' 条';
    const p=document.createElement('p');p.textContent=e.text;p.className='lp-memory-text';
    const input=document.createElement('textarea');input.hidden=true;input.value=e.text;input.maxLength=2800;
    const actions=document.createElement('div');actions.className='lp-memory-actions';
@@ -98,19 +98,42 @@ export function createPhoneMemoryModule(api){
     '总结以下已发生的手机聊天事实，不要扮演角色，不要推进剧情。',
     '禁止替 user 补写心理、动机、言行；未经证实的猜测必须写明未证实。',
     '只保留确认过的事件、关系阶段、约定和待解决问题，不能添加没有发生的事。',
-    '故事时间：'+start+' 至 '+now+'。请用简洁中文，限制800字以内。',
-    ...lines.map(x=>x.time+'｜'+x.who+'：'+x.text)
+    '故事时间：'+start+' 至 '+now+'。请用简洁中文分别总结各个聊天对象，每个摘要最多500字。',
+    '不同聊天对象的私聊绝不能混入其他聊天对象的记忆。每个 thread id 保持原样。',
+    '只输出 JSON：{"threads":[{"id":"main或npc:id","summary":"总结"}]}。每个出现的对话对象各一条，没有事实可不总结。',
+    ...lines.map(x=>'thread='+x.contactId+'｜'+x.time+'｜'+x.who+'：'+x.text)
    ].join('\n').slice(0,13500);
    const raw=await api.phoneGenerate(c,{task:'memory',maxTokens:2200,responseLength:2200,
     systemPrompt:'只总结已明确写出的剧情事实。',prompt:[{role:'user',content:prompt}]},d);
    if(ctx()?.chatMetadata!==origin||ctx()?.chatId!==chatId||ctx()?.characterId!==characterId)return false;
    const output=api.stripModelReasoning?.(raw)||raw;
-   const text=String(typeof output==='string'?output:output?.content||'').replace(/<think>[\s\S]*?<\/think>/gi,'').trim().slice(0,2800);
+   const text=String(typeof output==='string'?output:output?.content||'')
+    .replace(/<think>[\s\S]*?<\/think>/gi,'').trim();
    if(text.length<10)throw new Error('API 未返回可用的记忆摘要');
+   const byId=new Map();
+   for(const line of lines)byId.set(line.contactId,line.contactName);
+   let parsed;
+   try{
+    const json=text.replace(/^\s*```(?:json)?\s*/i,'').replace(/\s*```\s*$/,'');
+    parsed=JSON.parse(json);
+   }catch{parsed=null;}
+   let entries=(Array.isArray(parsed?.threads)?parsed.threads:[])
+    .filter(item=>byId.has(item?.id)&&typeof item.summary==='string'&&item.summary.trim().length>8)
+    .map(item=>({contactId:item.id,contactName:byId.get(item.id),text:item.summary.trim().slice(0,2200)}));
+   if(!entries.length&&byId.size===1){
+    const [contactId,contactName]=byId.entries().next().value;
+    entries=[{contactId,contactName,text:text.slice(0,2200)}];
+   }
+   // When a model fails to separate multiple private chats, keep the summary
+   // only for manual review; NEVER inject it into a character's context.
+   if(!entries.length&&byId.size>1)
+    entries=[{contactId:'private-review',contactName:'待人工核对（不注入角色）',text:text.slice(0,2200)}];
    await patch(latest=>{
     const m=latest.phoneMemory;
-    m.entries=[...m.entries,{id:'pm'+Date.now()+Math.random().toString(36).slice(2,7),
-     from:start,to:now,count:lines.length,text}].slice(-60);
+    m.entries=[...m.entries,...entries.map(entry=>({
+     ...entry,id:'pm'+Date.now()+Math.random().toString(36).slice(2,7),
+     from:start,to:now,count:lines.filter(l=>l.contactId===entry.contactId).length||lines.length
+    }))].slice(-60);
     m.lastDay=now;m.cursors={...m.cursors,...next};
    });
    feedback('已保存 '+lines.length+' 条聊天的记忆总结','success');
