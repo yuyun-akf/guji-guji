@@ -223,7 +223,7 @@ export function createWeiboModule(api) {
   api.updateHomeHotSearch?.();
  }
  const actionState=p=>data().posts.find(x=>x.id===p.id)?.actions||p.actions||{};
- const actor=p=>data().accounts.find(a=>(p.authorId&&a.id===p.authorId)||(p.author&&a.name===p.author)||(p.handle&&a.handle===p.handle));
+ const actor=p=>{const list=data().accounts;if(p.authorId){const a=list.find(x=>x.id===p.authorId);if(a)return a;}if(p.handle){const a=list.find(x=>x.handle&&x.handle===p.handle);if(a)return a;}const found=list.filter(x=>p.author&&x.name===p.author);return found.length===1?found[0]:null;};
  function allPosts(){
   const q=data();
   const legacy=(Array.isArray(root().weiboSaved)?root().weiboSaved:[]).filter(p=>p?.id).map(p=>({...p,zone:p.zone||'world'}));
@@ -244,30 +244,31 @@ export function createWeiboModule(api) {
   const author=clean(p.author||p.name,42),text=clean(p.text||p.content,1100);
   if(!author||!text)return null;
   const handle=clean(p.handle,50);
-  const acct=data().accounts.find(a=>a.name===author||(handle&&a.handle===handle));
+  const accounts=data().accounts,matching=accounts.filter(a=>a.name===author);
+  const acct=accounts.find(a=>handle&&a.handle&&a.handle===handle)||(matching.length===1?matching[0]:null);
   const comments=(Array.isArray(p.comments)?p.comments:[]).map(c=>
-   typeof c==='string'
-    ?{id:uid('c'),name:'网友',text:clean(c,350)}
-    :{id:uid('c'),name:clean(c?.name||c?.author||'网友',40),text:clean(c?.text||c?.content,350)}
+   typeof c==='string'?{id:uid('c'),name:'网友',text:clean(c,350)}:
+   {id:uid('c'),name:clean(c?.name||c?.author||'网友',40),text:clean(c?.text||c?.content,350)}
   ).filter(c=>c.text).slice(0,12);
   if(comments.length<2)return null;
-  // Model-supplied social scale belongs to each generated post, not the permanent account directory.
-  // Keep it stable for this feed; the next explicit refresh receives new independent model values.
-  const positive=value=>Number.isSafeInteger(Number(value))&&Number(value)>=0?Number(value):null;
-  const requestedLikes=positive(p.likes)??0;
-  const guessedFollowers=Math.max(100,Math.round(requestedLikes*(10+Math.random()*18)));
-  const followers=acct?.followers??positive(p.followers)??guessedFollowers;
-  const likes=Math.max(requestedLikes,followers>=1000000?Math.floor(followers*.00035):0);
-  const accountLikes=acct?.likesTotal??positive(p.accountLikes)??Math.max(likes,Math.floor(likes*(7+Math.random()*14)));
-  const accountComments=acct?.commentsTotal??positive(p.accountComments)??Math.max(comments.length,Math.floor(accountLikes*(.009+Math.random()*.028)));
-  const followingCount=acct?.followingCount??positive(p.followingCount)??Math.floor(Math.random()*Math.min(followers+1,750));
+  const requestedLikes=countValue(p.likes);
+  const guessedFollowers=Math.max(100,Math.round((requestedLikes||120)*(10+Math.random()*18)));
+  const followers=acct?.followers??countValue(p.followers)??guessedFollowers;
+  const floor=followers>=100000?Math.floor(followers*(.0015+stableSeed(author+handle)*.0025)):0;
+  const likes=Math.max(requestedLikes??0,floor);
+  const baseline=estimateMetrics({...p,name:author,handle,followers,
+   profession:acct?.profession||p.category,kind:acct?.kind||p.category,
+   likesTotal:acct?.likesTotal??p.accountLikes,commentsTotal:acct?.commentsTotal??p.accountComments,
+   followingCount:acct?.followingCount??p.followingCount},{correctImplausible:!acct});
+  const commentCount=Math.max(comments.length,countValue(p.commentCount)??Math.round(likes*(.015+stableSeed(text)*.032)));
   return {id:uid('post'),author,handle:acct?.handle||handle,authorId:acct?.id||'',avatar:acct?.avatar||'',category:clean(p.category||'日常',24),
-   text,comments,likes:Math.min(9999999999,likes),followers,accountLikes,accountComments,followingCount,
+   text,comments,likes:Math.min(9999999999,likes),commentCount,
+   followers,accountLikes:baseline.likesTotal,accountComments:baseline.commentsTotal,followingCount:baseline.followingCount,
    zone,time:root().storyTime||'',actions:{}};
  }
  function prompt(count,zone,topic='',withTrend=false){
   const q=data(),r=root(),char=api.selectedCharacter(context()),nearby=zone==='nearby';
-  const accounts=q.accounts.slice(0,25).map(a=>a.name+'（@'+(a.handle||a.id)+'；'+publicAccountDescription(a)+'）').join('、');
+  const accounts=q.accounts.slice(0,25).map(publicAccountInfo).join('、');
   const followed=q.accounts.filter(a=>q.following.includes(a.id)).map(a=>a.name).join('、');
   const known=(r.contacts||[]).slice(0,18).map(a=>a.name+'：'+clean(a.description,80)).join('；');
   const contextText=clean(api.storyContext?.()||'',2100);
@@ -280,10 +281,10 @@ export function createWeiboModule(api) {
    '允许陌生网友完全讨论无关主题，勿全围绕角色。公众人物可以合理上热搜，但不要每条都写成公共事件。',
    '营造真实复杂的互联网：多数网友正常且观点各异，偶尔可以有0至1个理直气壮、反常识到令人怀疑的“神人”发言，让其他网友有自然吐槽或反驳；题材随机覆盖职场、学习、生活、饭圈、科技、性别刻板印象等，不要总围绕男女关系，也不要把偏激观点当事实。',
    '每条帖子配2至5条不同语气的评论，允许争论与冷幽默、网络流行语，但不要每条都是段子。',
-   '每个临时网友／媒体／机构账号，必须独立设定合理的粉丝数followers、累计获赞accountLikes、累计获评accountComments、关注数followingCount，全部为非负整数；结合账号类型与规模生成本条点赞likes，几千万粉丝的正常发帖不应随意仅有几百赞。不同账号可以差异很大；此数据只属于本次内容，不需要永久登记账号。',
+   '账号早已在世界里长期运营，不是第一次刷到才注册！输出粉丝followers、历史累计获赞accountLikes、累计获评accountComments、关注followingCount、本帖likes和本帖评论总数commentCount。80万粉丝成熟媒体号累计获赞通常有几十万到千万以上，不能只计算本条新帖。评论列表展示2到5条样本即可，不等于评论总数。临时账号只属于本轮浏览，无需永久登记。',
    nearby?'若角色或 user 仍在校（从资料判断，不能直接假设已毕业），校园日常占多数：表白墙、选课考试、老师答疑、寝室、社团活动、求助和吐槽；其他帖子可来自已关注账号以及工作、剧组、生活圈。不得把远方已关注者说成就在附近；不凭空编造真实城市、学校名或隐私。':'全球动态有大小事之分，不要人人都在热榜。',
    topic?'帖子主题：'+topic:'',
-   '只输出合法紧凑 JSON：{"posts":[{"author":"作者昵称","handle":"@账号","category":"类别","text":"正文","followers":36000,"followingCount":80,"accountLikes":258000,"accountComments":5900,"likes":2300,"comments":[{"name":"评论昵称","text":"内容"}]}],"headline":"本轮公开热议话题"}。',
+   '只输出合法紧凑 JSON：{"posts":[{"author":"作者昵称","handle":"@账号","category":"类别","text":"正文","followers":36000,"followingCount":80,"accountLikes":258000,"accountComments":5900,"likes":2300,"commentCount":128,"comments":[{"name":"评论昵称","text":"内容"}]}],"headline":"本轮公开热议话题"}。',
    '生成'+count+'条相互独立、有作者、正文和评论的帖子。headline仅是一个简短话题标题，用于小手机桌面入口，不要返回整张热榜。不要markdown、不要思维过程。'
   ].filter(Boolean).join('\n');
  }
@@ -293,14 +294,14 @@ export function createWeiboModule(api) {
    '为完全虚构的剧情社交平台「群星」一次性生成完整世界热搜榜。剧情时间：'+(r.storyTime||'未设置')+'。',
    '主角：'+(char?.name||'未选择')+'；角色公开身份：'+clean(char?.description,650)+'。',
    '故事已知人物：'+(r.contacts||[]).slice(0,15).map(p=>p.name+'：'+clean(p.description,65)).join('、')+'。',
-   '已有公众账号：'+q.accounts.slice(0,20).map(a=>a.name+'：'+clean(a.bio,60)).join('、')+'。近期剧情：'+clean(api.storyContext?.()||'',1400)+'。',
+   '已知公开账号：'+q.accounts.slice(0,20).map(publicAccountInfo).join('、')+'。近期剧情：'+clean(api.storyContext?.()||'',1400)+'。',
    '所有话题和帖子都是故事中的公开内容，严禁曝光私聊、未公开身份、用户内心或虚构尚未发生的事件；普通人不可无缘无故成为全国热点。',
    '热榜15条内容需分布在社会、影视、生活、搞笑、教育、科技、时尚、体育、游戏、音乐、娱乐等领域，不要15条都围绕主角。',
    '每条热搜都必须同时给出标题、摘要、至少1篇完整帖子以及对应2至3条不同立场的评论；允许部分热搜有2篇帖子，但请优先确保15条齐全。',
-   '每个临时帖子作者输出非负整数followers、followingCount、accountLikes、accountComments与本帖likes；互动规模与职业和粉丝数相符。本轮刷新独立生成，避免所有账号都只有几百或几千赞。',
+   '所有账号早已存在，需分别生成followers、followingCount、accountLikes、accountComments、likes和commentCount非负整数。媒体号80万粉丝的历史累计获赞通常至少几十万，不能把累计当成单篇赞数；评论列表仅展示样本。临时账号不用永久登记。',
    '偶尔最多1条热搜或评论可以出现离谱却很自信的“神人”观点，其他网友可以反驳或吐槽；不能每条都刻意降智，不局限于性别话题。',
    '只能调用这一次生成完成热榜与其讨论内容，点击具体话题时不允许还需要额外生成。',
-   '请仅输出JSON，不要markdown：{"topics":[{"title":"热搜短标题","category":"分类","summary":"一两句背景","posts":[{"author":"网友昵称","handle":"@账号","category":"分类","text":"完整帖子","followers":120000,"followingCount":200,"accountLikes":400000,"accountComments":8000,"likes":12900,"comments":[{"name":"网友","text":"评论"}]}]}]}。',
+   '请仅输出JSON，不要markdown：{"topics":[{"title":"热搜短标题","category":"分类","summary":"一两句背景","posts":[{"author":"网友昵称","handle":"@账号","category":"分类","text":"完整帖子","followers":120000,"followingCount":200,"accountLikes":400000,"accountComments":8000,"likes":12900,"commentCount":860,"comments":[{"name":"网友","text":"评论"}]}]}]}。',
    '精确生成15个topics，标题互不重复，每个topic的posts必须非空。尽量紧凑。'
   ].join('\n');
  }
@@ -633,6 +634,8 @@ export function createWeiboModule(api) {
    comments.append(line);
   }
   if(comments.childNodes.length)box.append(comments);
+  if(p.commentCount!=null&&Number(p.commentCount)>0)
+   box.append(el('div','lp-wb-comment-total','评论 '+Number(p.commentCount).toLocaleString('zh-CN')));
   const a=actionState(p),actions=el('div','lp-wb-actions lp-wb-actions-inline');
   const like=control((a.liked?'♥ ':'♡ ')+((p.likes||0)+(a.liked?1:0)),'like',p.id,a.liked);
   like.title=a.liked?'取消点赞':'点赞';like.classList.add('lp-wb-action-compact');
