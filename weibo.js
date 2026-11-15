@@ -82,7 +82,11 @@ export function createWeiboModule(api) {
   if(!author||!text)return null;
   const handle=clean(p.handle,50);
   const acct=data().accounts.find(a=>a.name===author||(handle&&a.handle===handle));
-  const comments=(Array.isArray(p.comments)?p.comments:[]).map(c=>({id:uid('c'),name:clean(c.name||c.author||'网友',40),text:clean(c.text||c.content,350)})).filter(c=>c.text).slice(0,12);
+  const comments=(Array.isArray(p.comments)?p.comments:[]).map(c=>
+   typeof c==='string'
+    ?{id:uid('c'),name:'网友',text:clean(c,350)}
+    :{id:uid('c'),name:clean(c?.name||c?.author||'网友',40),text:clean(c?.text||c?.content,350)}
+  ).filter(c=>c.text).slice(0,12);
   return {id:uid('post'),author,handle:acct?.handle||handle,authorId:acct?.id||'',avatar:acct?.avatar||'',category:clean(p.category||'日常',24),
    text,comments,likes:Math.max(0,Math.min(9999999,Number(p.likes)||0)),zone,time:root().storyTime||'',actions:{}};
  }
@@ -202,7 +206,7 @@ export function createWeiboModule(api) {
     const title=clean(row?.title,65);if(!title||topics.some(t=>t.title===title))continue;
     const posts=(Array.isArray(row.posts)?row.posts:[])
      .map(post=>normalize(post,'world')).filter(Boolean).slice(0,3);
-    if(!posts.length)continue;
+    if(!posts.length||!posts.some(p=>p.comments.length))continue;
     const category=clean(row.category||'热议',22),summary=clean(row.summary,350);
     topics.push({title,category,summary,preview:clean(posts[0].text,90),postCount:posts.length});
     bundles[topicKey('home',title)]={title,zone:'home',summary,posts};
