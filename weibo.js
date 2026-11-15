@@ -54,7 +54,7 @@ export function createWeiboModule(api) {
   state.topic=null;state.detail='';state.tab='home';state.subview='';
  }
  function headline(){
-  return state.trends[0]?.title||state.headline||data().trends?.[0]?.title||'今天有什么新鲜事';
+  return state.trends[0]?.title||state.headline||root()?.qunxing?.hotHeadline||data().trends?.[0]?.title||'今天有什么新鲜事';
  }
  function updateHomeHeadline(){
   api.updateHomeHotSearch?.();
@@ -162,7 +162,11 @@ export function createWeiboModule(api) {
    if(all.length<3)throw Error('本次有效帖子不足，请点击刷新重试');
    // Replaces this zone only on an explicit refresh or a new phone session.
    state.posts[nearby?'nearby':'home']=all.slice(0,nearby?12:10);
-   if(headlineCandidate){state.headline=headlineCandidate;updateHomeHeadline();}
+   if(headlineCandidate){
+    state.headline=headlineCandidate;updateHomeHeadline();
+    // Preserve only the short desktop headline, not any generated feed or comments.
+    await mutate(q=>{q.hotHeadline=headlineCandidate;});
+   }
    feedback('已更新 '+all.length+' 条'+name+'动态');
    api.recordActivity?.('群星刷新',name+'：'+all.length+' 条','success');
   }catch(e){
@@ -207,7 +211,8 @@ export function createWeiboModule(api) {
    if(!topics.length)throw Error('热搜生成没有返回可用的帖子与评论');
    state.trends=topics;state.hotBundles=bundles;
    state.headline=topics[0].title;updateHomeHeadline();
-   feedback('已生成 '+topics.length+'/15 条热搜及对应讨论'+(topics.length<15?'；可以手动刷新补全':''));
+   await mutate(q=>{q.hotHeadline=topics[0].title;});
+   feedback('已生成 '+topics.length+'/15 条热搜及对应讨论'+(topics.length<15?'；模型返回不足15条，可手动重试':''));
    api.recordActivity?.('群星热搜','生成 '+topics.length+' 条热搜及对应帖子','success');
   }catch(error){
    state.attempted.hot=false;
