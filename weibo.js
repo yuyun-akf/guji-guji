@@ -1,4 +1,4 @@
-/* 群星 · story-aware public social feed. Persists identities and interactions per story chat. */
+/* 群星 · character-card accounts + per-story persistent generated feeds and interactions. */
 export function createWeiboModule(api) {
  const state={scope:'',tab:'home',detail:'',topic:null,subview:'',posts:{home:[],nearby:[]},trends:[],nearbyTrends:[],loading:false,hotLoading:false,attempted:{},token:0,sessionId:0,headline:'',hotBundles:{},queuedNearby:false,confirming:false,editing:'',avatarDraft:'',avatarOwnerDraft:'',candidates:[],scanLoading:false,scanMessage:''};
  let writes=Promise.resolve(), autoBusy=false,closeHotConfirmation=null;
@@ -10,19 +10,32 @@ export function createWeiboModule(api) {
  const clean=(s,n=100)=>String(s||'').trim().slice(0,n);
  const data=()=>{
   const r=root(),q=r.qunxing||{};
+  // NPC/character identities are shared across chats of this character card.
+  // Random followed users remain local to each story chat.
+  const ownAccounts=Array.isArray(q.accounts)?q.accounts:[];
+  const shared=api.readSharedAccounts?.();
+  const accounts=Array.isArray(shared)
+   ?[...ownAccounts.filter(a=>a?.source!=='manual'),...shared]
+   :ownAccounts;
   return {profile:{nickname:api.currentPersona(context())?.name||context()?.name1||'我',handle:'',bio:'',avatar:'',followers:0,...q.profile},
-   accounts:Array.isArray(q.accounts)?q.accounts:[],
+   accounts,generated:q.generated&&typeof q.generated==='object'?q.generated:{},
    following:Array.isArray(q.following)?q.following:[],
    posts:Array.isArray(q.posts)?q.posts:[],topicDetails:q.topicDetails&&typeof q.topicDetails==='object'?q.topicDetails:{},
    trends:Array.isArray(q.trends)?q.trends:[],nearbyTrends:Array.isArray(q.nearbyTrends)?q.nearbyTrends:[],
    settings:{...defaults,...q.settings},lastAutoStoryMinute:Number(q.lastAutoStoryMinute)||0};
  };
  async function mutate(change){
+  const c=context(),metadata=c?.chatMetadata;
   const task=writes.then(async()=>{
-   const c=context(),r=structuredClone(api.readRootData(c)),q=data();
+   if(context()?.chatMetadata!==metadata)throw Error('故事存档已切换，已取消旧存档写入');
+   const r=structuredClone(api.readRootData(c)),q=data();
+   const oldManual=q.accounts.filter(a=>a?.source==='manual');
    const result=change(q,r);
    r.qunxing=q;
    await api.writeData(c,{...r,__contactId:'primary'});
+   const newManual=q.accounts.filter(a=>a?.source==='manual');
+   if(JSON.stringify(oldManual)!==JSON.stringify(newManual))
+    await api.saveSharedAccounts?.(newManual,c);
    return result;
   });
   writes=task.catch(()=>{});
@@ -40,18 +53,57 @@ export function createWeiboModule(api) {
  function reset(){
   const next=scope();if(next===state.scope)return;
   closeHotConfirmation?.(false);
-  state.scope=next;state.tab='home';state.detail='';state.topic=null;state.subview='';state.posts={home:[],nearby:[]};state.candidates=[];state.scanMessage='';state.scanLoading=false;
-  state.trends=[];state.nearbyTrends=[];state.hotBundles={};state.headline='';
-  state.attempted={};state.loading=false;state.hotLoading=false;state.queuedNearby=false;
+  // Migrate existing manual accounts from the current chat once per character.
+  // An explicitly saved empty role directory means previously deleted accounts
+  // must not be resurrected by an older story chat.
+  api.ensureSharedAccounts?.();
+  state.scope=next;state.tab='home';state.detail='';state.topic=null;state.subview='';
+  state.candidates=[];state.scanMessage='';state.scanLoading=false;
+  const stored=data().generated;
+  const feeds=stored?.feeds||{};
+  state.posts={
+   home:Array.isArray(feeds.home)?feeds.home.slice(0,10):[],
+   nearby:Array.isArray(feeds.nearby)?feeds.nearby.slice(0,12):[]
+  };
+  state.trends=Array.isArray(stored.trends)?stored.trends.slice(0,15):[];
+  state.nearbyTrends=[];
+  state.hotBundles=stored.hotBundles&&typeof stored.hotBundles==='object'?stored.hotBundles:{};
+  state.headline=clean(stored.headline,60);
+  state.attempted={
+   world:stored.attempted?.world===true||state.posts.home.length>0,
+   nearby:stored.attempted?.nearby===true||state.posts.nearby.length>0,
+   hot:stored.attempted?.hot===true||state.trends.length>0
+  };
+  state.loading=false;state.hotLoading=false;state.queuedNearby=false;
   state.token++;state.sessionId++;
  }
  function endPhoneSession(){
+  // Closing the virtual phone must NEVER erase generated posts or hot topics.
+  // In-flight requests are allowed to finish and save to the same story chat.
   closeHotConfirmation?.(false);
-  // Only closing the entire phone clears transient generated content.
-  reset();state.sessionId++;state.token++;state.loading=false;state.hotLoading=false;
-  state.posts={home:[],nearby:[]};state.trends=[];state.nearbyTrends=[];
-  state.hotBundles={};state.headline='';state.queuedNearby=false;state.attempted={};
-  state.topic=null;state.detail='';state.tab='home';state.subview='';
+  state.detail='';state.topic=null;state.subview='';state.tab='home';
+ }
+ async function persistGenerated(kind,extra={}){
+  const session=scope();
+  const posts=kind==='home'||kind==='nearby'
+   ?structuredClone(state.posts[kind]):null;
+  const trends=kind==='hot'?structuredClone(state.trends):null;
+  const hotBundles=kind==='hot'?structuredClone(state.hotBundles):null;
+  const attempted=state.attempted[kind==='home'?'world':kind];
+  const headlineText=state.headline;
+  return mutate(q=>{
+   if(scope()!==session)throw Error('故事存档已切换，取消保存旧动态');
+   const previous=q.generated&&typeof q.generated==='object'?q.generated:{};
+   const feeds={...(previous.feeds||{})};
+   if(posts!==null)feeds[kind]=posts;
+   q.generated={
+    ...previous,feeds,
+    ...(trends!==null?{trends,hotBundles}:{}),
+    headline:headlineText||previous.headline||'',
+    attempted:{...(previous.attempted||{}),[kind==='home'?'world':kind]:attempted===true}
+   };
+   if(extra.hotHeadline)q.hotHeadline=extra.hotHeadline;
+  });
  }
  function headline(){
   return state.trends[0]?.title||state.headline||root()?.qunxing?.hotHeadline||data().trends?.[0]?.title||'今天有什么新鲜事';
