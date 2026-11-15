@@ -3027,7 +3027,7 @@
 }
 #st-little-phone-root[data-motion="standard"] .lp-panel :is(button,summary,[role="button"]).lp-press-down:not(.lp-desktop-app),
 #st-little-phone-root[data-motion="standard"] .lp-panel :is(button,summary,[role="button"]):active:not(.lp-desktop-app){
- transform:scale(.953)!important;filter:brightness(.96);
+ transform:scale(.94)!important;filter:brightness(.96);
 }
 @keyframes lpInteractionBounce{
  0%{transform:scale(.965);}
@@ -3474,7 +3474,7 @@
 /* v0.25: per-touch ripple, purposeful primary-button spring, like particles, animated checks.
    Keep all effects scoped to the virtual phone and independent of story data. */
 #st-little-phone-root .lp-ripple-host {
- position:relative;isolation:isolate;overflow:hidden;
+ isolation:isolate;overflow:hidden;
 }
 #st-little-phone-root .lp-touch-ripple {
  position:absolute;z-index:1;display:block;border-radius:50%;
