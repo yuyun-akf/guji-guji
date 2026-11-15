@@ -1,6 +1,6 @@
 /* 群星 · character-card accounts + per-story persistent generated feeds and interactions. */
 export function createWeiboModule(api) {
- const state={scope:'',tab:'home',detail:'',topic:null,profileAccount:'',searchQuery:'',sharingId:'',subview:'',posts:{home:[],nearby:[]},trends:[],nearbyTrends:[],loading:false,hotLoading:false,attempted:{},token:0,sessionId:0,headline:'',hotBundles:{},queuedNearby:false,confirming:false,editing:'',avatarDraft:'',avatarOwnerDraft:'',candidates:[],scanLoading:false,scanMessage:''};
+ const state={scope:'',tab:'home',detail:'',topic:null,profileAccount:'',historyEditingId:'',historyFormOpen:false,searchQuery:'',sharingId:'',subview:'',posts:{home:[],nearby:[]},trends:[],nearbyTrends:[],loading:false,hotLoading:false,attempted:{},token:0,sessionId:0,headline:'',hotBundles:{},queuedNearby:false,confirming:false,editing:'',avatarDraft:'',avatarOwnerDraft:'',candidates:[],scanLoading:false,scanMessage:''};
  let writes=Promise.resolve(), autoBusy=false,closeHotConfirmation=null;
  const context=()=>api.context(), nodes=()=>api.getNodes(), root=()=>api.readRootData(context());
  const uid=(prefix='qx')=>prefix+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
@@ -124,7 +124,7 @@ export function createWeiboModule(api) {
   // An explicitly saved empty role directory means previously deleted accounts
   // must not be resurrected by an older story chat.
   api.ensureSharedAccounts?.();
-  state.scope=next;state.tab='home';state.detail='';state.topic=null;state.profileAccount='';state.searchQuery='';state.sharingId='';state.subview='';
+  state.scope=next;state.tab='home';state.detail='';state.topic=null;state.profileAccount='';state.historyEditingId='';state.historyFormOpen=false;state.searchQuery='';state.sharingId='';state.subview='';
   state.candidates=[];state.scanMessage='';state.scanLoading=false;
   const stored=data().generated;
   const feeds=stored?.feeds||{};
@@ -148,7 +148,7 @@ export function createWeiboModule(api) {
   // Closing the virtual phone must NEVER erase generated posts or hot topics.
   // In-flight requests are allowed to finish and save to the same story chat.
   closeHotConfirmation?.(false);
-  state.detail='';state.topic=null;state.profileAccount='';state.sharingId='';state.subview='';state.tab='home';
+  state.detail='';state.topic=null;state.profileAccount='';state.historyEditingId='';state.historyFormOpen=false;state.sharingId='';state.subview='';state.tab='home';
  }
  async function persistGenerated(kind,extra={}){
   const session=scope();
@@ -465,6 +465,63 @@ export function createWeiboModule(api) {
    container.append(button);
   }
  }
+
+ const parseCommentLines=value=>{
+  return String(value||'').split(/\r?\n/).map(line=>line.trim()).filter(Boolean).slice(0,50)
+   .map(line=>{
+    const index=line.search(/[:：]/);
+    return {id:uid('comment'),name:index>0?clean(line.slice(0,index),40):'网友',
+     text:clean(index>0?line.slice(index+1):line,350)};
+   }).filter(x=>x.text);
+ };
+ const commentsToLines=comments=>(comments||[]).map(c=>c.name+'：'+c.text).join('\n');
+ const historicalLikeRange=followers=>{
+  const n=Math.max(0,Number(followers)||0);
+  if(n>=1000000)return {min:Math.max(1000,Math.floor(n*.0005)),max:Math.max(100000,Math.floor(n*.06))};
+  return {min:0,max:Math.max(30,Math.floor(n*.5))};
+ };
+ function renderHistoryEditor(container,account,history){
+  if(account.source!=='manual')return;
+  const record=history.find(x=>x.id===state.historyEditingId);
+  const panel=el('details','lp-wb-history-editor');
+  panel.open=Boolean(state.historyFormOpen||state.historyEditingId);
+  panel.append(el('summary','','＋ 历史帖管理 · 代发／修改／按要求生成'));
+  panel.append(el('small','lp-wb-history-hint',
+   '仅影响当前剧情存档中的群星资料；手动填写不会调用模型，AI 生成需主动点击。'));
+  const form=el('div','lp-wb-history-form');
+  const field=(name,title,value='',type='text')=>{
+   const label=el('label','lp-wb-history-field');
+   label.append(el('span','',title));
+   const input=type==='textarea'?document.createElement('textarea'):document.createElement('input');
+   if(type!=='textarea')input.type=type;
+   input.dataset.wbHistoryField=name;input.value=String(value??'');
+   label.append(input);form.append(label);return input;
+  };
+  const base=root().storyTime||'';
+  const fallback=Number.isFinite(Date.parse(base))?new Date(Date.parse(base)-86400000).toISOString().slice(0,16):'';
+  field('time','发布时间（故事时间）',(record?.time&&record.time!=='历史动态'?record.time:fallback).slice(0,16),'datetime-local');
+  field('text','帖子正文（以该角色账号发布）',record?.text||'','textarea');
+  field('likes','点赞数（可以手动指定）',record?.likes??'','number');
+  field('comments','评论（每行一条，例如 粉丝甲：内容）',commentsToLines(record?.comments),'textarea');
+  const row=el('div','lp-wb-history-actions');
+  row.append(control(record?'保存历史帖修改':'以该角色身份添加历史帖',
+   'saveHistoryPost',account.id));
+  if(record)row.append(control('取消编辑','cancelHistoryEdit',account.id),
+   control('删除这条历史帖','deleteHistoryPost',record.id));
+  form.append(row);
+  const promptLabel=el('label','lp-wb-history-field');
+  promptLabel.append(el('span','','AI 生成额外要求（可选）'));
+  const requirements=document.createElement('textarea');requirements.dataset.wbHistoryField='instructions';
+  requirements.placeholder='例如：三条剧组日常，语气符合角色卡，不写恋爱内容；评论以粉丝为主';
+  promptLabel.append(requirements);form.append(promptLabel);
+  const countLabel=el('label','lp-wb-history-field');
+  countLabel.append(el('span','','一次生成几条'));
+  const select=document.createElement('select');select.dataset.wbHistoryField='count';
+  for(const n of [1,3,5]){const option=document.createElement('option');option.value=n;option.textContent=n+' 条';select.append(option);}
+  select.value='3';countLabel.append(select);form.append(countLabel);
+  form.append(control('按上述要求生成历史帖（调用模型）','generateAccountHistory',account.id));
+  panel.append(form);container.append(panel);
+ }
  function renderAccountProfile(container){
   const p=state.profileAccount;
   const source=p.startsWith('post:')?byId(p.slice(5)):null;
@@ -494,11 +551,14 @@ export function createWeiboModule(api) {
   ];
   for(const [label,value] of display){const tile=el('div');tile.append(el('strong','',value),el('small','',label));stats.append(tile);}
   head.append(stats);container.append(head);
+  renderHistoryEditor(container,account,history);
   container.append(heading('公开动态','按已保存的故事时间排序'));
-  for(const item of history.slice(0,80))container.append(card(item,false));
+  for(const item of history.slice(0,80)){
+   container.append(card(item,false));
+   if(account.source==='manual')container.append(control('编辑此条历史帖','editHistoryPost',item.id));
+  }
   if(!history.length)container.append(el('p','lp-wb-empty','还没有记录该账号的公开动态。'));
-  if(account.source==='manual'&&history.length<80)
-   container.append(control('生成过往公开动态（会调用一次模型）','generateAccountHistory',account.id));
+
  }
  function card(p,detailed=false){
   const box=el('article','lp-wb-card');
@@ -578,9 +638,12 @@ export function createWeiboModule(api) {
    wrap.append(heading('关注列表','取消关注不删除已经保存的账号资料'));
    const list=q.accounts.filter(a=>q.following.includes(a.id));
    for(const a of list){
-    const line=el('div','lp-wb-account-line');
-    line.append(avatar(a.avatar,a.name),control(a.name+' '+(a.handle||''),'openAccount',a.id),
-      control('取消关注','unfollowAccount',a.id));wrap.append(line);
+    const line=el('div','lp-wb-account-line lp-wb-follow-row');
+    const open=control('','openAccount',a.id);
+    open.classList.add('lp-wb-follow-link');
+    open.setAttribute('aria-label','打开 '+a.name+' 的个人主页');
+    open.append(avatar(a.avatar,a.name),el('span','',a.name+' '+(a.handle||'')));
+    line.append(open,control('取消关注','unfollowAccount',a.id));wrap.append(line);
    }
    if(!list.length)wrap.append(el('p','lp-wb-empty','还没有关注任何账号'));
   }else{
