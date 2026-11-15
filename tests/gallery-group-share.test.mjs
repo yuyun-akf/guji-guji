@@ -101,8 +101,8 @@ test('groups preserve a shared-post snapshot inside the current story, without a
  saved.groupChats=[];assert.equal(saved.groupChats.length,0,'another story would have its own groups');
 });
 test('Qunxing keeps repost separate from sharing to chat or groups',()=>{
- assert.match(weibo,/control\('转发','repost'/);
- assert.match(weibo,/control\('分享','share'/);
+ assert.match(weibo,/control\('转发到我的群星','repost'/);
+ assert.match(weibo,/control\('分享','shareMenu'/);
  assert.match(weibo,/api\.sharePost\?\.\(p\)/);
  assert.match(weibo,/publishAlbumPhoto\(photo,caption\)/);
  assert.match(weibo,/photo\.owner!=='user'\|\|photo\.access!=='public'/);
