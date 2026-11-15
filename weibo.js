@@ -196,7 +196,7 @@ export function createWeiboModule(api) {
      feeds[kind]=posts;
      // Keep the public history of known/followed authors when their feed refreshes.
      for(const post of posts){
-      const author=q.accounts.find(a=>a.id===post.authorId||(post.handle&&a.handle===post.handle)||a.name===post.author);
+      const author=accountForPost(post,q.accounts);
       if(author&&(author.source==='manual'||q.following.includes(author.id))&&!q.posts.some(old=>old.id===post.id))
        q.posts.push({...post,authorId:author.id});
      }
@@ -223,6 +223,16 @@ export function createWeiboModule(api) {
   api.updateHomeHotSearch?.();
  }
  const actionState=p=>data().posts.find(x=>x.id===p.id)?.actions||p.actions||{};
+ const accountForPost=(p,accounts=data().accounts)=>{
+  if(p.authorId){const match=accounts.find(a=>a.id===p.authorId);if(match)return match;}
+  if(p.handle){const match=accounts.find(a=>a.handle&&a.handle===p.handle);if(match)return match;}
+  const names=accounts.filter(a=>p.author&&a.name===p.author);return names.length===1?names[0]:null;
+ };
+ const isPermanentPost=(p,q=data())=>{
+  const account=accountForPost(p,q.accounts);
+  return Boolean(p?.actions?.owned||p?.autoPublished||p?.manuallyCurated||p?.backfilled||p?.repostOf||
+   account&&(account.source==='manual'||q.following.includes(account.id)));
+ };
  const actor=p=>{const list=data().accounts;if(p.authorId){const a=list.find(x=>x.id===p.authorId);if(a)return a;}if(p.handle){const a=list.find(x=>x.handle&&x.handle===p.handle);if(a)return a;}const found=list.filter(x=>p.author&&x.name===p.author);return found.length===1?found[0]:null;};
  function allPosts(){
   const q=data();
@@ -969,7 +979,7 @@ export function createWeiboModule(api) {
 
  async function followPost(p,enabled){
   await mutate(q=>{
-   let account=q.accounts.find(a=>a.id===p.authorId||(p.handle&&a.handle===p.handle)||a.name===p.author);
+   let account=accountForPost(p,q.accounts);
    if(!account&&enabled){
     account={id:uid('account'),name:p.author,handle:p.handle||'',avatar:p.avatar||'',bio:'',kind:'网友',publicFigure:false,followers:p.followers??0,followingCount:p.followingCount??null,likesTotal:p.accountLikes??null,commentsTotal:p.accountComments??null,source:'follow'};
     q.accounts.push(account);
