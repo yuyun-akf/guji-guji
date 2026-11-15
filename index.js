@@ -1,5 +1,5 @@
 /**
- * GujiGuji v0.16.0: a modular phone shell with isolated per-chat context.
+ * GujiGuji v0.17.0: a modular phone shell with isolated per-chat context.
  * No direct host-module imports; uses only the documented context surface.
  */
 
@@ -785,6 +785,7 @@ function applyTheme(){
   screen.style.setProperty('background-size','cover','important');
  }
  for(const span of root.querySelectorAll('[data-lp-icon]'))span.innerHTML=phoneIconMarkup(span.dataset.lpIcon);
+ phoneInteraction?.sync();
  if(nodes?.themeFont)nodes.themeFont.value=root.dataset.font;
  renderThemeSelector(theme);
  if(nodes?.themeDesktopIconSize)nodes.themeDesktopIconSize.value=String(theme.desktopIconSize||34);
@@ -2808,6 +2809,7 @@ function setStatus(message, kind = 'info') {
         nodes.settingsStatus.dataset.kind = kind;
     }
     if (nodes && !busy) nodes.diagnosticState.textContent = statusText || '空闲';
+    if(statusText)phoneInteraction?.fromStatus(statusText,kind);
 }
 
 function redactDiagnostic(text) {
@@ -2839,6 +2841,7 @@ function recordError(stage, error) {
     const stack = error?.stack ? '\n' + redactDiagnostic(String(error.stack).split('\n').slice(1, 3).join('\n')) : '';
     const entry = recordActivity(stage, detail + category + stack, 'error', code);
     console.error('[GujiGuji]', stage, entry.detail);
+    notifyInteraction(stage+'失败：'+detail,'error');
     return `操作失败：${detail}${code ? `（${redactDiagnostic(code)}）` : ''}`;
 }
 
@@ -2888,11 +2891,11 @@ async function scanQunxingAccounts(extraWorld=''){
 async function loadWeiboController(){
  if(weiboController)return weiboController;
  if(weiboLoadPromise)return weiboLoadPromise;
- weiboLoadPromise=import('./weibo.js?v=0.16.0').then(module=>{
+ weiboLoadPromise=import('./weibo.js?v=0.17.0').then(module=>{
   weiboController=module.createWeiboModule({
    context,getNodes:()=>nodes,readRootData,writeData,readData,phoneGenerate,
    selectedCharacter,currentPersona,stripModelReasoning,publishPhoneAppEvent,
-   recordActivity,recordError,storyContext:weiboStoryContext,scanAccounts:scanQunxingAccounts
+   recordActivity,recordError,notifyInteraction,storyContext:weiboStoryContext,scanAccounts:scanQunxingAccounts
   });return weiboController;
  }).catch(error=>{
   if(nodes?.weiboFeedback)nodes.weiboFeedback.textContent='群星加载失败：'+String(error.message||error);
@@ -2904,7 +2907,7 @@ async function loadWeiboController(){
 async function loadShoppingController(){
  if(shoppingController)return shoppingController;
  if(shoppingLoadPromise)return shoppingLoadPromise;
- shoppingLoadPromise=import('./shopping.js?v=0.16.0').then(module=>{
+ shoppingLoadPromise=import('./shopping.js?v=0.17.0').then(module=>{
   shoppingController=module.createShoppingModule({context,getNodes:()=>nodes});
   return shoppingController;
  }).catch(error=>{
@@ -2918,11 +2921,11 @@ async function loadShoppingController(){
 async function loadTakeoutController(){
  if(takeoutController)return takeoutController;
  if(takeoutLoadPromise)return takeoutLoadPromise;
- takeoutLoadPromise=import('./takeout.js?v=0.16.0').then(module=>{
+ takeoutLoadPromise=import('./takeout.js?v=0.17.0').then(module=>{
   takeoutController=module.createTakeoutModule({
    context,getNodes:()=>nodes,readRootData,writeData,readData,currentPersona,
    walletChargeOrder,walletRefundOrder,walletMoney,phoneGenerate,stripModelReasoning,
-   storyScenePreview,recordError
+   storyScenePreview,recordError,notifyInteraction
   });
   return takeoutController;
  }).catch(error=>{
@@ -2933,10 +2936,169 @@ async function loadTakeoutController(){
  });
  return takeoutLoadPromise;
 }
-function setScreen(screen) {
+/* Shared interaction system for every GujiGuji app. No SillyTavern data is modified here. */
+const MOTION_OPTIONS=new Set(['off','gentle','standard']);
+
+function createInteractionController({getRoot,getNodes,getMode,onError}){
+ let boundRoot=null,pressed=null,toastTimer=null,portal=null;
+ const configured=()=>MOTION_OPTIONS.has(getMode?.())?getMode():'standard';
+ const mode=()=>{
+  try{if(typeof window!=='undefined'&&window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)return 'off';}
+  catch{}
+  return configured();
+ };
+ function sync(){
+  const root=getRoot();if(root)root.dataset.motion=mode();
+  const select=getNodes()?.interactionMotion;if(select)select.value=configured();
+ }
+ function dismiss(){
+  if(toastTimer){clearTimeout(toastTimer);toastTimer=null;}
+  const el=getNodes()?.interactionFeedback;
+  if(el){el.hidden=true;el.textContent='';}
+ }
+ function toast(message,kind='info'){
+  const root=getRoot(),el=getNodes()?.interactionFeedback;
+  if(!el||!root?.classList?.contains('lp-open'))return;
+  const text=String(message||'').trim().slice(0,115);if(!text)return;
+  if(toastTimer){clearTimeout(toastTimer);toastTimer=null;}
+  el.hidden=false;el.textContent=text;
+  el.dataset.kind=['success','pending','error'].includes(kind)?kind:'info';
+  if(kind!=='pending')toastTimer=setTimeout(()=>{
+   if(getNodes()?.interactionFeedback===el){el.hidden=true;el.textContent='';}
+   toastTimer=null;
+  },kind==='error'?3600:2300);
+ }
+ function fromStatus(message,kind='info'){
+  if(!message)return;
+  const flavor=kind==='error'?'error':/正在|加载中|保存中|生成中|请求中/.test(message)?'pending':
+   /成功|完成|已|保存|恢复/.test(message)?'success':'info';
+  toast(message,flavor);
+ }
+ const target=e=>{
+  const el=e.target?.closest?.('button,summary,[role="button"]');
+  return el&&getRoot()?.contains?.(el)&&!el.disabled&&
+   el.getAttribute?.('aria-disabled')!=='true'?el:null;
+ };
+ function release(){pressed?.classList?.remove?.('lp-press-down');pressed=null;}
+ function bind(root=getRoot()){
+  if(!root||root===boundRoot)return;
+  boundRoot=root;
+  root.addEventListener('pointerdown',e=>{
+   if(e.button!==undefined&&e.button!==0)return;
+   release();const el=target(e);
+   if(el&&mode()!=='off'){pressed=el;el.classList.add('lp-press-down');}
+  },true);
+  for(const type of ['pointerup','pointercancel','pointerleave'])
+   root.addEventListener(type,release,true);
+  root.addEventListener('pointermove',e=>{if(e.buttons===0)release();},true);
+  root.addEventListener('keydown',e=>{
+   if(e.key!=='Enter'&&e.key!==' ')return;
+   const el=target(e);
+   if(el&&mode()!=='off'){release();pressed=el;el.classList.add('lp-press-down');}
+  },true);
+  root.addEventListener('keyup',release,true);
+  root.addEventListener('click',e=>{
+   const el=target(e);release();
+   if(!el||mode()==='off')return;
+   el.classList.remove('lp-press-bounce');
+   // Force the CSS keyframe to replay on repeated taps.
+   void el.offsetWidth;
+   el.classList.add('lp-press-bounce');
+   setTimeout(()=>el.classList?.remove?.('lp-press-bounce'),mode()==='gentle'?165:240);
+  },true);
+  sync();
+ }
+ function capture(tile){
+  const icon=tile?.querySelector?.('.lp-desktop-app-icon');
+  const rect=icon?.getBoundingClientRect?.();
+  return rect?.width>=12&&rect?.height>=12?{rect,icon:icon.cloneNode(true)}:null;
+ }
+ function stopPortal(){
+  if(!portal)return;
+  const current=portal;portal=null;
+  if(current.timer)clearTimeout(current.timer);
+  try{current.animation?.cancel?.();}catch{}
+  current.element?.remove?.();
+  if(current.section?.style)current.section.style.opacity='';
+  current.dialog?.classList?.remove?.('lp-portal-running');
+ }
+ function transition(origin,direction,screen){
+  const root=getRoot();if(mode()==='off'||!origin||!root)return false;
+  const dialog=root.querySelector?.('.lp-panel'),rect=dialog?.getBoundingClientRect?.();
+  if(!rect?.width||!rect?.height||typeof dialog.animate!=='function')return false;
+  const x=origin.rect.left-rect.left,y=origin.rect.top-rect.top;
+  if(!Number.isFinite(x)||!Number.isFinite(y))return false;
+  stopPortal();
+  const el=document.createElement('div');el.className='lp-app-portal';
+  el.setAttribute('aria-hidden','true');
+  if(origin.icon){origin.icon.classList?.add?.('lp-app-portal-icon');el.append(origin.icon);}
+  dialog.append(el);
+  const section=direction==='open'?root.querySelector?.('[data-lp-screen="'+screen+'"]'):null;
+  const ms=mode()==='gentle'?200:310;
+  const small={left:Math.max(0,x)+'px',top:Math.max(0,y)+'px',
+   width:origin.rect.width+'px',height:origin.rect.height+'px',borderRadius:'14px',opacity:1};
+  const large={left:'0px',top:'0px',width:rect.width+'px',
+   height:rect.height+'px',borderRadius:'22px',opacity:1};
+  if(section?.style)section.style.opacity='0';
+  dialog.classList?.add?.('lp-portal-running');
+  let animation;
+  try{animation=el.animate(direction==='open'
+   ?[small,{...large,offset:.72},{...large,opacity:0,offset:1}]
+   :[large,{...large,offset:.25},small],
+   {duration:ms,easing:'cubic-bezier(.22,.72,.18,1)',fill:'forwards'});}
+  catch(err){
+   el.remove();if(section?.style)section.style.opacity='';
+   dialog.classList.remove('lp-portal-running');
+   onError?.('页面展开动画',err);return false;
+  }
+  const current={element:el,animation,section,dialog,timer:null};portal=current;
+  if(section?.style)current.timer=setTimeout(()=>{
+   if(portal===current)section.style.opacity='';
+  },Math.round(ms*.7));
+  const finish=()=>{
+   if(portal!==current)return;
+   portal=null;if(current.timer)clearTimeout(current.timer);
+   el.remove();if(section?.style)section.style.opacity='';
+   dialog.classList.remove('lp-portal-running');
+  };
+  animation.onfinish=finish;animation.oncancel=finish;
+  return true;
+ }
+ function subScreen(screen){
+  if(mode()==='off')return;
+  const node=getRoot()?.querySelector?.('[data-lp-screen="'+screen+'"]');
+  try{node?.animate?.([{opacity:0,transform:'translateY(9px)'},{opacity:1,transform:'translateY(0)'}],
+   {duration:mode()==='gentle'?135:190,easing:'ease-out'});}catch{}
+ }
+ function navigate({previous,screen,origin}){
+  if(previous===screen||screen==='lock'||previous==='lock')return;
+  if(previous==='home'&&origin){if(transition(origin,'open',screen))return;}
+  if(screen==='home'){
+   const tile=getRoot()?.querySelector?.('.lp-home button[data-lp-open="'+previous+'"]');
+   if(transition(capture(tile),'close',previous))return;
+  }
+  subScreen(screen);
+ }
+ function shutdown(){release();stopPortal();dismiss();boundRoot=null;}
+ return {bind,sync,toast,fromStatus,capture,navigate,shutdown,mode};
+}
+
+let phoneInteraction=null;
+function notifyInteraction(text,kind='info'){phoneInteraction?.toast(text,kind);}
+function saveInteractionMotion(){
+ const ctx=context();
+ if(!ctx?.extensionSettings||typeof ctx.saveSettingsDebounced!=='function')
+  return setStatus('交互动画设置未保存','error');
+ (ctx.extensionSettings[SETTINGS_KEY]||={}).interactionMotion=
+  MOTION_OPTIONS.has(nodes.interactionMotion.value)?nodes.interactionMotion.value:'standard';
+ ctx.saveSettingsDebounced();phoneInteraction?.sync();
+ notifyInteraction('交互动画已保存','success');
+}
+function setScreen(screen, options={}) {
     if (!SCREENS.has(screen) || !nodes) return;
     if(root?.classList.contains('lp-open')&&phoneLockSettings().enabled&&!securityUnlocked&&screen!=='lock')screen='lock';
     const previous = activeScreen;
+    const source=previous==='home'?phoneInteraction?.capture(options?.sourceTile):null;
     activeScreen = screen;
     root.dataset.screen = screen;
     for (const section of root.querySelectorAll('[data-lp-screen]')) {
@@ -2991,6 +3153,7 @@ function setScreen(screen) {
     if (screen === 'chat' && previous !== 'chat' && unreadCount(readRootData(context()),activeContactId))
         void clearContactUnread(activeContactId);
     if (nodes?.status) nodes.status.textContent = statusKind==='error' ? statusText : '';
+    phoneInteraction?.navigate({previous,screen,origin:source});
 }
 
 function updateBusy() {
@@ -5565,6 +5728,7 @@ function openPhone() {
 
 function closePhone() {
     if (!mounted || !root) return;
+    phoneInteraction?.shutdown();
     root.classList.remove('lp-open');
     securityUnlocked=false;lockVerifyAttempt++;
     void tickStoryClock({onClose:true});
@@ -5714,6 +5878,7 @@ function makeUI() {
           <button type="button" class="lp-close" data-lp="close" aria-label="关闭咕叽咕机">×</button>
         </header>
         <button type="button" class="lp-inline-notification" data-lp="inlineNotification" aria-label="打开新消息" hidden></button>
+         <div class="lp-interaction-feedback" data-lp="interactionFeedback" role="status" aria-live="polite" hidden></div>
         <section class="lp-screen lp-lock" data-lp-screen="lock" aria-label="锁屏" hidden>
           <button type="button" data-lp="lockExit" class="lp-phone-exit" aria-label="关闭手机">×</button>
           <div class="lp-lock-stage">
@@ -6294,7 +6459,16 @@ function makeUI() {
             <code>.lp-takeout-screen · 外卖</code>
             <button type="button" data-lp="themeCopySelectors">复制常用 CSS 选择器</button>
           </details>
-          <h2>桌面翻页效果</h2>
+          <h2>交互动画</h2>
+           <label class="lp-theme-field">按钮与页面交互动画强度
+             <select data-lp="interactionMotion" aria-label="交互动画强度">
+               <option value="off">关闭</option>
+               <option value="gentle">柔和</option>
+               <option value="standard">标准</option>
+             </select>
+           </label>
+           <p class="lp-settings-hint">所有 App 共用。若设备启用减少动态效果，将自动停用动画；文字操作反馈仍显示。</p>
+           <h2>桌面翻页效果</h2>
           <select data-lp="themeDesktopEffect" aria-label="选择桌面翻页动画">
             <option value="slide">平滑滑动</option><option value="fade">淡入淡出</option>
           </select>
@@ -6363,12 +6537,18 @@ function mount() {
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','avatarUserFile','resetCharAvatar','resetUserAvatar',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
         'shoppingContent','shoppingTabs','takeoutContent','takeoutTabs','walletBalance','walletPending','walletBills','walletAdjustInput','walletSaveBalance','walletToChat','walletStatus',
-        'presetSource','presetInfo','presetEntries','worldBookList','worldSelectionSummary','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','saveSelections','savePresetPicker','saveWorldPicker','selectionSaveStatus','readMainlineMemory','memorySource','phoneToMainline','eventBridge','saveContextSettings','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themePreset','themeCustomColors','themeSaveColors','themeWallpaperPreview','themeDesktopEffect','themeBindWallpaper','themeName','themeSaveNamed','themeRename','themeDelete','themeExport','themeImport','themeFeedback','themeCssFile','themeCssReset','themeCssStatus','themeFontFile','themeDesktopIconSize','themeDesktopGap','themeBubbleRadius','themeIconTarget','themeIconFile','themeIconReset','themeFloatingIconFile','themeFloatingIconReset','themeCopySelectors',
+        'presetSource','presetInfo','presetEntries','worldBookList','worldSelectionSummary','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','saveSelections','savePresetPicker','saveWorldPicker','selectionSaveStatus','readMainlineMemory','memorySource','phoneToMainline','eventBridge','saveContextSettings','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themePreset','themeCustomColors','themeSaveColors','themeWallpaperPreview','themeDesktopEffect','interactionMotion','interactionFeedback','themeBindWallpaper','themeName','themeSaveNamed','themeRename','themeDelete','themeExport','themeImport','themeFeedback','themeCssFile','themeCssReset','themeCssStatus','themeFontFile','themeDesktopIconSize','themeDesktopGap','themeBubbleRadius','themeIconTarget','themeIconFile','themeIconReset','themeFloatingIconFile','themeFloatingIconReset','themeCopySelectors',
         'diagnostics', 'diagnosticState', 'copyDiagnostics', 'clearDiagnostics',
         'messages','messageActions','quotedPreview','quotedText','cancelQuote','emojiPanel','morePanel','chatImageInput','timeJumpPanel','timeJumpHint','timeJumpCurrent','timeJumpAmount','timeJumpUnit','timeJumpApply','timeJumpClose','paymentPanel','paymentTitle','paymentKind','paymentAmount','paymentNote','paymentBalance','paymentClose','paymentSend','input', 'generate', 'send', 'launcher']
         .map(key => [key, key === 'launcher' ? floating : root.querySelector(`[data-lp="${key}"]`)]));
 
     const draggedClick=enableLauncherDragging(nodes.launcher);
+    phoneInteraction=createInteractionController({
+     getRoot:()=>root,getNodes:()=>nodes,
+     getMode:()=>context()?.extensionSettings?.[SETTINGS_KEY]?.interactionMotion,
+     onError:(label,error)=>recordError(label,error)
+    });
+    phoneInteraction.bind(root);
     nodes.lockAction.addEventListener('click',()=>void phoneUnlock());
     nodes.lockExit.addEventListener('click',closePhone);
     nodes.homeExit.addEventListener('click',closePhone);
@@ -6484,7 +6664,7 @@ function mount() {
     });
     root.addEventListener('click', event => {
         const button = event.target.closest('button[data-lp-open]');
-        if(button&&root.contains(button)&&Date.now()-desktopSwipedAt>350)setScreen(button.dataset.lpOpen);
+        if(button&&root.contains(button)&&Date.now()-desktopSwipedAt>350)setScreen(button.dataset.lpOpen,{sourceTile:activeScreen==='home'?button:null});
     });
     nodes.calendarPrev.addEventListener('click',()=>phoneCalendarNavigate(-1));
     nodes.calendarNext.addEventListener('click',()=>phoneCalendarNavigate(1));
@@ -6533,6 +6713,7 @@ function mount() {
     nodes.themeSaveColors.addEventListener('click',saveThemeColors);
     nodes.themeBindWallpaper.addEventListener('change',()=>toggleThemeWallpaperBinding(nodes.themeBindWallpaper.checked));
     nodes.themeDesktopEffect.addEventListener('change',()=>{editableThemePatch({desktopEffect:nodes.themeDesktopEffect.value});desktopVisual(desktopPage);});
+    nodes.interactionMotion.addEventListener('change',saveInteractionMotion);
     nodes.themeSaveNamed.addEventListener('click',saveNamedTheme);
     nodes.themeRename.addEventListener('click',renameNamedTheme);
     nodes.themeDelete.addEventListener('click',deleteSelectedTheme);
@@ -6759,6 +6940,7 @@ function unmount() {
     root?.remove();
     root = null;
     nodes = null;
+    phoneInteraction=null;
     activeContactId = PRIMARY_CONTACT_ID;
     npcCandidates=[];npcScanSession=null;momentImageDraft='';
     statusText = '';
