@@ -3313,3 +3313,13 @@
 #st-little-phone-root .lp-wb-follower-input{display:flex;align-items:stretch;gap:7px;min-width:0;}
 #st-little-phone-root .lp-wb-follower-input input[type="number"]{flex:1 1 auto;min-width:0;width:0;}
 #st-little-phone-root .lp-wb-follower-input select{flex:0 0 72px;width:72px;min-height:35px;padding:5px 8px;border:1px solid var(--lp-ice);border-radius:9px;background:var(--lp-white);color:var(--lp-navy);font:inherit;}
+
+/* v0.22.0 — identity binding and independent public profile fields. */
+#st-little-phone-root .lp-wb-field select{
+ width:100%;min-height:35px;box-sizing:border-box;border:1px solid var(--lp-ice);
+ border-radius:9px;padding:7px 10px;background:var(--lp-white);
+ color:var(--lp-navy);font:inherit;
+}
+#st-little-phone-root .lp-wb-bind-note{
+ display:block;color:var(--lp-slate);font-size:11px;line-height:1.6;
+}
