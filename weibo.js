@@ -28,7 +28,15 @@ export function createWeiboModule(api) {
   writes=task.catch(()=>{});
   return task;
  }
- const feedback=s=>{if(nodes()?.weiboFeedback)nodes().weiboFeedback.textContent=s;};
+ const feedback=s=>{
+   if(nodes()?.weiboFeedback)nodes().weiboFeedback.textContent=s;
+   if(s){
+    const kind=/失败|出错|错误|无效/.test(s)?'error':
+     /正在|加载中|生成中|刷新中|读取中/.test(s)?'pending':
+     /已|成功|完成|保存|清空|更新/.test(s)?'success':'info';
+    api.notifyInteraction?.(s,kind);
+   }
+  };
  function reset(){
   const next=scope();if(next===state.scope)return;
   state.scope=next;state.tab='home';state.detail='';state.topic=null;state.subview='';state.posts={home:[],nearby:[]};state.candidates=[];state.scanMessage='';state.scanLoading=false;
