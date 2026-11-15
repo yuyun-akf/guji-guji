@@ -8,7 +8,7 @@ const html=index.slice(index.indexOf('<section class="lp-screen lp-settings"'),i
 const apiBegin=index.indexOf('const PHONE_API_TARGETS=[');
 const apiEnd=index.indexOf('function currentApiTarget(){',apiBegin);
 const apiText=index.slice(apiBegin,apiEnd);
-const apiFactory=new Function('apiSessionId','context','transientApiKeys','URL',
+const apiFactory=new Function('apiSessionId','context','transientApiKeys','transientApiKeyUrls','URL',
  apiText+'return {readApiOptions,availableConnectionProfiles,phoneGenerate,apiKeySlot};');
 function MiniURL(raw){
  const parts=String(raw).match(/^(https?):\/\/([^/?#]+)(\/[^?#]*)?$/);
@@ -69,7 +69,7 @@ test('per-app routing inherits global or overrides with saved profiles/custom AP
   ChatCompletionService:{sendRequest:async payload=>{sent.push({kind:'custom',payload});return {content:'CUSTOM OK'};}},
   generateRaw:async()=>{sent.push({kind:'inherit'});return 'DEFAULT OK';}
  };
- const api=apiFactory(c=>c.characterId+'::'+c.chatId,()=>ctx,keys,MiniURL);
+ const api=apiFactory(c=>c.characterId+'::'+c.chatId,()=>ctx,keys,new Map([['1::chat-a::memory','https://example.test/v1']]),MiniURL);
  const data={config:{api:{mode:'inherit'},apiRoutes:{
   weibo:{mode:'profile',profileId:'p2'},
   memory:{mode:'custom',url:'https://example.test/v1',model:'memory-model'}
@@ -88,9 +88,18 @@ test('per-app routing inherits global or overrides with saved profiles/custom AP
 });
 test('unavailable saved connection has explicit error, never silently reuses active model',async()=>{
  const ctx={ConnectionManagerRequestService:{getSupportedProfiles:()=>[],sendRequest:async()=>{throw Error('must not call');}}};
- const api=apiFactory(()=> 'scope',()=>ctx,new Map(),MiniURL);
+ const api=apiFactory(()=> 'scope',()=>ctx,new Map(),new Map(),MiniURL);
  await assert.rejects(()=>api.phoneGenerate(ctx,{task:'weibo',prompt:'test'},
   {config:{api:{mode:'inherit'},apiRoutes:{weibo:{mode:'profile',profileId:'gone'}}}}),/档案不可用/);
+});
+test('independent API secret is never forwarded to a different destination',async()=>{
+ const api=apiFactory(()=> 'scope',()=>({
+  ChatCompletionService:{sendRequest:async()=>{throw Error('should not send request');}}
+ }),new Map([['scope::memory','SECRET']]),new Map([['scope::memory','https://old.example/v1']]),MiniURL);
+ await assert.rejects(()=>api.phoneGenerate({chatId:'x'},{task:'memory',prompt:'test'},
+  {config:{api:{mode:'inherit'},apiRoutes:{
+   memory:{mode:'custom',url:'https://new.example/v1',model:'m'}
+  }}}),/密钥/);
 });
 test('one-story-day schedule runs exactly once per interval and stores editable notes',async()=>{
  const h=memoryHarness(1);
