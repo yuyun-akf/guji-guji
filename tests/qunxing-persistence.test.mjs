@@ -170,7 +170,8 @@ test('follower counts are read only from explicit numbers, with Chinese large-nu
  assert.equal(role.explicitAccountFollowers('社交媒体粉丝 1.2亿'),120000000);
  assert.equal(role.explicitAccountFollowers('粉丝数：5000000'),5000000);
  assert.equal(role.explicitAccountFollowers('曾经很受欢迎，很多粉丝'),null);
- assert.match(script,/followers:Math\.max\(0,Math\.floor\(Number\(value\('followers'\)\)\|\|0\)\)/);
+ assert.match(script,/readFollowerField\(row,'candidate-'/);
+ assert.match(script,/followerField\(row,label,'candidate-'/);
 });
 
 test('same default avatar is not sufficient to merge unrelated character account directories',()=>{

@@ -93,11 +93,17 @@ test('扫描只生成候选账号，明确勾选保存后才写入存档',async(
  assert.equal(module.state.candidates.length,1);
  assert.equal(ctx.chatMetadata.st_little_phone_v1.qunxing.accounts.length,0);
  const fields={name:{value:'角色甲'},handle:{value:'@actor'},kind:{value:'演员'},
-  bio:{value:'公开身份：演员'},publicFigure:{checked:true,type:'checkbox'}};
- selected=[{closest:()=>({querySelector:s=>fields[s.match(/data-wb-candidate-field="([^"]+)"/)[1]]})}];
+  bio:{value:'公开身份：演员'},publicFigure:{checked:true,type:'checkbox'},
+  followers:{value:'3500'},followersUnit:{value:'wan'}};
+ selected=[{closest:()=>({dataset:{wbCandidate:'0'},querySelector:selector=>{
+  if(selector.includes('data-wb-field="candidate-0-followersUnit"'))return fields.followersUnit;
+  if(selector.includes('data-wb-field="candidate-0-followers"'))return fields.followers;
+  return fields[selector.match(/data-wb-candidate-field="([^"]+)"/)?.[1]];
+ }})}];
  await module.action('saveCandidates');
  const saved=ctx.chatMetadata.st_little_phone_v1.qunxing.accounts;
  assert.equal(saved.length,1);
  assert.equal(saved[0].handle,'@actor');
+ assert.equal(saved[0].followers,35000000,'3500 万保存为整数人数');
  assert.equal(saved[0].source,'manual');
 });
