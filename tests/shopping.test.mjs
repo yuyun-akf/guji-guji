@@ -42,7 +42,7 @@ test('shopping tabs can switch and remain independent of takeout',()=>{
  app.selectTab('me');
  assert.deepEqual(tabs.map(x=>x.active),[false,false,true]);
  assert.equal(app.back(),false);
- assert.equal(content.children[0].children[0].children[0].textContent,'我');
+ assert.equal(content.children[0].children[0].children[0].textContent,'我的购物');
  ctx.chatMetadata={};
  app.open();
  assert.equal(app.state.tab,'browse');
