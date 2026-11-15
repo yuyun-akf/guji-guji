@@ -23,8 +23,8 @@ function harness(){
     title:i===0?'新剧首映':'话题'+i,category:'影视',
     summary:i===0?'虚构新剧的讨论':'网友讨论',
     posts:[
-     {author:'影迷甲',text:'看了预告',comments:[{name:'观众',text:'期待上映'}]},
-     {author:'影迷乙',text:'聊聊角色',comments:[{name:'粉丝',text:'角色塑造很特别'}]}
+     {author:'影迷甲',text:'看了预告',comments:[{name:'观众',text:'期待上映'},{name:'观众乙',text:'想看'}]},
+     {author:'影迷乙',text:'聊聊角色',comments:[{name:'粉丝',text:'角色塑造很特别'},{name:'朋友',text:'是的'}]}
     ]
    }))});
   },
