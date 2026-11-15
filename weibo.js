@@ -741,7 +741,6 @@ export function createWeiboModule(api) {
   form.append(control('保存个人资料','saveProfile'));parent.append(form);
  }
  function renderAccountEditor(parent,q){
-  parent.append(control('返回群星设置','backAccountEditor'));
   const active=q.accounts.find(a=>a.id===state.editing)||{};
   if(state.editing==='new'||active.id){
    const form=el('div','lp-wb-editor');form.append(heading(active.id?'编辑账号':'新增账号'));
@@ -993,7 +992,9 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
    const account=data().accounts.find(a=>a.id===id&&a.source==='manual');
    if(!account||state.subview!=='settings')return;
    state.adminHistoryAccount=id;state.profileAccount='';state.historyEditingId='';state.historyFormOpen=true;
-   state.detail='';state.topic=null;render();return;
+   state.detail='';state.topic=null;render();
+   if(nodes()?.weiboDetail)nodes().weiboDetail.scrollTop=0;
+   return;
   }
   if(type==='backAccountEditor'){state.editing='';state.avatarDraft='';state.subview='settings';render();return;}
   if(type==='openAccount'||type==='openPostAuthor'){
@@ -1137,7 +1138,9 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
   if(type==='newAccount'||type==='editAccount'){
    state.editing=type==='newAccount'?'new':id;state.avatarDraft='';state.subview='accountEditor';
    state.profileAccount='';state.adminHistoryAccount='';state.detail='';state.topic=null;
-   render();return;
+   render();
+   if(nodes()?.weiboMe?.parentElement)nodes().weiboMe.parentElement.scrollTop=0;
+   return;
   }
   if(type==='deleteAccount'){
    if(typeof window!=='undefined'&&typeof window.confirm==='function'&&!window.confirm('删除该群星账号？此操作无法撤销。'))return;
