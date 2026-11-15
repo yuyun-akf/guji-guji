@@ -310,7 +310,6 @@ export function createWeiboModule(api) {
     });
     scanner.append(control('保存勾选的账号','saveCandidates'));
    }
-   parent.append(scanner);
   const active=q.accounts.find(a=>a.id===state.editing)||{};
   if(state.editing==='new'||active.id){
    const form=el('div','lp-wb-editor');form.append(heading(active.id?'编辑账号':'新增账号'));
@@ -323,6 +322,7 @@ export function createWeiboModule(api) {
    avatarPicker(form,'更换角色账号头像','accountAvatar',state.avatarDraft||active.avatar||'',active.name||'角色');
    form.append(control('保存角色账号','saveAccount'));parent.append(form);
   }
+  parent.append(scanner);
  }
 
  function render(){
