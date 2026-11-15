@@ -1134,8 +1134,11 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
    }catch(e){feedback('生成历史动态失败：'+String(e.message||e));}
    render();return;
   }
-  if(type==='newAccount'){state.editing='new';state.avatarDraft='';state.subview='accountEditor';render();return;}
-  if(type==='editAccount'){state.editing=id;state.avatarDraft='';state.subview='accountEditor';render();return;}
+  if(type==='newAccount'||type==='editAccount'){
+   state.editing=type==='newAccount'?'new':id;state.avatarDraft='';state.subview='accountEditor';
+   state.profileAccount='';state.adminHistoryAccount='';state.detail='';state.topic=null;
+   render();return;
+  }
   if(type==='deleteAccount'){
    if(typeof window!=='undefined'&&typeof window.confirm==='function'&&!window.confirm('删除该群星账号？此操作无法撤销。'))return;
    await mutate(q=>{q.accounts=q.accounts.filter(a=>a.id!==id);q.following=q.following.filter(x=>x!==id);});
