@@ -3785,3 +3785,43 @@
   transition:none!important;
  }
 }
+
+
+/* Qunxing: search stays compact until a query is entered; follow action is separate
+   from opening a profile (no nested buttons or giant role directory). */
+#st-little-phone-root .lp-wb-account-search-results {
+ min-height:0;
+}
+#st-little-phone-root .lp-wb-search-hint {
+ display:block;font-size:11px;color:var(--lp-slate);padding:4px 3px;
+}
+#st-little-phone-root .lp-wb-account-search-results .lp-wb-search-result {
+ display:flex;flex-direction:row;align-items:center;justify-content:space-between;
+ gap:7px;width:100%;min-width:0;padding:7px 2px;
+ border:0;border-bottom:1px solid var(--lp-ice);border-radius:0;
+}
+#st-little-phone-root .lp-wb-account-search-results .lp-wb-search-result:last-child{
+ border-bottom:0;
+}
+#st-little-phone-root .lp-wb-search-person {
+ display:flex;align-items:center;gap:9px;flex:1;min-width:0;
+ padding:4px 2px;border:0;background:transparent;text-align:left;
+ color:var(--lp-navy);font:inherit;
+}
+#st-little-phone-root .lp-wb-search-person-text{
+ display:flex;flex-direction:column;gap:3px;min-width:0;
+}
+#st-little-phone-root .lp-wb-search-person-text strong{
+ font-size:12px;overflow-wrap:anywhere;
+}
+#st-little-phone-root .lp-wb-search-person-text small{
+ font-size:10px;color:var(--lp-slate);overflow-wrap:anywhere;
+}
+#st-little-phone-root .lp-wb-search-follow{
+ flex:0 0 auto;min-width:60px;padding:7px 8px;
+ border:1px solid var(--lp-border);border-radius:9px;
+ background:var(--lp-white);color:var(--lp-navy);font-size:11px;
+}
+#st-little-phone-root .lp-wb-refresh-running{
+ opacity:.78;cursor:progress;user-select:none;
+}
