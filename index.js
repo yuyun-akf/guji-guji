@@ -3585,6 +3585,7 @@ const MOTION_OPTIONS=new Set(['off','gentle','standard']);
 
 function createInteractionController({getRoot,getNodes,getMode,onError}){
  let boundRoot=null,pressed=null,activeRipple=null,rippleStart=null,toastTimer=null,portal=null,statusObserver=null;
+ const lastRippleByTarget=new WeakMap();
  let lastToastText='',lastToastAt=0;
  const configured=()=>MOTION_OPTIONS.has(getMode?.())?getMode():'standard';
  const mode=()=>{
@@ -3645,7 +3646,7 @@ function createInteractionController({getRoot,getNodes,getMode,onError}){
   const size=Math.max(rect.width,rect.height)*2.4;
   dot.style.width=size+'px';dot.style.height=size+'px';
   dot.style.left=x+'px';dot.style.top=y+'px';
-  el.append(dot);activeRipple=dot;
+  el.append(dot);activeRipple=dot;lastRippleByTarget.set(el,Date.now());
   dot.addEventListener('animationend',()=>{if(activeRipple===dot)activeRipple=null;dot.remove();},{once:true});
   setTimeout(()=>{if(activeRipple===dot)activeRipple=null;dot.remove();},550);
  }
@@ -3674,8 +3675,13 @@ function createInteractionController({getRoot,getNodes,getMode,onError}){
    particle.style.background=i%2?'var(--lp-slate)':'var(--lp-rose)';
    container.append(particle);
   }
+  container.style.zIndex='2147483100';
   panel.append(container);
-  setTimeout(()=>container.remove(),500);
+  // This overlay survives the post card re-render during persistence.
+  if(typeof container.animate==='function') {
+   try{container.animate([{opacity:1},{opacity:1}],{duration:440});}catch{}
+  }
+  setTimeout(()=>container.remove(),540);
  }
  function release(){pressed?.classList?.remove?.('lp-press-down');pressed=null;}
  function bind(root=getRoot()){
@@ -3712,13 +3718,23 @@ function createInteractionController({getRoot,getNodes,getMode,onError}){
   root.addEventListener('click',e=>{
    const el=target(e);release();
    if(!el||mode()==='off')return;
-   if(!e.detail)ripple(el,{clientX:0,clientY:0});
-   const action=el.dataset?.wbAction;
-   const isMoment=/^♡\s*点赞/.test(el.textContent||'')&&el.closest?.('.lp-moment');
-   if((action==='like'||action==='favorite')&&!el.classList.contains('active'))
-    burst(el,action==='favorite');
-   else if(isMoment)burst(el);
-   if(primary(el)){
+   const last=lastRippleByTarget.get(el)||0;
+   // Android WebView may dispatch click without an observable pointerdown.
+   if(Date.now()-last>480)ripple(el,{clientX:e.clientX||0,clientY:e.clientY||0});
+   el.classList.remove('lp-tap-flash');
+   void el.offsetWidth;
+   el.classList.add('lp-tap-flash');
+   setTimeout(()=>el.classList?.remove?.('lp-tap-flash'),240);
+   const effect=el.dataset?.touchEffect||el.dataset?.wbAction;
+   const isMoment=/^(?:♡\s*点赞|♥\s*已赞)/.test(el.textContent||'')&&Boolean(el.closest?.('.lp-moment'));
+   const enableBurst=(effect==='like'||effect==='favorite')&&!el.classList.contains('active')||
+    isMoment&&el.textContent?.includes('♡');
+   if(enableBurst) {
+    burst(el,effect==='favorite');
+    el.classList.remove('lp-like-pressed');
+    void el.offsetWidth;el.classList.add('lp-like-pressed');
+    setTimeout(()=>el.classList?.remove?.('lp-like-pressed'),380);
+   }else if(primary(el)){
     el.classList.remove('lp-press-bounce');
     void el.offsetWidth;
     el.classList.add('lp-press-bounce');
