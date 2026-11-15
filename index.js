@@ -1,5 +1,5 @@
 /**
- * GujiGuji v0.15.1: a modular phone shell with isolated per-chat context.
+ * GujiGuji v0.16.0: a modular phone shell with isolated per-chat context.
  * No direct host-module imports; uses only the documented context surface.
  */
 
@@ -527,6 +527,15 @@ function desktopVisual(page){
   nodes.homeDots?.querySelectorAll('button').forEach((btn,i)=>btn.classList.toggle('current',i===page));
 }
 
+function storyCompanionDays(data){
+ const today=String(data?.storyTime||localDateTime()).slice(0,10);
+ const dates=(Array.isArray(data?.messages)?data.messages:[])
+  .map(m=>String(m?.storyTime||'').slice(0,10))
+  .filter(v=>/^\d{4}-\d\d-\d\d$/.test(v));
+ const first=dates.length?dates.sort()[0]:String(data?.companionStartDate||today).slice(0,10);
+ const now=Date.parse(today+'T00:00:00Z'),start=Date.parse(first+'T00:00:00Z');
+ return Number.isFinite(now)&&Number.isFinite(start)?Math.max(1,Math.floor((now-start)/86400000)+1):1;
+}
 function renderDesktop(){
  if(!nodes?.homePages)return;
  const order=desktopOrder();
@@ -572,6 +581,10 @@ function renderDesktop(){
  desktopVisual(desktopPage);
  const data=readRootData(context());
  const time=String(data.storyTime||localDateTime());
+ const primary=selectedCharacter(context());
+ nodes.homeCharacter.textContent=primary
+  ?resolvePhonePlaceholders('与 {{char}} 相伴 '+storyCompanionDays(data)+' 天',context(),primary)
+  :'等待进入角色存档';
  nodes.homeTime.textContent=time.slice(11,16);
  nodes.homeDate.textContent=time.slice(0,10).replaceAll('-',' / ');
  const scene=storyScenePreview(context(),data);
@@ -681,6 +694,12 @@ async function savePhoneLockEnabled(){
 
 
 const SWISS_THEME={white:'#ffffff',ice:'#e0e8f2',blush:'#f1d6d6',rose:'#e39f9f',slate:'#8b9bc1',navy:'#35568a'};
+const BUILTIN_PALETTES={
+ 'concept-violet':{name:'02 · 瑞士花影（紫金）',colors:{white:'#ffffff',ice:'#d9deef',blush:'#f2edd0',rose:'#ead78f',slate:'#aca8cd',navy:'#5f508a'}},
+ 'concept-coral':{name:'03 · 瑞士珊瑚（红绿）',colors:{white:'#ffffff',ice:'#cce2da',blush:'#f7e8e8',rose:'#df8d8e',slate:'#8ec9b7',navy:'#bc535d'}},
+ 'concept-amber':{name:'04 · 瑞士麦穗（金蓝）',colors:{white:'#ffffff',ice:'#e5f2fe',blush:'#f0e2cd',rose:'#f6d476',slate:'#ccd0e5',navy:'#dea246'}}
+};
+const isBuiltInPalette=id=>id==='swiss'||Object.prototype.hasOwnProperty.call(BUILTIN_PALETTES,id);
 const WALLPAPER_STORAGE_KEY='gujiguji-wallpaper-v1';
 function themeData(){
  const t=context()?.extensionSettings?.[SETTINGS_KEY]?.theme;
@@ -697,6 +716,8 @@ function themeView(){
   desktopIconSize:34,desktopGap:25,chatBubbleRadius:15,colors:{...SWISS_THEME}};
  if(saved)return {...raw,...base,...saved,palette:raw.palette};
  if(raw.palette==='swiss'||!raw.palette)return {...raw,...base,palette:'swiss'};
+ const builtin=BUILTIN_PALETTES[raw.palette];
+ if(builtin)return {...raw,...base,colors:{...builtin.colors},palette:raw.palette};
  return raw;
 }
 const THEME_FONT_STYLE_ID='gujiguji-user-font';
@@ -728,7 +749,7 @@ function applyImportedThemeStyle(theme){
  }else font.textContent='';
 }
 function editableThemePatch(partial){
- if(themeData().palette==='swiss')changeTheme({palette:'custom',...partial});
+ if(isBuiltInPalette(themeData().palette))changeTheme({palette:'custom',colors:{...themeView().colors},...partial});
  else changeTheme(partial);
 }
 function paletteValue(key,value){
@@ -737,9 +758,11 @@ function paletteValue(key,value){
 function applyTheme(){
  if(!root)return;
  const theme=themeView(),colors=theme.palette!=='swiss'?theme.colors||{}:{};
+ root.dataset.themePalette=theme.palette;
  for(const [key,swatch] of Object.entries(SWISS_THEME))
   root.style.setProperty('--lp-'+key,paletteValue(key,colors[key]||swatch));
- root.style.setProperty('--lp-ink',paletteValue('navy',colors.navy));
+ root.style.setProperty('--lp-ink',theme.palette==='concept-amber'?'color-mix(in srgb,var(--lp-navy) 58%,black)':paletteValue('navy',colors.navy));
+ root.style.setProperty('--lp-soft-ink','color-mix(in srgb,var(--lp-navy) 65%,black)');
  root.style.setProperty('--lp-lilac',paletteValue('slate',colors.slate));
  root.style.setProperty('--lp-paper',paletteValue('white',colors.white));
  root.style.setProperty('--lp-border',paletteValue('ice',colors.ice));
@@ -750,7 +773,7 @@ function applyTheme(){
  root.style.setProperty('--lp-bubble-radius',String(Math.max(6,Math.min(30,Number(theme.chatBubbleRadius)||15)))+'px');
  let saved='';
  try{saved=window.localStorage.getItem(WALLPAPER_STORAGE_KEY)||'';}catch{}
- const themeKey=theme.palette==='custom'?'custom':'swiss';
+ const themeKey=theme.palette;
  const bound=theme.bindWallpaper===true;
  const image=theme.palette.startsWith('saved:')?String(theme.wallpaper||''):(bound?String(theme.wallpapers?.[themeKey]||''):(typeof theme.wallpaper==='string'&&theme.wallpaper)||saved);
  const background=/^data:image\/(?:png|jpeg|webp);base64,/.test(image)?'url("'+image+'")':'none';
@@ -780,7 +803,7 @@ function applyTheme(){
   const input=root.querySelector('[data-theme-color="'+key+'"]');
   if(input)input.value=paletteValue(key,colors[key]||value);
  }
- if(nodes?.themeCustomColors)nodes.themeCustomColors.hidden=theme.palette==='swiss';
+ if(nodes?.themeCustomColors)nodes.themeCustomColors.hidden=isBuiltInPalette(theme.palette);
  if(nodes?.themeBindWallpaper){nodes.themeBindWallpaper.checked=theme.palette.startsWith('saved:')?true:bound;nodes.themeBindWallpaper.disabled=theme.palette.startsWith('saved:');}
  if(nodes?.themeWallpaperPreview)nodes.themeWallpaperPreview.textContent=
  (bound?'壁纸已绑定当前主题。':'壁纸在所有主题之间共用。')+
@@ -814,7 +837,7 @@ function loadWallpaper(file){
    if(t.palette?.startsWith('saved:')){
     changeTheme({wallpaper:content,bindWallpaper:true});
    }else if(t.bindWallpaper===true){
-    const key=t.palette==='custom'?'custom':'swiss';
+    const key=t.palette||'swiss';
     changeTheme({wallpapers:{...(t.wallpapers||{}),[key]:content}});
    }else{
     try{window.localStorage.setItem(WALLPAPER_STORAGE_KEY,content);}catch(e){recordError('壁纸本地缓存',e);}
@@ -832,7 +855,7 @@ function resetWallpaper(){
  const t=themeData();
  if(t.palette?.startsWith('saved:'))changeTheme({wallpaper:'',bindWallpaper:true});
  else if(t.bindWallpaper===true){
-  const key=t.palette==='custom'?'custom':'swiss';
+  const key=t.palette||'swiss';
   changeTheme({wallpapers:{...(t.wallpapers||{}),[key]:''}});
  }else{
   try{window.localStorage.removeItem(WALLPAPER_STORAGE_KEY);}catch{}
@@ -840,7 +863,7 @@ function resetWallpaper(){
  }
 }
 function toggleThemeWallpaperBinding(enabled){
- const t=themeData(),key=t.palette==='custom'?'custom':'swiss';
+ const t=themeData(),key=t.palette||'swiss';
  if(t.palette?.startsWith('saved:')){changeTheme({bindWallpaper:true});return;}
  let oldImage=String(t.wallpaper||'');
  if(!oldImage){try{oldImage=window.localStorage.getItem(WALLPAPER_STORAGE_KEY)||'';}catch{}}
@@ -867,7 +890,11 @@ function renderThemeSelector(theme=themeView()){
  if(nodes.themePreset.dataset.library!==signature){
   nodes.themePreset.dataset.library=signature;
   nodes.themePreset.replaceChildren();
-  for(const [value,label] of [['swiss','01 · 瑞士纸韵（不可删除）'],['custom','02 · 自定义主题']]){
+  for(const [value,label] of [
+   ['swiss','01 · 瑞士纸韵（不可删除）'],
+   ...Object.entries(BUILTIN_PALETTES).map(([key,item])=>[key,item.name+'（内置）']),
+   ['custom','05 · 自定义主题']
+  ]){
    const option=document.createElement('option');option.value=value;option.textContent=label;nodes.themePreset.append(option);
   }
   for(const item of list){
@@ -878,7 +905,7 @@ function renderThemeSelector(theme=themeView()){
  nodes.themePreset.value=[...nodes.themePreset.options].some(option=>option.value===theme.palette)?theme.palette:'swiss';
  const item=savedThemeProfile(raw);
  if(nodes.themeName)nodes.themeName.value=item?.name||'';
- if(nodes.themeDelete)nodes.themeDelete.disabled=(theme.palette==='swiss');
+ if(nodes.themeDelete)nodes.themeDelete.disabled=isBuiltInPalette(theme.palette);
  if(nodes.themeRename)nodes.themeRename.disabled=!item;
 }
 function notifyTheme(message,error=false){
@@ -898,7 +925,7 @@ function persistTheme(raw,info='主题已保存'){
 }
 function currentThemeSnapshot(name){
  const v=themeView(),raw=themeData();
- const key=raw.palette==='custom'?'custom':'swiss';
+ const key=raw.palette||'swiss';
  const fromBinding=raw.bindWallpaper?raw.wallpapers?.[key]:null;
  const image=v.palette.startsWith('saved:')?v.wallpaper:(fromBinding||raw.wallpaper);
  return {
@@ -932,7 +959,7 @@ function renameNamedTheme(){
 }
 function deleteSelectedTheme(){
  const raw=themeData(),entry=savedThemeProfile(raw);
- if(raw.palette==='swiss'||!raw.palette)return notifyTheme('瑞士纸韵是内置恢复主题，不能删除',true);
+ if(isBuiltInPalette(raw.palette)||!raw.palette)return notifyTheme('内置主题不可删除，可另存为自定义主题',true);
  if(!window.confirm('删除当前自定义主题？这不会影响聊天、订单和其他主题。'))return;
  if(entry){
   persistTheme({...raw,savedThemes:(raw.savedThemes||[]).filter(x=>x.id!==entry.id),palette:'swiss'},'已删除主题「'+entry.name+'」，切回瑞士纸韵');
@@ -2861,7 +2888,7 @@ async function scanQunxingAccounts(extraWorld=''){
 async function loadWeiboController(){
  if(weiboController)return weiboController;
  if(weiboLoadPromise)return weiboLoadPromise;
- weiboLoadPromise=import('./weibo.js?v=0.15.1').then(module=>{
+ weiboLoadPromise=import('./weibo.js?v=0.16.0').then(module=>{
   weiboController=module.createWeiboModule({
    context,getNodes:()=>nodes,readRootData,writeData,readData,phoneGenerate,
    selectedCharacter,currentPersona,stripModelReasoning,publishPhoneAppEvent,
@@ -2877,7 +2904,7 @@ async function loadWeiboController(){
 async function loadShoppingController(){
  if(shoppingController)return shoppingController;
  if(shoppingLoadPromise)return shoppingLoadPromise;
- shoppingLoadPromise=import('./shopping.js?v=0.15.1').then(module=>{
+ shoppingLoadPromise=import('./shopping.js?v=0.16.0').then(module=>{
   shoppingController=module.createShoppingModule({context,getNodes:()=>nodes});
   return shoppingController;
  }).catch(error=>{
@@ -2891,7 +2918,7 @@ async function loadShoppingController(){
 async function loadTakeoutController(){
  if(takeoutController)return takeoutController;
  if(takeoutLoadPromise)return takeoutLoadPromise;
- takeoutLoadPromise=import('./takeout.js?v=0.15.1').then(module=>{
+ takeoutLoadPromise=import('./takeout.js?v=0.16.0').then(module=>{
   takeoutController=module.createTakeoutModule({
    context,getNodes:()=>nodes,readRootData,writeData,readData,currentPersona,
    walletChargeOrder,walletRefundOrder,walletMoney,phoneGenerate,stripModelReasoning,
@@ -5182,7 +5209,7 @@ function render() {
     renderMoments(ctx);
     renderWallet(ctx);
     nodes.subtitle.textContent = '';
-    nodes.homeCharacter.textContent = primary ? resolvePhonePlaceholders('与 {{char}} 的故事',ctx,primary) : '等待进入角色存档';
+    nodes.homeCharacter.textContent = primary ? resolvePhonePlaceholders('与 {{char}} 相伴 '+storyCompanionDays(data)+' 天',ctx,primary) : '等待进入角色存档';
     nodes.npcRelation.placeholder=resolvePhonePlaceholders('如：{{char}}的母亲、{{user}}的同学',ctx,primary);
     nodes.homeTime.textContent = String(data?.storyTime||localDateTime()).slice(11,16);
     if(activeScreen!=='calendar')nodes.time.value = data?.storyTime || localDateTime();
@@ -5568,26 +5595,40 @@ function installWandEntry() {
     const title = document.createElement('span');
     title.textContent = '咕叽咕机';
     button.append(icon, title);
-    // Adopt computed theme color from a real SillyTavern magic-wand sibling.
-    // Many third-party themes style icons directly instead of the menu root.
+    // Host menu labels and icons may have different computed theme colors.
     const adoptHostWandColor=()=>{
-      const peer=typeof menu.querySelectorAll==='function'
-        ? [...menu.querySelectorAll('.extensionsMenuExtensionButton')].find(item=>!container.contains?.(item))
-        : null;
-      if(!peer||typeof window.getComputedStyle!=='function')return;
-      const color=window.getComputedStyle(peer).color;
-      if(color&&color!=='transparent'){
-       button.style.setProperty('color',color,'important');
-       icon.style.setProperty('color',color,'important');
-       title.style.setProperty('color',color,'important');
-      }
+      if(typeof window.getComputedStyle!=='function')return;
+      const peer=[...menu.querySelectorAll('.extension_container')]
+       .filter(e=>e!==container&&!container.contains(e))
+       .map(e=>{
+        const peerIcon=e.querySelector('.extensionsMenuExtensionButton');
+        const peerButton=peerIcon?.closest('button,.list-group-item')||e.querySelector('button,.list-group-item');
+        return peerButton?{peerIcon,peerButton}:null;
+       }).filter(Boolean).at(-1);
+      if(!peer)return;
+      const label=[...peer.peerButton.children].find(e=>e!==peer.peerIcon&&!e.contains?.(peer.peerIcon))||peer.peerButton;
+      const peerButtonStyle=window.getComputedStyle(peer.peerButton);
+      const labelStyle=window.getComputedStyle(label);
+      const iconStyle=peer.peerIcon?window.getComputedStyle(peer.peerIcon):labelStyle;
+      const paint=(element,key,value)=>{
+       if(value&&value!=='transparent'&&value!=='rgba(0, 0, 0, 0)')
+        element.style.setProperty(key,value,'important');
+      };
+      paint(button,'color',peerButtonStyle.color);
+      paint(title,'color',labelStyle.color);
+      paint(icon,'color',iconStyle.color);
+      for(const k of ['font-size','font-family','font-weight','line-height','letter-spacing'])
+       paint(button,k,peerButtonStyle.getPropertyValue(k));
+      paint(title,'opacity',labelStyle.opacity);
+      paint(icon,'opacity',iconStyle.opacity);
     };
+    container.append(button);
+    menu.append(container);
     adoptHostWandColor();
+    if(typeof requestAnimationFrame==='function')requestAnimationFrame(adoptHostWandColor);
     button.addEventListener('pointerenter',adoptHostWandColor);
     button.addEventListener('focus',adoptHostWandColor);
     button.addEventListener('click', openPhone);
-    container.append(button);
-    menu.append(container);
     wandEntry = container;
     recordActivity('启动入口', '魔法棒菜单已注册「咕叽咕机」。', 'success');
     return true;
@@ -6173,7 +6214,7 @@ function makeUI() {
           <h2>可选主题</h2>
           <select data-lp="themePreset" aria-label="选择主题">
             <option value="swiss">01 · 瑞士纸韵（蓝灰玫瑰）</option>
-            <option value="custom">02 · 自定义主题</option>
+            <option value="custom">05 · 自定义主题</option>
           </select>
           <div class="lp-theme-library-tools">
             <label>新主题名称／重命名 <input type="text" data-lp="themeName" maxlength="36" placeholder="例如：琉璃繁缕" /></label>
