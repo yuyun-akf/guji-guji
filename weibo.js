@@ -139,7 +139,7 @@ export function createWeiboModule(api) {
   return task;
  }
  const feedback=s=>{
-   if(nodes()?.weiboFeedback)nodes().weiboFeedback.textContent=s;
+   if(nodes()?.weiboFeedback)nodes().weiboFeedback.textContent=/正在|加载中|生成中|刷新中|读取中/.test(s)?s:'';
    if(s){
     const kind=/失败|出错|错误|无效/.test(s)?'error':
      /正在|加载中|生成中|刷新中|读取中/.test(s)?'pending':
@@ -911,8 +911,13 @@ export function createWeiboModule(api) {
   reset();
   const pageNames={mine:'我的动态',interactions:'我的互动',following:'关注列表',profile:'个人资料',settings:'群星设置',accountEditor:'编辑群星账号'};
   if(n.title)n.title.textContent=state.adminHistoryAccount?'历史帖管理':state.profileAccount?'个人主页':state.detail?'动态详情':state.topic?'热搜详情':state.tab==='me'&&state.subview?(pageNames[state.subview]||'群星'):'群星';
-  n.weiboGenerate.disabled=state.loading||state.hotLoading;
-  n.weiboGenerate.textContent=state.tab==='nearby'?'刷新周边帖子':state.tab==='discover'?'重新生成15条热搜':'刷新更多';
+  const generating=state.loading||state.hotLoading;
+  n.weiboGenerate.disabled=generating;
+  n.weiboGenerate.textContent=generating
+   ?(state.hotLoading?'正在生成热搜…':'正在刷新帖子…')
+   :state.tab==='nearby'?'刷新周边帖子':state.tab==='discover'?'重新生成15条热搜':'刷新更多';
+  n.weiboGenerate.setAttribute('aria-busy',String(generating));
+  n.weiboGenerate.classList.toggle('lp-wb-refresh-running',generating);
   n.weiboTabs.querySelectorAll('[data-weibo-tab]').forEach(b=>b.classList.toggle('selected',b.dataset.weiboTab===state.tab));
   const expanded=Boolean(state.adminHistoryAccount||state.profileAccount||state.detail||state.topic);
   const panels={home:n.weiboFeed,discover:n.weiboHot,nearby:n.weiboNearby,compose:n.weiboCompose,me:n.weiboMe};
