@@ -570,7 +570,7 @@ export function createWeiboModule(api) {
    line.append(control('编辑','editAccount',a.id));line.append(control('删除','deleteAccount',a.id));
    parent.append(line);
   }
-  parent.append(control('＋ 新建角色账号','newAccount'));
+  parent.append(control('＋ 新建账号','newAccount'));
    const scanner=el('div','lp-wb-scanner');
    scanner.append(heading('从故事资料检测账号','读取角色卡与关联世界书，仅展示候选；勾选并确认后才会保存'));
    field(scanner,'额外世界书名称（选填）','scanWorldName',state.scanWorldName||'');
@@ -616,7 +616,7 @@ export function createWeiboModule(api) {
    field(form,'是否为公众人物','accountPublic',active.publicFigure||false,'checkbox');
    followerField(form,'粉丝数量','accountFollowers',active.followers||0);
    avatarPicker(form,'更换角色账号头像','accountAvatar',state.avatarDraft||active.avatar||'',active.name||'角色');
-   form.append(control('保存角色账号','saveAccount'));parent.append(form);
+   form.append(control('保存群星账号','saveAccount'));parent.append(form);
   }
   parent.append(scanner);
  }
@@ -830,7 +830,7 @@ if(type==='subview'){state.subview=id;state.editing='';render();nodes().weiboMe.
      followers,avatar:avatarDraft||old.avatar||'',source:'manual'};
     q.accounts=old.id?q.accounts.map(a=>a.id===old.id?next:a):[...q.accounts,next];
    });
-   state.editing='';state.avatarDraft='';feedback('角色账号已保存');render();return;
+   state.editing='';state.avatarDraft='';feedback('群星账号已保存');render();return;
   }
   const p=byId(id);if(!p)return;
   if(type==='share'){api.sharePost?.(p);return;}
@@ -960,7 +960,7 @@ if(type==='subview'){state.subview=id;state.editing='';render();nodes().weiboMe.
   reset();const q=data(),scene=root().storyTime||'';
   const now=Date.parse(scene),every=Math.max(30,Number(q.settings.autoEveryMinutes)||180)*60000;
   if(autoBusy||state.loading||(!force&&!q.settings.autoEnabled)||!Number.isFinite(now)||document.visibilityState==='hidden')return;
-  const accounts=q.accounts.filter(a=>a.source==='manual'&&a.kind!=='网友');if(!accounts.length){if(force)feedback('请先在「我 → 群星设置」添加角色账号');return;}
+  const accounts=q.accounts.filter(a=>a.source==='manual'&&a.kind!=='网友');if(!accounts.length){if(force)feedback('请先在「我 → 群星设置」添加账号');return;}
   if(!force&&q.lastAutoStoryMinute&&now-q.lastAutoStoryMinute<every)return;
   autoBusy=true;
   try{
