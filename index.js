@@ -3621,7 +3621,7 @@ function createInteractionController({getRoot,getNodes,getMode,onError}){
  }
  function fromStatus(message,kind='info'){
   if(!message)return;
-  if(kind==='error'||/失败|错误|无效|无法|不足|超时|未就绪/.test(message)){toast(message,'error');return;}
+  if(kind==='error'||/失败|错误|无效|无法|不足|超时|未就绪|请选择|请填写|输入有效|不能|必须/.test(message)){toast(message,'error');return;}
   if(/保存|导入|导出|重置/.test(message)&&/成功|已保存|完成|已更新|已导入|已导出/.test(message))toast(message,'success');
  }
  // CSS :active shading works immediately in Android WebView without JS animations.
