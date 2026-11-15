@@ -80,7 +80,7 @@ export function createTakeoutModule(api){
  }
  function renderShop(host,d){
   const s=shop(d);if(!s){state.shopId='';renderBrowse(host,d);return;}
-  host.append(btn('‹ 返回商户','browse'),heading(s.name,s.category));
+  host.append(heading(s.name,s.category));
   for(const item of s.menu){
    const row=create('div','lp-takeout-dish'),text=create('div');
    text.append(create('strong','',item.name),create('small','lp-takeout-price','¥'+money(item.priceCents)));
@@ -112,7 +112,7 @@ export function createTakeoutModule(api){
  function renderCheckout(host,d){
   const s=shop(d),t=summary(d,s);if(!s||!t.count){state.view='';renderCart(host,d);return;}
   const a=address(d);
-  host.append(btn('‹ 返回购物车','cart'),heading('确认订单',s.name));
+  host.append(heading('确认订单',s.name));
   const card=create('div','lp-takeout-cart-group');
   card.append(create('strong','','收货地址'),
    create('p','',a?(a.label+' · '+a.recipient+' · '+a.phone+' · '+a.detail):'尚未填写收货地址'),
@@ -141,7 +141,7 @@ export function createTakeoutModule(api){
   if(!brief&&o.status==='paid')card.append(btn('取消订单并退款','refund',{order:o.id}));
   return card;
  }
- function renderOrders(host,d){host.append(btn('‹ 返回我的','me'),heading('我的订单'));
+ function renderOrders(host,d){host.append(heading('我的订单'));
   if(!d.orders.length)host.append(create('p','lp-takeout-empty','暂无订单'));
   d.orders.slice().reverse().forEach(o=>host.append(orderCard(o)));
  }
@@ -151,14 +151,14 @@ export function createTakeoutModule(api){
   row.append(field);group.append(row);
  };
  function renderProfile(host,d){
-  host.append(btn('‹ 返回我的','me'),heading('账号资料'));
+  host.append(heading('账号资料'));
   const form=create('div','lp-takeout-form');
   input(form,'name','称呼',d.profile.name,40);
   input(form,'phone','联系电话（剧情设定）',d.profile.phone,40);
   form.append(btn('保存','saveProfile'));host.append(form);
  }
  function renderAddresses(host,d){
-  host.append(btn('‹ 返回','backAddress'),heading('收货地址','手动设置剧情地址，不读取真实定位'));
+  host.append(heading('收货地址','手动设置剧情地址，不读取真实定位'));
   const existing=d.addresses.find(a=>a.id===state.addressId);
   const form=create('div','lp-takeout-form');
   input(form,'label','地址标签',existing?.label||'家',30);
@@ -275,5 +275,15 @@ export function createTakeoutModule(api){
   if(state.scope!==current){state.scope=current;state.tab='browse';state.view='';state.shopId='';state.message='';state.error='';}
   render();
  }
- return {state,open,render,selectTab,handleClick};
+ function back(){
+  if(state.view==='addresses'){
+   state.view=state.returnCheckout?'checkout':'';
+   state.tab=state.returnCheckout?'cart':'me';state.returnCheckout=false;
+  }else if(state.view==='checkout'){state.view='';state.tab='cart';}
+  else if(state.view==='orders'||state.view==='profile'){state.view='';state.tab='me';}
+  else if(state.shopId&&state.tab==='browse'){state.shopId='';}
+  else return false;
+  render();return true;
+ }
+ return {state,open,render,selectTab,handleClick,back};
 }
