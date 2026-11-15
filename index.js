@@ -134,6 +134,7 @@ let memoryController=null;
 let memoryLoadPromise=null;
 let albumController=null,albumLoadPromise=null,groupsController=null,groupsLoadPromise=null;
 let pendingSharedPost=null,sharedPostPreview=null,sharedPostOrigin='chat';
+let chatPhotoDrafts=[];
 let clockTicker=null;
 let clockTickBusy=false;
 const weiboState={scope:'',posts:[],trending:[],tab:'feed',loading:false,selectedId:'',generationId:0};
@@ -3764,6 +3765,7 @@ function switchContact(id,screen='profile') {
     const root=readRootData(ctx);
     if (!validContactId(root,id)) return setStatus('联系人不存在','error');
     activeContactId=id;
+    discardChatPhotoDraft();
     if(nodes?.timeJumpPanel)nodes.timeJumpPanel.hidden=true;
     if(nodes?.paymentPanel)nodes.paymentPanel.hidden=true;
     clearQuote();
@@ -5401,7 +5403,47 @@ async function encodeChatPhoto(file) {
     }
     throw new Error('照片压缩后仍太大，请换一张图片');
 }
-async function sendImageFiles(files) {
+
+function discardChatPhotoDraft(){
+ for(const entry of chatPhotoDrafts)try{URL.revokeObjectURL(entry.url);}catch{}
+ chatPhotoDrafts=[];
+ if(nodes?.chatPhotoPreview){nodes.chatPhotoPreview.hidden=true;nodes.chatPhotoPreview.replaceChildren();}
+}
+function renderChatPhotoDraft(){
+ if(!nodes?.chatPhotoPreview)return;
+ const wrap=nodes.chatPhotoPreview;wrap.replaceChildren();wrap.hidden=!chatPhotoDrafts.length;
+ if(!chatPhotoDrafts.length)return;
+ const grid=document.createElement('div');grid.className='lp-photo-draft-grid';
+ chatPhotoDrafts.forEach((entry,index)=>{
+  const cell=document.createElement('div');cell.className='lp-photo-draft-item';
+  const img=document.createElement('img');img.src=entry.url;img.alt='待发送的第'+(index+1)+'张图片';
+  const remove=document.createElement('button');remove.type='button';remove.textContent='×';remove.dataset.photoRemove=String(index);remove.setAttribute('aria-label','移除这张图片');
+  cell.append(img,remove);grid.append(cell);
+ });
+ const caption=document.createElement('textarea');caption.dataset.photoCaption='true';caption.rows=2;caption.maxLength=500;caption.placeholder='给这组照片配一句话（选填）';
+ caption.value=wrap.dataset.photoCaption||'';
+ caption.addEventListener('input',()=>{wrap.dataset.photoCaption=caption.value;});
+ const buttons=document.createElement('div');buttons.className='lp-photo-draft-actions';
+ const confirm=document.createElement('button');confirm.type='button';confirm.dataset.photoSend='true';confirm.textContent='发送 '+chatPhotoDrafts.length+' 张图片';
+ const cancel=document.createElement('button');cancel.type='button';cancel.dataset.photoCancel='true';cancel.textContent='取消';
+ buttons.append(cancel,confirm);wrap.append(grid,caption,buttons);
+}
+function prepareChatPhotoDraft(files){
+ if(!files.length)return;
+ if(files.length>9)return setStatus('一次最多选择9张图片','error');
+ const valid=files.every(file=>['image/png','image/jpeg','image/webp'].includes(file.type)&&file.size<=12*1024*1024);
+ if(!valid)return setStatus('仅支持12MB以内的 PNG、JPG、WebP 图片','error');
+ discardChatPhotoDraft();
+ chatPhotoDrafts=files.map(file=>({file,url:URL.createObjectURL(file)}));
+ nodes.chatPhotoPreview.dataset.photoCaption='';
+ renderChatPhotoDraft();
+}
+async function confirmChatPhotoDraft(){
+ if(!chatPhotoDrafts.length||busy)return;
+ const files=chatPhotoDrafts.map(x=>x.file),caption=nodes.chatPhotoPreview.dataset.photoCaption||'';
+ await sendImageFiles(files,caption);
+}
+async function sendImageFiles(files,caption='') {
     if(!files?.length||busy)return;
     if(files.length>9)return setStatus('一次最多选择9张图片','error');
     const session=captureSession(context());
@@ -5411,7 +5453,10 @@ async function sendImageFiles(files) {
             encoded.push(await encodeChatPhoto(file));
             if(!sameSession(session))return;
         }
-        if(sameSession(session))await sendUserMessage('[图片]', '', null, {images:encoded});
+        if(sameSession(session)){
+            await sendUserMessage(caption.trim().slice(0,500)||'[图片]', '', null, {images:encoded});
+            discardChatPhotoDraft();
+        }
     }catch(error){if(sameSession(session))setStatus(recordError('发送照片',error),'error');}
 }
 
@@ -6725,6 +6770,7 @@ function makeUI() {
             <button type="button" data-lp="cancelQuote" aria-label="取消引用">✕</button>
           </div>
           <input type="file" accept="image/png,image/jpeg,image/webp" data-lp="chatImageInput" multiple hidden />
+          <div class="lp-photo-draft" data-lp="chatPhotoPreview" hidden></div>
           <div class="lp-payment-panel" data-lp="paymentPanel" hidden>
             <div class="lp-payment-panel-head"><strong data-lp="paymentTitle">转账</strong><button type="button" data-lp="paymentClose" aria-label="关闭">×</button></div>
             <label>类型 <select data-lp="paymentKind">
@@ -7146,7 +7192,7 @@ function mount() {
         'shoppingContent','shoppingTabs','takeoutContent','takeoutTabs','walletBalance','walletPending','walletBills','walletAdjustInput','walletSaveBalance','walletToChat','walletStatus',
         'presetSource','presetInfo','presetEntries','worldBookList','worldSelectionSummary','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','saveSelections','savePresetPicker','saveWorldPicker','selectionSaveStatus','readMainlineMemory','memorySource','phoneToMainline','eventBridge','saveContextSettings','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themePreset','themeCustomColors','themeSaveColors','themeWallpaperPreview','themeDesktopEffect','interactionMotion','interactionFeedback','themeBindWallpaper','themeName','themeSaveNamed','themeRename','themeDelete','themeExport','themeImport','themeFeedback','themeCssFile','themeCssReset','themeCssStatus','themeFontFile','themeDesktopIconSize','themeDesktopGap','themeBubbleRadius','themeIconTarget','themeIconFile','themeIconReset','themeFloatingIconFile','themeFloatingIconReset','themeCopySelectors',
         'diagnostics', 'diagnosticState', 'copyDiagnostics', 'clearDiagnostics',
-        'messages','messageActions','quotedPreview','quotedText','cancelQuote','emojiPanel','morePanel','chatImageInput','timeJumpPanel','timeJumpHint','timeJumpCurrent','timeJumpAmount','timeJumpUnit','timeJumpApply','timeJumpClose','paymentPanel','paymentTitle','paymentKind','paymentAmount','paymentNote','paymentBalance','paymentClose','paymentSend','input', 'generate', 'send', 'launcher']
+        'messages','messageActions','chatPhotoPreview','quotedPreview','quotedText','cancelQuote','emojiPanel','morePanel','chatImageInput','timeJumpPanel','timeJumpHint','timeJumpCurrent','timeJumpAmount','timeJumpUnit','timeJumpApply','timeJumpClose','paymentPanel','paymentTitle','paymentKind','paymentAmount','paymentNote','paymentBalance','paymentClose','paymentSend','input', 'generate', 'send', 'launcher']
         .map(key => [key, key === 'launcher' ? floating : root.querySelector(`[data-lp="${key}"]`)]));
 
     const draggedClick=enableLauncherDragging(nodes.launcher);
@@ -7387,7 +7433,13 @@ function mount() {
     nodes.timeJumpClose.addEventListener('click',()=>{nodes.timeJumpPanel.hidden=true;});
     nodes.stickerUpload.addEventListener('change',event=>{const files=[...event.target.files];event.target.value='';void uploadStickers(files);});
     nodes.stickerPackUpload.addEventListener('change',event=>{const files=[...event.target.files];event.target.value='';void uploadStickerPack(files);});
-    nodes.chatImageInput.addEventListener('change',event=>{const files=[...(event.target.files||[])];event.target.value='';void sendImageFiles(files);});
+    nodes.chatImageInput.addEventListener('change',event=>{const files=[...(event.target.files||[])];event.target.value='';prepareChatPhotoDraft(files);});
+    nodes.chatPhotoPreview.addEventListener('click',event=>{
+     const remove=event.target.closest('[data-photo-remove]'),send=event.target.closest('[data-photo-send]'),cancel=event.target.closest('[data-photo-cancel]');
+     if(remove){const idx=Number(remove.dataset.photoRemove);const [item]=chatPhotoDrafts.splice(idx,1);if(item)URL.revokeObjectURL(item.url);renderChatPhotoDraft();}
+     else if(send)void confirmChatPhotoDraft();
+     else if(cancel)discardChatPhotoDraft();
+    });
     nodes.messages.addEventListener('scroll',()=>{if(selectedMessageId)closeMessageActions();},{passive:true});
     root.addEventListener('click',event=>{
         if(selectedMessageId&&!event.target.closest('.lp-message-actions,.lp-bubble'))closeMessageActions();
@@ -7483,6 +7535,7 @@ function mount() {
         listeningEvent = ctx.event_types.CHAT_CHANGED;
         chatChangedHandler = () => {
             activeContactId=PRIMARY_CONTACT_ID;
+            discardChatPhotoDraft();
             if(nodes?.timeJumpPanel)nodes.timeJumpPanel.hidden=true;
             clearQuote();
             npcCandidates=[];npcScanSession=null;
