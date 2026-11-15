@@ -38,7 +38,7 @@ test('世界推荐保留两次请求，周边一次请求生成真实帖子；�
  assert.equal(h.calls(),3,'周边只发起一次 API 请求');
  assert.equal(h.module.state.posts.nearby.length,5,'模型返回的五条完整帖子均保留');
  assert.equal(h.ctx.chatMetadata.st_little_phone_v1.qunxing.posts.length,0);
- assert.equal(h.ctx.chatMetadata.st_little_phone_v1.qunxing.nearbyTrends,undefined);
+ assert.equal(h.ctx.chatMetadata.st_little_phone_v1.qunxing.nearbyTrends.length,0);
  assert.equal(h.ctx.chatMetadata.st_little_phone_v1.qunxing.accounts[0].name,'林知远');
 });
 test('手动角色账号能自主营业，帖子保存且不代替 user 发布',async()=>{
