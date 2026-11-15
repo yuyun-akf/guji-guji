@@ -46,10 +46,10 @@ function harness(selectedMode='standard',reducedMotion=false){
  const instance=factory({getRoot:()=>root,getNodes:()=>nodes,getMode:()=>selectedMode});
  return {instance,root,nodes,listeners,panel,screen,tile};
 }
-test('all nine open apps use the shared event and page transition system',()=>{
+test('all ten open apps use the shared event and page transition system',()=>{
  const start=index.indexOf('const APP_CATALOG=['),end=index.indexOf('const APP_ICONS=',start);
  assert.ok(start>=0&&end>start);
- assert.equal((index.slice(start,end).match(/ready:true/g)||[]).length,9);
+ assert.equal((index.slice(start,end).match(/ready:true/g)||[]).length,10);
  assert.match(index,/phoneInteraction\.bind\(root\)/);
  assert.match(index,/phoneInteraction\?\.navigate\(\{previous,screen,origin:source\}\)/);
  assert.match(index,/sourceTile:activeScreen==='home'\?button:null/);
@@ -57,7 +57,7 @@ test('all nine open apps use the shared event and page transition system',()=>{
  assert.match(index,/data-lp="interactionFeedback"/);
  assert.match(style,/\.lp-app-portal/);
  assert.match(style,/\.lp-press-bounce/);
- assert.equal(manifest.version,'0.20.0');
+ assert.equal(manifest.version,'0.21.0');
 });
 test('pointer and keyboard controls press, release, and bounce',()=>{
  const h=harness();h.instance.bind(h.root);
