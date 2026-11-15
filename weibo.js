@@ -1,6 +1,6 @@
 /* 群星 · character-card accounts + per-story persistent generated feeds and interactions. */
 export function createWeiboModule(api) {
- const state={scope:'',tab:'home',detail:'',topic:null,profileAccount:'',adminHistoryAccount:'',historyEditingId:'',historyFormOpen:false,searchQuery:'',sharingId:'',subview:'',posts:{home:[],nearby:[]},trends:[],nearbyTrends:[],loading:false,hotLoading:false,attempted:{},token:0,sessionId:0,headline:'',hotBundles:{},queuedNearby:false,confirming:false,editing:'',avatarDraft:'',avatarOwnerDraft:'',candidates:[],scanLoading:false,scanMessage:''};
+ const state={scope:'',tab:'home',detail:'',topic:null,profileAccount:'',adminHistoryAccount:'',historyEditingId:'',historyFormOpen:false,searchQuery:'',sharingId:'',subview:'',posts:{home:[],nearby:[]},trends:[],nearbyTrends:[],loading:false,hotLoading:false,refreshResult:{},attempted:{},token:0,sessionId:0,headline:'',hotBundles:{},queuedNearby:false,confirming:false,editing:'',avatarDraft:'',avatarOwnerDraft:'',candidates:[],scanLoading:false,scanMessage:''};
  let writes=Promise.resolve(), autoBusy=false,closeHotConfirmation=null;
  const context=()=>api.context(), nodes=()=>api.getNodes(), root=()=>api.readRootData(context());
  const uid=(prefix='qx')=>prefix+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
@@ -174,7 +174,7 @@ export function createWeiboModule(api) {
    nearby:stored.attempted?.nearby===true||state.posts.nearby.length>0,
    hot:stored.attempted?.hot===true||state.trends.length>0
   };
-  state.loading=false;state.hotLoading=false;state.queuedNearby=false;
+  state.loading=false;state.hotLoading=false;state.queuedNearby=false;state.refreshResult={};
   state.token++;state.sessionId++;
  }
  function endPhoneSession(){
@@ -225,6 +225,16 @@ export function createWeiboModule(api) {
  }
  function updateHomeHeadline(){
   api.updateHomeHotSearch?.();
+ }
+ function markRefreshDone(tab,text){
+  const result={text,until:Date.now()+1700};
+  state.refreshResult[tab]=result;
+  setTimeout(()=>{
+   if(state.refreshResult[tab]!==result)return;
+   delete state.refreshResult[tab];
+   if(state.tab===tab&&!state.loading&&!state.hotLoading&&nodes()?.weiboGenerate)
+    nodes().weiboGenerate.textContent=tab==='nearby'?'刷新周边帖子':tab==='discover'?'重新生成15条热搜':'刷新更多';
+  },1750);
  }
  const actionState=p=>data().posts.find(x=>x.id===p.id)?.actions||p.actions||{};
  const accountForPost=(p,accounts=data().accounts)=>{
@@ -366,6 +376,7 @@ export function createWeiboModule(api) {
    await persistGenerated(nearby?'nearby':'home',
     headlineCandidate?{hotHeadline:headlineCandidate}:{});
    if(headlineCandidate)updateHomeHeadline();
+   markRefreshDone(nearby?'nearby':'home','✓ 已刷新 '+all.length+' 条');
    feedback('已更新 '+all.length+' 条'+name+'动态');
    api.recordActivity?.('群星刷新',name+'：'+all.length+' 条','success');
   }catch(e){
@@ -416,6 +427,7 @@ export function createWeiboModule(api) {
    state.headline=topics[0].title;
    await persistGenerated('hot',{hotHeadline:topics[0].title});
    updateHomeHeadline();
+   markRefreshDone('discover','✓ 已生成 '+topics.length+' 条热搜');
    feedback('已生成 '+topics.length+'/15 条热搜及对应讨论'+(topics.length<15?'；模型返回不足15条，可手动重试':''));
    api.recordActivity?.('群星热搜','生成 '+topics.length+' 条热搜及对应帖子','success');
   }catch(error){
@@ -917,9 +929,11 @@ export function createWeiboModule(api) {
   if(n.title)n.title.textContent=state.adminHistoryAccount?'历史帖管理':state.profileAccount?'个人主页':state.detail?'动态详情':state.topic?'热搜详情':state.tab==='me'&&state.subview?(pageNames[state.subview]||'群星'):'群星';
   const generating=state.loading||state.hotLoading;
   n.weiboGenerate.disabled=generating;
+  const completed=state.refreshResult[state.tab];
   n.weiboGenerate.textContent=generating
    ?(state.hotLoading?'正在生成热搜…':'正在刷新帖子…')
-   :state.tab==='nearby'?'刷新周边帖子':state.tab==='discover'?'重新生成15条热搜':'刷新更多';
+   :completed&&completed.until>Date.now()?completed.text:
+    state.tab==='nearby'?'刷新周边帖子':state.tab==='discover'?'重新生成15条热搜':'刷新更多';
   n.weiboGenerate.setAttribute('aria-busy',String(generating));
   n.weiboGenerate.classList.toggle('lp-wb-refresh-running',generating);
   n.weiboTabs.querySelectorAll('[data-weibo-tab]').forEach(b=>b.classList.toggle('selected',b.dataset.weiboTab===state.tab));
