@@ -2964,3 +2964,12 @@
 #st-little-phone-root[data-theme-palette="concept-amber"] .lp-settings{
  color:var(--lp-ink);
 }
+
+/* Additional palette coverage: inline quotes and completed/expired payment states. */
+#st-little-phone-root .lp-inline-quote{background:var(--lp-ice);border-left-color:var(--lp-slate);color:var(--lp-ink);}
+#st-little-phone-root .lp-wb-text{color:var(--lp-ink);}
+#st-little-phone-root .lp-payment-card.lp-payment-expired,
+#st-little-phone-root .lp-payment-card.lp-payment-refunded{
+ background:var(--lp-ice)!important;color:var(--lp-soft-ink)!important;border-color:var(--lp-slate)!important;
+}
+#st-little-phone-root .lp-payment-actions button{color:var(--lp-ink)!important;}
