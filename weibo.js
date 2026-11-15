@@ -456,7 +456,7 @@ export function createWeiboModule(api) {
  }
 
  const field=(parent,label,name,value='',type='text')=>{
-  const row=el('div','lp-wb-field');row.append(el('span','',label));
+  const row=el('label','lp-wb-field');row.append(el('span','',label));
   const input=document.createElement('input');input.type=type;input.dataset.wbField=name;
   if(type==='checkbox')input.checked=Boolean(value);else input.value=String(value??'');
   row.append(input);parent.append(row);return input;
@@ -464,7 +464,7 @@ export function createWeiboModule(api) {
 
  function followerField(parent,label,name,count){
    const parts=followerParts(count);
-   const row=el('label','lp-wb-field');row.append(el('span','',label));
+   const row=el('div','lp-wb-field');row.append(el('span','',label));
    const controls=el('div','lp-wb-follower-input');
    const input=document.createElement('input');
    input.type='number';input.min='0';input.step='any';input.inputMode='decimal';
