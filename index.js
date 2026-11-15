@@ -805,7 +805,9 @@ function loadWallpaper(file){
    canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
    const content=canvas.toDataURL('image/webp',.84);
    const t=themeData();
-   if(t.bindWallpaper===true){
+   if(t.palette?.startsWith('saved:')){
+    changeTheme({wallpaper:content,bindWallpaper:true});
+   }else if(t.bindWallpaper===true){
     const key=t.palette==='custom'?'custom':'swiss';
     changeTheme({wallpapers:{...(t.wallpapers||{}),[key]:content}});
    }else{
@@ -822,7 +824,8 @@ function loadWallpaper(file){
 }
 function resetWallpaper(){
  const t=themeData();
- if(t.bindWallpaper===true){
+ if(t.palette?.startsWith('saved:'))changeTheme({wallpaper:'',bindWallpaper:true});
+ else if(t.bindWallpaper===true){
   const key=t.palette==='custom'?'custom':'swiss';
   changeTheme({wallpapers:{...(t.wallpapers||{}),[key]:''}});
  }else{
@@ -832,6 +835,7 @@ function resetWallpaper(){
 }
 function toggleThemeWallpaperBinding(enabled){
  const t=themeData(),key=t.palette==='custom'?'custom':'swiss';
+ if(t.palette?.startsWith('saved:')){changeTheme({bindWallpaper:true});return;}
  let oldImage=String(t.wallpaper||'');
  if(!oldImage){try{oldImage=window.localStorage.getItem(WALLPAPER_STORAGE_KEY)||'';}catch{}}
  const activeImage=t.bindWallpaper?String(t.wallpapers?.[key]||''):oldImage;
