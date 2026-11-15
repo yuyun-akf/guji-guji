@@ -477,8 +477,12 @@ export function createWeiboModule(api) {
   return btn;
  }
  function accountMatches(post,account){
-  return post&&account&&(post.authorId===account.id||
-   account.handle&&post.handle===account.handle||post.author===account.name);
+  if(!post||!account)return false;
+  if(post.authorId)return post.authorId===account.id;
+  if(post.handle&&account.handle)return post.handle===account.handle;
+  // Name fallback is safe only if it identifies one unambiguous account.
+  return Boolean(post.author&&post.author===account.name&&
+   data().accounts.filter(a=>a.name===account.name).length===1);
  }
  function accountHistory(account){
   const q=data(),cached=q.generated?.feeds||{};
@@ -500,14 +504,27 @@ export function createWeiboModule(api) {
   if(!container)return;
   container.replaceChildren();
   const query=state.searchQuery.trim().toLocaleLowerCase();
-  const list=data().accounts.filter(a=>!query||[a.name,a.handle,savedProfession(a)].some(
-   value=>String(value||'').toLocaleLowerCase().includes(query))).slice(0,25);
-  if(!list.length){container.append(el('small','','没有找到匹配账号，可在「我 → 群星设置」添加'));return;}
+  if(!query){
+   container.append(el('small','lp-wb-search-hint','输入昵称或群星 ID，查找并关注已有账号'));
+   return;
+  }
+  const q=data(),list=q.accounts.filter(a=>[a.name,a.handle].some(
+   value=>String(value||'').toLocaleLowerCase().includes(query))).slice(0,15);
+  if(!list.length){
+   container.append(el('small','lp-wb-search-hint','没有匹配账号；仅能搜索已建立的角色与关注账号'));
+   return;
+  }
   for(const a of list){
-   const button=control('', 'openAccount',a.id);
-   button.classList.add('lp-wb-search-result');
-   button.append(avatar(a.avatar,a.name),el('strong','',a.name),el('small','',a.handle||'未设置群星 ID'));
-   container.append(button);
+   const row=el('div','lp-wb-search-result');
+   const open=control('','openAccount',a.id);
+   open.classList.add('lp-wb-search-person');
+   const details=el('span','lp-wb-search-person-text');
+   details.append(el('strong','',a.name),el('small','',a.handle||'未设置群星 ID'));
+   open.append(avatar(a.avatar,a.name),details);
+   const followed=q.following.includes(a.id);
+   const follow=control(followed?'已关注':'＋关注',followed?'unfollowAccount':'followAccount',a.id);
+   follow.classList.add('lp-wb-search-follow');
+   row.append(open,follow);container.append(row);
   }
  }
 
@@ -583,12 +600,16 @@ export function createWeiboModule(api) {
   const source=p.startsWith('post:')?byId(p.slice(5)):null;
   const account=source?actor(source)||{id:p,name:source.author,handle:source.handle||'',avatar:source.avatar||'',followers:source.followers??null,followingCount:source.followingCount??null,likesTotal:source.accountLikes??null,commentsTotal:source.accountComments??null}:data().accounts.find(a=>a.id===p);
   if(!account){container.append(el('p','lp-wb-empty','账号已删除或不可读取'));return;}
-  const q=data(),history=accountHistory(account);
+  const q=data(),history=accountHistory(account),totals=estimateMetrics(account);
   const head=el('div','lp-wb-account-page'),intro=el('div','lp-wb-account-intro');
   intro.append(avatar(account.avatar,account.name));
   const meta=el('div','lp-wb-account-meta'),detail=el('div','lp-wb-account-details');
   detail.append(el('strong','',account.name),el('small','',account.handle||'尚未设置群星 ID'));
   if(savedProfession(account))detail.append(el('small','',savedProfession(account)));
+  if((account.identityVisibility||'public')==='public'){
+   const label={self:'本人运营',team:'工作室／团队运营',joint:'本人及团队共同运营',other:'指定运营者'}[operatorMode(account)];
+   if(label)detail.append(el('small','',label));
+  }
   meta.append(detail);
   const followed=q.following.includes(account.id),buttons=el('div','lp-wb-profile-buttons');
   if(account.id!=='self')buttons.append(control(followed?'已关注':'＋关注',
@@ -601,9 +622,9 @@ export function createWeiboModule(api) {
   const pretty=value=>formatFollowers(value).replace(/粉丝$/,'');
   const display=[
    ['粉丝',account.followers==null?'未设置':formatFollowers(account.followers)],
-   ['关注',account.followingCount!=null&&Number.isFinite(+account.followingCount)?pretty(account.followingCount):'未设置'],
-   ['获赞',account.likesTotal!=null&&Number.isFinite(+account.likesTotal)?pretty(account.likesTotal):account.source==='manual'?'未设置':pretty(knownLikes)],
-   ['获评',account.commentsTotal!=null&&Number.isFinite(+account.commentsTotal)?pretty(account.commentsTotal):account.source==='manual'?'未设置':pretty(knownComments)]
+   ['关注',pretty(totals.followingCount)],
+   ['获赞',pretty(Math.max(totals.likesTotal,knownLikes))],
+   ['获评',pretty(Math.max(totals.commentsTotal,knownComments))]
   ];
   for(const [label,value] of display){const tile=el('div');tile.append(el('strong','',value),el('small','',label));stats.append(tile);}
   head.append(stats);container.append(head);
