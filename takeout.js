@@ -23,7 +23,15 @@ export function createTakeoutModule(api){
    orders:Array.isArray(r.orders)?r.orders:[],
    profile:r.profile||{name:persona.name||'我',phone:''}};
  };
- let queue=Promise.resolve();
+ let queue=Promise.resolve(),lastFeedbackState='';
+ const reportFeedback=()=>{
+  const current=[state.loading,state.message,state.error].join('|');
+  if(lastFeedbackState===current)return;
+  lastFeedbackState=current;
+  if(state.error)api.notifyInteraction?.(state.error,'error');
+  else if(state.loading)api.notifyInteraction?.('正在处理外卖操作…','pending');
+  else if(state.message)api.notifyInteraction?.(state.message,'success');
+ };
  const mutate=fn=>{
   queue=queue.catch(()=>{}).then(async()=>{
    const ctx=api.context(),metadata=ctx?.chatMetadata;if(!metadata)throw Error('请先打开角色聊天存档');
@@ -57,7 +65,9 @@ export function createTakeoutModule(api){
   else if(state.tab==='browse')state.shopId?renderShop(body,d):renderBrowse(body,d);
   else if(state.tab==='cart')renderCart(body,d);
   else renderMe(body,d);
-  host.replaceChildren(body);host.scrollTop=0;
+  const scroll=host.scrollTop;
+  host.replaceChildren(body);host.scrollTop=scroll;
+  reportFeedback();
  }
  function renderBrowse(host,d){
   host.append(heading('浏览商户','当前剧情中的虚构店铺，不使用设备定位'));
@@ -179,7 +189,10 @@ export function createTakeoutModule(api){
  async function handleClick(event){
   const b=event.target.closest('[data-takeout-action]');if(!b)return false;
   const action=b.dataset.takeoutAction;
-  const go=(tab,view='',shopId='')=>{state.tab=tab;state.view=view;state.shopId=shopId;state.error='';render();};
+  const go=(tab,view='',shopId='')=>{
+   state.tab=tab;state.view=view;state.shopId=shopId;state.error='';state.message='';
+   render();if(api.getNodes()?.takeoutContent)api.getNodes().takeoutContent.scrollTop=0;
+  };
   if(action==='shop'){go('browse','',b.dataset.shop);return true;}
   if(action==='browse'){go('browse');return true;}
   if(action==='cart'){go('cart');return true;}
@@ -216,6 +229,7 @@ export function createTakeoutModule(api){
     state.message='账号资料已保存';
    }else if(action==='pay'){
     if(state.loading)return true;state.loading=true;
+    api.notifyInteraction?.('正在确认付款与订单…','pending');
     await mutate((d,r)=>{
      const s=d.shops.find(x=>x.id===state.shopId),t=summary(d,s),a=address(d);
      if(!s||!t.count)throw Error('购物车是空的');
@@ -241,7 +255,7 @@ export function createTakeoutModule(api){
   return true;
  }
  async function generateShops(){
-  if(state.loading)return;state.loading=true;state.error='';render();
+  if(state.loading)return;state.loading=true;state.error='';state.message='';render();
   const oldScope=api.context()?.chatMetadata;
   try{
    const ctx=api.context(),loc=clean(api.storyScenePreview(ctx,root()).location||'未明确',50);
@@ -269,7 +283,8 @@ export function createTakeoutModule(api){
   finally{state.loading=false;render();}
  }
  function selectTab(tab){if(!['browse','cart','me'].includes(tab))return;
-  state.tab=tab;state.view='';state.shopId='';state.error='';render();
+  state.tab=tab;state.view='';state.shopId='';state.error='';state.message='';render();
+  if(api.getNodes()?.takeoutContent)api.getNodes().takeoutContent.scrollTop=0;
  }
  function open(){const current=api.context()?.chatMetadata;
   if(state.scope!==current){state.scope=current;state.tab='browse';state.view='';state.shopId='';state.message='';state.error='';}
