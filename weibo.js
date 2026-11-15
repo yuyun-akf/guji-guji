@@ -96,10 +96,14 @@ export function createWeiboModule(api) {
    const previous=q.generated&&typeof q.generated==='object'?q.generated:{};
    const feeds={...(previous.feeds||{})};
    if(posts!==null)feeds[kind]=posts;
+   const revisions={...(previous.revisions||{})};
+   revisions[kind]=Math.max(Date.now(),(Number(revisions[kind])||0)+1);
    q.generated={
     ...previous,feeds,
     ...(trends!==null?{trends,hotBundles}:{}),
     headline:headlineText||previous.headline||'',
+    headlineRevision:extra.hotHeadline?revisions[kind]:(Number(previous.headlineRevision)||0),
+    revisions,
     attempted:{...(previous.attempted||{}),[kind==='home'?'world':kind]:attempted===true}
    };
    if(extra.hotHeadline)q.hotHeadline=extra.hotHeadline;
