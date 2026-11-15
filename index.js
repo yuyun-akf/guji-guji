@@ -1096,12 +1096,41 @@ async function copyThemeSelectors(){
 function apiSessionId(ctx) {
     return String(ctx?.characterId ?? 'none') + '::' + String(ctx?.chatId ?? ctx?.getCurrentChatId?.() ?? 'default');
 }
-function readApiOptions(data) {
-    const cfg = data?.config?.api || {};
-    return {mode:cfg.mode === 'custom' ? 'custom' : 'inherit',
-        url:typeof cfg.url === 'string' ? cfg.url : '',
-        model:typeof cfg.model === 'string' ? cfg.model : '',
-        maxTokens:Number.isFinite(Number(cfg.maxTokens)) ? Math.max(32,Math.min(4096,Number(cfg.maxTokens))) : 320};
+const PHONE_API_TARGETS=[
+ ['default','全部应用 · 默认连接'],['chat','咕叽聊'],['weibo','群星'],
+ ['takeout','外卖'],['shopping','购物'],['wallet','吱付宝'],
+ ['calendar','日历'],['theme','主题'],['settings','设置'],
+ ['diagnostics','运行日志'],['autonomy','角色自主活动'],['memory','手机记忆']
+];
+const API_TARGET_IDS=new Set(PHONE_API_TARGETS.map(x=>x[0]));
+function apiKeySlot(ctx,task='default'){
+ return apiSessionId(ctx)+(task==='default'?'':'::'+task);
+}
+function readApiOptions(data,task='default'){
+ const rawDefault=data?.config?.api||{},rawRoutes=data?.config?.apiRoutes||{};
+ const selected=task==='default'?rawDefault:rawRoutes[task];
+ const fallback=task!=='default'&&(!selected||selected.mode==='follow');
+ const raw=fallback?rawDefault:selected||{};
+ const mode=['inherit','custom','profile'].includes(raw.mode)?raw.mode:'inherit';
+ return {mode,task:task||'default',override:!fallback&&task!=='default',
+  routeMode:task==='default'?mode:fallback?'follow':mode,
+  url:typeof raw.url==='string'?raw.url:'',
+  model:typeof raw.model==='string'?raw.model:'',
+  profileId:typeof raw.profileId==='string'?raw.profileId:'',
+  maxTokens:Number.isFinite(+raw.maxTokens)?Math.max(32,Math.min(4096,+raw.maxTokens)):320};
+}
+function availableConnectionProfiles(ctx=context()){
+ const service=ctx?.ConnectionManagerRequestService;
+ if(typeof service?.getSupportedProfiles!=='function')return {profiles:[],error:'当前酒馆未开放连接配置请求接口'};
+ try{
+  const list=service.getSupportedProfiles();
+  const profiles=(Array.isArray(list)?list:[]).filter(p=>p&&typeof p.id==='string')
+   .map(p=>({id:p.id,name:String(p.name||p.id),model:String(p.model||''),mode:String(p.mode||'')}));
+  return {profiles,error:profiles.length?'':'当前没有可直接请求的已保存连接档案'};
+ }catch(e){return {profiles:[],error:'无法读取连接档案：'+String(e.message||e)};}
+}
+function chooseApiTask(task){
+ return API_TARGET_IDS.has(task)?task:'default';
 }
 function normalizeApiUrl(value) {
     let url;
@@ -1134,85 +1163,137 @@ function currentPhoneModel(ctx) {
     return detected||settings.vertexai_model||settings.google_model||settings.custom_model||
         settings.openrouter_model||settings.openai_model||settings.model||'';
 }
-async function phoneGenerate(ctx,options,data) {
-    const cfg=readApiOptions(data);
-    const messages=buildPhoneRequestMessages(options);
-    const imageCount=phoneRequestImageCount(messages);
-    if(cfg.mode!=='custom'){
-        if(imageCount){
-            if(ctx?.mainApi!=='openai')throw new Error('当前酒馆不是 Chat Completion 连接，无法直接传递照片；请切换到支持视觉的 Chat Completion 通道。');
-            const service=ctx?.ChatCompletionService;
-            if(typeof service?.presetToGeneratePayload!=='function'||typeof service?.sendRequest!=='function')
-                throw new Error('酒馆未提供多模态请求接口，无法把照片送到当前模型；不会改用丢失图片的文本请求。');
-            const model=currentPhoneModel(ctx);
-            if(typeof model!=='string'||!model.trim())throw new Error('无法读取酒馆当前模型名称，照片未发送给模型。');
-            const payload=await service.presetToGeneratePayload({}, {}, {messages,model,stream:false});
-            // Require an intact multimodal payload. Do not falsely claim successful vision.
-            if(phoneRequestImageCount(payload?.messages||[])!==imageCount)
-                throw new Error('酒馆构建请求时丢失图片内容，已取消本次生成；请检查连接和模型。');
-            payload.stream=false;
-            recordActivity('多模态图片请求',`已构建图片请求：当前模型 ${model}；通道 ${payload.chat_completion_source||'未识别'}；包含 ${imageCount} 张照片。正在交给酒馆现有连接发送，不额外配置 API。`);
-            const result=await service.sendRequest(payload);
-            recordActivity('多模态响应',`酒馆接口已返回；本轮提交 ${imageCount} 张照片。是否正确理解图片内容仍需核对回复。`,'success');
-            return typeof result==='string'?result:result?.content||'';
-        }
-        if(typeof ctx?.generateRaw!=='function')throw new Error('酒馆生成接口不可用');
-        return ctx.generateRaw(options);
-    }
-    const service=ctx?.ChatCompletionService;
-    if(typeof service?.sendRequest!=='function')throw new Error('酒馆独立 API 接口不可用');
-    const key=transientApiKeys.get(apiSessionId(ctx));
-    if(!key)throw new Error('独立 API 密钥未设置，请在「设置」中填写');
-    const url=normalizeApiUrl(cfg.url);
-    if(!cfg.model.trim())throw new Error('请填写独立 API 模型名称');
-    if(imageCount)recordActivity('多模态图片请求',`独立 API：照片 ${imageCount} 张以图片数据提交。`);
-    const result=await service.sendRequest({
-        chat_completion_source:'custom',custom_url:url,
-        custom_include_headers:JSON.stringify({Authorization:'Bearer '+key}),
-        model:cfg.model.trim(),messages,stream:false,
-        // A full 15-topic hot list cannot fit the ordinary 320-token response budget.
-        // Increase it only for explicit high-volume content requests, never globally.
-        max_tokens:Number.isFinite(Number(options?.maxTokens))&&Number(options.maxTokens)>0
-          ?Math.max(cfg.maxTokens,Math.min(10000,Math.floor(Number(options.maxTokens))))
-          :cfg.maxTokens,temperature:0.85
-    });
-    return typeof result==='string'?result:result?.content||'';
+async function phoneGenerate(ctx,options={},data){
+ const task=chooseApiTask(options.task||'chat'),cfg=readApiOptions(data,task);
+ const messages=buildPhoneRequestMessages(options);
+ const imageCount=phoneRequestImageCount(messages);
+ const budget=Number.isFinite(+options.maxTokens)&&+options.maxTokens>0
+  ?Math.min(10000,Math.max(cfg.maxTokens,Math.floor(+options.maxTokens)))
+  :cfg.maxTokens;
+ if(cfg.mode==='profile'){
+  const service=ctx?.ConnectionManagerRequestService;
+  if(typeof service?.sendRequest!=='function')throw new Error('酒馆未开放独立连接档案请求接口');
+  const profiles=availableConnectionProfiles(ctx);
+  if(!profiles.profiles.some(p=>p.id===cfg.profileId))
+   throw new Error('所选酒馆连接档案不可用，请在 API 设置中重新选择');
+  const response=await service.sendRequest(cfg.profileId,messages,budget,
+   {stream:false,extractData:true,includePreset:false,includeInstruct:false});
+  return typeof response==='string'?response:response?.content||'';
+ }
+ if(cfg.mode==='inherit'){
+  if(imageCount){
+   if(ctx?.mainApi!=='openai')throw new Error('酒馆当前不是支持图片的 Chat Completion 通道');
+   const service=ctx?.ChatCompletionService;
+   if(typeof service?.presetToGeneratePayload!=='function'||typeof service?.sendRequest!=='function')
+    throw new Error('酒馆未开放照片请求接口');
+   const model=currentPhoneModel(ctx);
+   if(!model)throw new Error('酒馆当前模型名称不可用');
+   const payload=await service.presetToGeneratePayload({}, {}, {messages,model,stream:false});
+   if(phoneRequestImageCount(payload?.messages||[])!==imageCount)throw new Error('酒馆构建请求时丢失了图片');
+   payload.stream=false;const response=await service.sendRequest(payload);
+   return typeof response==='string'?response:response?.content||'';
+  }
+  if(typeof ctx?.generateRaw!=='function')throw new Error('酒馆当前生成接口不可用');
+  // Inheriting the active connection can be serialized by SillyTavern; profile and
+  // custom modes use independently dispatched requests and do not switch it.
+  return ctx.generateRaw(options);
+ }
+ const service=ctx?.ChatCompletionService;
+ if(typeof service?.sendRequest!=='function')throw new Error('酒馆独立 API 接口不可用');
+ const key=transientApiKeys.get(apiKeySlot(ctx,cfg.override?task:'default'))||
+  (task==='chat'&&!cfg.override?transientApiKeys.get(apiSessionId(ctx)):'');
+ if(!key)throw new Error('此 API 的密钥未在本次会话中设置，请先打开 API 配置');
+ const url=normalizeApiUrl(cfg.url);
+ if(!cfg.model.trim())throw new Error('独立 API 尚未设置模型');
+ const response=await service.sendRequest({
+  chat_completion_source:'custom',custom_url:url,
+  custom_include_headers:JSON.stringify({Authorization:'Bearer '+key}),
+  model:cfg.model.trim(),messages,stream:false,max_tokens:budget,temperature:0.85
+ });
+ return typeof response==='string'?response:response?.content||'';
 }
-async function savePhoneApi() {
-    const ctx = context();
-    if (!selectedCharacter(ctx) || !nodes) return false;
-    const mode = nodes.apiMode.value;
-    const url = nodes.apiUrl.value.trim();
-    const model = nodes.apiModel.value.trim();
-    const key = nodes.apiKey.value.trim();
-    if (mode === 'custom') {
-        try { normalizeApiUrl(url); } catch(e) { setStatus(e.message,'error'); return false; }
-        if (!model) { setStatus('请填写模型名称','error'); return false; }
-        if (!key && !transientApiKeys.has(apiSessionId(ctx))) { setStatus('请填写 API 密钥','error'); return false; }
-    }
-    const data = structuredClone(readData(ctx));
-    data.config ||= {};
-    data.config.api = {mode,url,model,maxTokens:320};
-    try {
-        await writeData(ctx,data);
-        if (key) transientApiKeys.set(apiSessionId(ctx),key);
-        nodes.apiKey.value = '';
-        setStatus('连接配置已保存');
-        loadPhoneApiUI();
-        return true;
-    } catch(e) { setStatus(recordError('保存 API 配置',e),'error'); return false; }
+function currentApiTarget(){
+ return chooseApiTask(nodes?.apiTask?.value||'default');
 }
-function loadPhoneApiUI() {
-    if (!nodes?.apiMode) return;
-    const ctx = context();
-    const cfg = readApiOptions(readData(ctx));
-    nodes.apiMode.value = cfg.mode;
-    nodes.apiUrl.value = cfg.url;
-    nodes.apiModel.value = cfg.model;
-    nodes.apiKey.value = '';
-    nodes.customApiFields.hidden = cfg.mode !== 'custom';
-    nodes.apiKeyState.textContent = transientApiKeys.has(apiSessionId(ctx)) ? '密钥已在本次页面中设置' : '未设置密钥';
-    updateApiInfo();
+function showApiFields(){
+ const task=currentApiTarget(),mode=nodes.apiMode.value;
+ nodes.customApiFields.hidden=mode!=='custom';
+ nodes.apiProfileFields.hidden=mode!=='profile';
+ nodes.apiKeyState.textContent=mode==='custom'
+  ?(transientApiKeys.has(apiKeySlot(context(),task))||
+    (task==='default'&&transientApiKeys.has(apiSessionId(context())))?'密钥已在本次页面中设置':'密钥未设置（只保留在本次页面内）')
+  :'独立连接不会更改酒馆当前使用的正文模型';
+}
+function renderSavedApiProfiles(selected=''){
+ const n=nodes;if(!n?.apiProfile)return;
+ const profiles=availableConnectionProfiles(context());
+ n.apiProfile.replaceChildren();
+ const option=document.createElement('option');option.value='';
+ option.textContent=profiles.error||'请选择酒馆已保存的连接档案';n.apiProfile.append(option);
+ for(const profile of profiles.profiles){
+  const opt=document.createElement('option');opt.value=profile.id;
+  opt.textContent=profile.name+(profile.model?' · '+profile.model:'');n.apiProfile.append(opt);
+ }
+ n.apiProfile.value=selected;
+ if(selected&&!profiles.profiles.some(p=>p.id===selected)){
+  option.textContent='已选档案暂不可用，请重新选择';
+ }
+ n.apiProfileHint.textContent=profiles.error||
+  '使用酒馆保存的连接配置直接请求；不会切换正文当前连接。';
+}
+async function savePhoneApi(){
+ const c=context(),n=nodes;
+ if(!c?.chatMetadata||!n)return false;
+ const task=currentApiTarget(),mode=n.apiMode.value;
+ if(!['follow','inherit','custom','profile'].includes(mode)||
+   (task==='default'&&mode==='follow'))return setStatus('连接方式无效','error');
+ const entry={mode,url:n.apiUrl.value.trim(),model:n.apiModel.value.trim(),
+  profileId:n.apiProfile.value,maxTokens:320};
+ if(mode==='custom'){
+  try{normalizeApiUrl(entry.url);}catch(e){setStatus(e.message,'error');return false;}
+  if(!entry.model)return setStatus('请填写独立 API 模型名称','error');
+  const keySlot=apiKeySlot(c,task);
+  if(!n.apiKey.value.trim()&&!transientApiKeys.has(keySlot)&&
+    !(task==='default'&&transientApiKeys.has(apiSessionId(c))))
+    return setStatus('请先填写此连接的 API 密钥','error');
+ }
+ if(mode==='profile'){
+  if(!availableConnectionProfiles(c).profiles.some(p=>p.id===entry.profileId))
+   return setStatus('该酒馆连接档案不可用，请重新选择','error');
+ }
+ const data=structuredClone(readRootData(c));data.config||={};
+ if(task==='default')data.config.api=entry;
+ else{
+  data.config.apiRoutes={...(data.config.apiRoutes||{})};
+  if(mode==='follow')delete data.config.apiRoutes[task];
+  else data.config.apiRoutes[task]=entry;
+ }
+ try{
+  await writeData(c,{...data,__contactId:PRIMARY_CONTACT_ID});
+  if(n.apiKey.value.trim())transientApiKeys.set(apiKeySlot(c,task),n.apiKey.value.trim());
+  n.apiKey.value='';loadPhoneApiUI();
+  setStatus('API 配置已保存：'+PHONE_API_TARGETS.find(x=>x[0]===task)?.[1]);
+  return true;
+ }catch(e){setStatus(recordError('保存 API 配置',e),'error');return false;}
+}
+function loadPhoneApiUI(){
+ const n=nodes;if(!n?.apiMode)return;
+ const task=currentApiTarget(),d=readRootData(context()),cfg=readApiOptions(d,task);
+ n.apiMode.querySelector('option[value="follow"]').hidden=task==='default';
+ n.apiMode.value=cfg.routeMode;
+ n.apiUrl.value=cfg.url;n.apiModel.value=cfg.model;n.apiKey.value='';
+ renderSavedApiProfiles(cfg.profileId);showApiFields();updateApiInfo();
+}
+async function testPhoneApi(){
+ if(!await savePhoneApi())return;
+ setStatus('正在测试这条 API 连接…');
+ try{
+  const task=currentApiTarget(),d=readRootData(context());
+  const response=await phoneGenerate(context(),{task,maxTokens:48,responseLength:48,
+   systemPrompt:'只回复 OK 两个字母。',prompt:[{role:'user',content:'回复 OK'}]},d);
+  if(!String(response||'').trim())throw new Error('连接未返回内容');
+  setStatus('连接测试通过（不代表所有模型均支持图片或长文本）');
+ }catch(e){setStatus('连接测试失败：'+String(e.message||e),'error');}
 }
 function loadPhoneMessageStyle() {
     if (!nodes?.messageStyle) return;
