@@ -92,10 +92,10 @@ const APP_CATALOG=[
 const APP_ICONS=Object.fromEntries(APP_CATALOG.map(item=>[item.key,item.key]));
 const APP_SHAPES={
  chat:'<path d="M20 11.5a8 8 0 0 1-8 8c-1.3 0-2.6-.3-3.7-.9L3.5 20l1.4-4.7A8 8 0 1 1 20 11.5Z"/><circle cx="8" cy="11.5" r=".8" fill="currentColor"/><circle cx="12" cy="11.5" r=".8" fill="currentColor"/><circle cx="16" cy="11.5" r=".8" fill="currentColor"/>',
- wallet:'<path d="M12 2 17 7l-5 5-5-5Z M5 9l5 5-5 5-5-5Z M19 9l5 5-5 5-5-5Z M12 16l5 5-5 5-5-5Z" transform="translate(0 -2) scale(.95)"/>',
+ wallet:'<path d="M12 2.5 15 5.5 12 8.5 9 5.5Z M5.5 9 8.5 12 5.5 15 2.5 12Z M18.5 9 21.5 12 18.5 15 15.5 12Z M12 15.5 15 18.5 12 21.5 9 18.5Z"/>',
  weibo:'<path d="M12 1.5 14.25 9.75 22.5 12l-8.25 2.25L12 22.5l-2.25-8.25L1.5 12l8.25-2.25L12 1.5Z"/><path d="m4 3 .55 1.45L6 5l-1.45.55L4 7l-.55-1.45L2 5l1.45-.55L4 3ZM20 3l.45 1.55L22 5l-1.55.45L20 7l-.45-1.55L18 5l1.55-.45L20 3ZM20 17l.55 1.45L22 19l-1.45.55L20 21l-.55-1.45L18 19l1.45-.55L20 17Z"/>',
  diagnostics:'<path d="m12 3 9.1 16a1.3 1.3 0 0 1-1.1 2H4a1.3 1.3 0 0 1-1.1-2L12 3Z"/><path d="M12 9v5"/><circle cx="12" cy="17.5" r=".85" fill="currentColor" stroke="none"/>',
- settings:'<circle cx="12" cy="12" r="3"/><path d="m10 2-.6 2.3-2 1L5 4 3.7 6l1.6 2.1-.3 2.1-2.3 1.1v2.4L5 14.8l.3 2.1L3.7 19 5 21l2.4-1.3 2 1 .6 2.3h4l.6-2.3 2-1L19 21l1.3-2-1.6-2.1.3-2.1 2.3-1.1v-2.4L19 10.2l-.3-2.1L20.3 6 19 4l-2.4 1.3-2-1L14 2Z"/>',
+ settings:'<circle cx="12" cy="12" r="7.3"/><circle cx="12" cy="12" r="3.15"/><path d="M12 1.9v2.3M12 19.8v2.3M1.9 12h2.3M19.8 12h2.3M4.86 4.86l1.63 1.63M17.51 17.51l1.63 1.63M4.86 19.14l1.63-1.63M17.51 6.49l1.63-1.63"/>',
  calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18M8 14h2M13 14h2M8 18h2"/>',
  theme:'<path d="M12 3a9 9 0 1 0 0 18h2a2 2 0 0 0 1-3.7c-.5-.2-.8-.6-.8-1.1 0-.8.6-1.4 1.4-1.4H18A4 4 0 0 0 22 11c0-4.4-4.3-8-10-8Z"/><circle cx="7.5" cy="10" r=".8" fill="currentColor"/><circle cx="11" cy="7.5" r=".8" fill="currentColor"/><circle cx="16" cy="8.5" r=".8" fill="currentColor"/>',
  shopping:'<path d="M4 8h16l-1 13H5L4 8Z"/><path d="M8 9V6a4 4 0 0 1 8 0v3"/>',
@@ -490,7 +490,7 @@ function storyScenePreview(ctx,data){
 
 
 
-const DESKTOP_EFFECTS=new Set(['slide','cube','stack','fade']);
+const DESKTOP_EFFECTS=new Set(['slide','fade']);
 function desktopEffect(){
  const v=themeData().desktopEffect;
  return DESKTOP_EFFECTS.has(v)?v:'slide';
@@ -503,29 +503,23 @@ function desktopVisual(page){
  nodes.homePages.dataset.effect=effect;
  // Every page is equal-sized; the clock and search belong to page 1.
  pages.forEach((section,index)=>{
-  const diff=index-page;
-  section.classList.toggle('lp-desktop-first',index===0);
-  section.classList.toggle('lp-desktop-later',index>0);
-  section.style.pointerEvents=index===page?'auto':'none';
-  section.style.zIndex=index===page?'4':String(index<page?2:3);
-  section.setAttribute('aria-hidden',index===page?'false':'true');
-  if(effect==='cube'){
-   section.style.transform=diff===0?'translate3d(0,0,0) rotateY(0deg)':
-    diff<0?'translate3d(-95%,0,0) rotateY(68deg)':'translate3d(95%,0,0) rotateY(-68deg)';
-   section.style.transformOrigin=index%2===0?'right center':'left center';
-   section.style.opacity=Math.abs(diff)>1?'0':'1';
-  }else if(effect==='stack'){
-   section.style.transform='translate3d('+(diff*20)+'%,0,0) scale('+(diff===0?1:'.91')+')';
-   section.style.opacity=Math.abs(diff)>1?'0':diff===0?'1':'.55';
-  }else if(effect==='fade'){
-   section.style.transform='translate3d(0,'+(diff===0?'0':'12')+'px,0) scale('+(diff===0?1:'.985')+')';
-   section.style.opacity=diff===0?'1':'0';
-  }else{
-   section.style.transform='translate3d('+(diff*100)+'%,0,0)';
-   section.style.opacity=Math.abs(diff)>1?'0':'1';
-  }
- });
- nodes.homeDots?.querySelectorAll('button').forEach((btn,i)=>btn.classList.toggle('current',i===page));
+   const diff=index-page;
+   section.classList.toggle('lp-desktop-first',index===0);
+   section.classList.toggle('lp-desktop-later',index>0);
+   section.style.pointerEvents=index===page?'auto':'none';
+   section.style.zIndex=index===page?'4':'2';
+   section.setAttribute('aria-hidden',index===page?'false':'true');
+   // Pages fully disappear after CSS visibility transition.
+   section.style.visibility=index===page?'visible':'hidden';
+   if(effect==='fade'){
+    section.style.transform='translate3d(0,0,0)';
+    section.style.opacity=index===page?'1':'0';
+   }else{
+    section.style.transform='translate3d('+(diff*100)+'%,0,0)';
+    section.style.opacity=Math.abs(diff)>1?'0':'1';
+   }
+  });
+  nodes.homeDots?.querySelectorAll('button').forEach((btn,i)=>btn.classList.toggle('current',i===page));
 }
 
 function renderDesktop(){
@@ -5896,8 +5890,7 @@ function makeUI() {
           </select>
           <h2>桌面翻页效果</h2>
           <select data-lp="themeDesktopEffect" aria-label="选择桌面翻页动画">
-            <option value="slide">平滑滑动</option><option value="cube">3D 立方体</option>
-            <option value="stack">卡片叠加</option><option value="fade">淡入淡出</option>
+            <option value="slide">平滑滑动</option><option value="fade">淡入淡出</option>
           </select>
           <h2>桌面应用排序</h2>
           <div class="lp-desktop-sort" data-lp="desktopSortList"></div>
