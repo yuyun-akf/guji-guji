@@ -1138,6 +1138,12 @@ function photosForActor(actorId,access='chat',ctx=context()){
  return characterPhotos(ctx).filter(p=>(p.owner===actorId||(p.ownerName===person.name&&p.owner!=='user'))&&
    (access==='private'||p.access==='public'||(access==='chat'&&p.access==='chat')));
 }
+function albumIdentityPrompt(actorId,ctx=context()){
+ const ownerPhotos=photosForActor(actorId,'private',ctx).slice(0,20);
+ if(!ownerPhotos.length)return '';
+ return '[角色本人的相册档案（仅用户确认的文字描述，不代表视觉模型已识别真实图片；不得拿它推断其他角色的照片）]\n'+
+  ownerPhotos.map(p=>((p.title||'照片')+'：'+(p.description||'未填写外貌描述')).slice(0,280)).join('；');
+}
 function albumCatalogPrompt(actorId,access='chat'){
  const photos=photosForActor(actorId,access).slice(0,12);
  if(!photos.length)return '';
@@ -1187,7 +1193,8 @@ async function loadGroupsController(){
  if(groupsLoadPromise)return groupsLoadPromise;
  groupsLoadPromise=import('./groups.js?v=0.21.0').then(mod=>{
   groupsController=mod.createGroupsModule({context,getNodes:()=>nodes,readRootData,writeData,galleryPeople,
-   isPhoneFriend,contactCharacter,phoneGenerate,stripModelReasoning,notifyInteraction,openSharedPost});
+   isPhoneFriend,contactCharacter,phoneGenerate,stripModelReasoning,notifyInteraction,openSharedPost,
+   galleryPhotosForMember:id=>photosForActor(id,'chat')});
   return groupsController;
  }).catch(e=>{recordError('加载群聊',e);groupsLoadPromise=null;if(nodes?.groupsContent)nodes.groupsContent.textContent='群聊加载失败：'+e.message;return null;});
  return groupsLoadPromise;
@@ -2998,7 +3005,7 @@ function readExternalMemory(ctx,data) {
 
 async function composePhonePrompt(ctx, char, data) {
     const persona=currentPersona(ctx);
-    const parts = [createSystemPrompt(char, data, persona)];
+    const parts = [createSystemPrompt(char, data, persona),albumIdentityPrompt(data?.__contactId||activeContactId,ctx)].filter(Boolean);
     const summary={preset:0,selected:0,world:0,skipped:0,characters:0};
     const config=data?.config||{};
     // The chosen preset implicitly enables its originally enabled prompts.
