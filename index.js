@@ -104,6 +104,9 @@ const APP_SHAPES={
  profile:'<circle cx="12" cy="7" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2Z"/>'
 };
 function phoneIconMarkup(key){
+ const icon=themeView().icons?.[key];
+ if(typeof icon==='string'&&/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(icon))
+  return '<img alt="" draggable="false" src="'+icon+'"/>';
  const shape=APP_SHAPES[key]||APP_SHAPES.settings;
  return '<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+shape+'</svg>';
 }
@@ -681,24 +684,69 @@ function themeData(){
  const t=context()?.extensionSettings?.[SETTINGS_KEY]?.theme;
  return t&&typeof t==='object'?t:{};
 }
+
+function savedThemeProfile(raw=themeData()){
+ const id=String(raw.palette||'').startsWith('saved:')?raw.palette.slice(6):'';
+ return id?(Array.isArray(raw.savedThemes)?raw.savedThemes:[]).find(t=>t?.id===id)||null:null;
+}
+function themeView(){
+ const raw=themeData(),saved=savedThemeProfile(raw);
+ return saved?{...raw,...saved,palette:raw.palette}:raw;
+}
+const THEME_FONT_STYLE_ID='gujiguji-user-font';
+const THEME_CSS_STYLE_ID='gujiguji-user-css';
+function validThemeCss(source){
+ const value=String(source||'').replace(/\/\*[\s\S]*?\*\//g,'').trim();
+ if(value.length>40000||/@|url\s*\(|expression\s*\(|behavior\s*:/i.test(value))
+  throw new Error('仅支持不超过 40 KB、无外部资源的普通 CSS 规则');
+ if(!value)return '';
+ const rule=/([^{}]+)\{([^{}]*)\}/g;
+ const matched=[...value.matchAll(rule)];
+ if(!matched.length||value.replace(rule,'').trim())throw new Error('CSS 格式不正确');
+ for(const item of matched){
+  if(!item[1].split(',').map(x=>x.trim()).every(x=>/^#st-little-phone-root(?:$|[\s.#:[>+~])/.test(x)))
+   throw new Error('CSS 选择器必须从 #st-little-phone-root 开始，以免影响酒馆');
+ }
+ return value;
+}
+function applyImportedThemeStyle(theme){
+ let css=document.getElementById(THEME_CSS_STYLE_ID);
+ if(!css){css=document.createElement('style');css.id=THEME_CSS_STYLE_ID;document.head.append(css);}
+ try{css.textContent=validThemeCss(theme.customCss||'');}
+ catch(error){css.textContent='';recordError('自定义美化检查',error);}
+ let font=document.getElementById(THEME_FONT_STYLE_ID);
+ if(!font){font=document.createElement('style');font.id=THEME_FONT_STYLE_ID;document.head.append(font);}
+ const data=String(theme.fontData||'');
+ if(theme.font==='uploaded'&&/^data:(?:font\/(?:ttf|otf|woff|woff2)|application\/(?:x-font-ttf|font-woff)|application\/octet-stream);base64,[A-Za-z0-9+/=]+$/i.test(data)){
+  font.textContent='@font-face{font-family:"GujiUserFont";src:url("'+data+'")}#st-little-phone-root[data-font="uploaded"]{font-family:"GujiUserFont",sans-serif!important;}';
+ }else font.textContent='';
+}
+function editableThemePatch(partial){
+ if(themeData().palette==='swiss')changeTheme({palette:'custom',...partial});
+ else changeTheme(partial);
+}
 function paletteValue(key,value){
  return /^#[0-9a-f]{6}$/i.test(String(value||''))?value:SWISS_THEME[key];
 }
 function applyTheme(){
  if(!root)return;
- const theme=themeData(),colors=theme.palette==='custom'?theme.colors||{}:{};
+ const theme=themeView(),colors=theme.palette!=='swiss'?theme.colors||{}:{};
  for(const [key,swatch] of Object.entries(SWISS_THEME))
   root.style.setProperty('--lp-'+key,paletteValue(key,colors[key]||swatch));
  root.style.setProperty('--lp-ink',paletteValue('navy',colors.navy));
  root.style.setProperty('--lp-lilac',paletteValue('slate',colors.slate));
  root.style.setProperty('--lp-paper',paletteValue('white',colors.white));
  root.style.setProperty('--lp-border',paletteValue('ice',colors.ice));
- root.dataset.font=['system','serif','rounded'].includes(theme.font)?theme.font:'system';
+ root.dataset.font=['system','serif','rounded','uploaded'].includes(theme.font)?theme.font:'system';
+ applyImportedThemeStyle(theme);
+ root.style.setProperty('--lp-desktop-icon-size',String(Math.max(22,Math.min(52,Number(theme.desktopIconSize)||34)))+'px');
+ root.style.setProperty('--lp-desktop-gap',String(Math.max(8,Math.min(45,Number(theme.desktopGap)||25)))+'px');
+ root.style.setProperty('--lp-bubble-radius',String(Math.max(6,Math.min(30,Number(theme.chatBubbleRadius)||15)))+'px');
  let saved='';
  try{saved=window.localStorage.getItem(WALLPAPER_STORAGE_KEY)||'';}catch{}
  const themeKey=theme.palette==='custom'?'custom':'swiss';
  const bound=theme.bindWallpaper===true;
- const image=bound?String(theme.wallpapers?.[themeKey]||''):(typeof theme.wallpaper==='string'&&theme.wallpaper)||saved;
+ const image=theme.palette.startsWith('saved:')?String(theme.wallpaper||''):(bound?String(theme.wallpapers?.[themeKey]||''):(typeof theme.wallpaper==='string'&&theme.wallpaper)||saved);
  const background=/^data:image\/(?:png|jpeg|webp);base64,/.test(image)?'url("'+image+'")':'none';
  root.style.setProperty('--lp-wallpaper',background);
  // Older home/lock backgrounds use !important; set both screens explicitly.
@@ -709,13 +757,24 @@ function applyTheme(){
  }
  for(const span of root.querySelectorAll('[data-lp-icon]'))span.innerHTML=phoneIconMarkup(span.dataset.lpIcon);
  if(nodes?.themeFont)nodes.themeFont.value=root.dataset.font;
- if(nodes?.themePreset)nodes.themePreset.value=theme.palette==='custom'?'custom':'swiss';
+ renderThemeSelector(theme);
+ if(nodes?.themeDesktopIconSize)nodes.themeDesktopIconSize.value=String(theme.desktopIconSize||34);
+ if(nodes?.themeDesktopGap)nodes.themeDesktopGap.value=String(theme.desktopGap||25);
+ if(nodes?.themeBubbleRadius)nodes.themeBubbleRadius.value=String(theme.chatBubbleRadius||15);
+ if(nodes?.themeCssStatus)nodes.themeCssStatus.textContent=theme.customCss?'已应用自定义 CSS（'+String(theme.customCss).length+' 字符）':'当前无自定义 CSS';
+ const art=nodes?.launcher?.querySelector('.lp-launcher-art');
+ if(art){
+  if(!art.dataset.defaultMarkup)art.dataset.defaultMarkup=art.innerHTML;
+  const custom=String(theme.floatingIcon||'');
+  if(/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(custom))art.innerHTML='<img alt="" src="'+custom+'"/>';
+  else art.innerHTML=art.dataset.defaultMarkup;
+ }
  if(nodes?.themeDesktopEffect)nodes.themeDesktopEffect.value=desktopEffect();
  for(const [key,value] of Object.entries(SWISS_THEME)){
   const input=root.querySelector('[data-theme-color="'+key+'"]');
   if(input)input.value=paletteValue(key,colors[key]||value);
  }
- if(nodes?.themeCustomColors)nodes.themeCustomColors.hidden=theme.palette!=='custom';
+ if(nodes?.themeCustomColors)nodes.themeCustomColors.hidden=theme.palette==='swiss';
  if(nodes?.themeBindWallpaper)nodes.themeBindWallpaper.checked=bound;
  if(nodes?.themeWallpaperPreview)nodes.themeWallpaperPreview.textContent=
  (bound?'壁纸已绑定当前主题。':'壁纸在所有主题之间共用。')+
@@ -725,7 +784,11 @@ function changeTheme(partial){
  const ctx=context();
  if(!ctx?.extensionSettings||!ctx.saveSettingsDebounced)return setStatus('保存主题失败','error');
  const settings=ctx.extensionSettings[SETTINGS_KEY]||={};
- settings.theme={...(settings.theme||{}),...partial};
+ const old=settings.theme||{};
+ if(!Object.prototype.hasOwnProperty.call(partial,'palette')&&savedThemeProfile(old)){
+  const entry=savedThemeProfile(old);
+  settings.theme={...old,savedThemes:old.savedThemes.map(t=>t.id===entry.id?{...t,...partial}:t)};
+ }else settings.theme={...old,...partial};
  ctx.saveSettingsDebounced();applyTheme();setStatus('主题已保存');
 }
 function loadWallpaper(file){
@@ -781,7 +844,8 @@ function saveThemeColors(){
   const input=root.querySelector('[data-theme-color="'+key+'"]');
   colors[key]=paletteValue(key,input?.value);
  }
- changeTheme({palette:'custom',colors});
+ if(themeData().palette?.startsWith('saved:'))changeTheme({colors});
+ else changeTheme({palette:'custom',colors});
 }
 
 function apiSessionId(ctx) {
