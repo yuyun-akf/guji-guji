@@ -26,6 +26,7 @@ export function createGroupsModule(api){
      const quote=el('div','lp-group-share');quote.append(el('strong','',msg.sharePost.author||'群星'),el('p','',msg.sharePost.text||''));
      if(msg.sharePost.image){const img=el('img');img.src=msg.sharePost.image;img.alt='群星分享图片';quote.append(img);}
      item.append(quote);
+     const view=button('查看分享内容','view-share',msg.id);item.append(view);
     }
     if(msg.images?.length)for(const src of msg.images){const img=el('img','lp-group-photo');img.src=src;img.alt='群聊照片';item.append(img);}
     feed.append(item);
@@ -86,11 +87,12 @@ export function createGroupsModule(api){
   try{
    const roster=group.members.filter(id=>api.isPhoneFriend(id)).map(id=>{
     const char=api.contactCharacter(ctx(),id);
-    return {id,name:who(id),description:[char?.data?.description||char?.description,char?.data?.personality||char?.personality,char?.data?.scenario||char?.scenario].filter(Boolean).join('\n').slice(0,1600)};
+    return {id,name:who(id),description:[char?.data?.description||char?.description,char?.data?.personality||char?.personality,char?.data?.scenario||char?.scenario].filter(Boolean).join('\n').slice(0,1600),
+     photos:(api.galleryPhotosForMember?.(id)||[]).slice(0,8).map(p=>({id:p.id,description:p.description||p.title||'照片'}))};
    });
    if(!roster.length)throw Error('群聊中没有可回复的好友');
    const history=(group.messages||[]).slice(-22).map(m=>({speaker:m.from,text:String(m.text||'').slice(0,800),sharePost:m.sharePost?{author:m.sharePost.author,text:m.sharePost.text}:undefined}));
-   const sys='你正在生成完全虚构的多人聊天。用户是独立参与者；禁止新增用户的言行、心理，禁止读心，禁止知道不在群里的私聊内容。每位成员都有独立人设与知识，发言必须是成员本人合理决定；不要求所有成员轮流回复，也允许本轮无人回复。群成员与他们的设定并非该角色能够看到的其他人的私密资料。仅返回JSON：{"messages":[{"speaker":"成员ID","text":"回复"}]}。只能使用给出的成员ID，最多5条，不能输出 user 的话。';
+   const sys='你正在生成完全虚构的多人聊天。用户是独立参与者；禁止新增用户的言行、心理，禁止读心，禁止知道不在群里的私聊内容。每位成员都有独立人设与知识，发言必须是成员本人合理决定；不要求所有成员轮流回复，也允许本轮无人回复。群成员与他们的设定并非该角色能够看到的其他人的私密资料。如成员有已允许私聊使用的本人相册照片，可在其消息中使用 [[photo:照片ID]]，且仅使用该成员名下照片；不强制发送。仅返回JSON：{"messages":[{"speaker":"成员ID","text":"回复"}]}。只能使用给出的成员ID，最多5条，不能输出 user 的话。';
    const raw=await api.phoneGenerate(ctx(),{task:'chat',systemPrompt:sys,prompt:[{role:'user',content:JSON.stringify({storyTime:root().storyTime,members:roster,history})}]},api.readRootData(ctx()));
    if(scope()!==meta)return;
    const text=api.stripModelReasoning?.(raw)||raw;
@@ -99,7 +101,14 @@ export function createGroupsModule(api){
    const messages=(Array.isArray(parsed.messages)?parsed.messages:[]).filter(m=>roster.some(p=>p.id===m.speaker)&&typeof m.text==='string'&&m.text.trim()).slice(0,5);
    if(messages.length)await mutate(all=>{
     const g=all.find(x=>x.id===group.id);
-    for(const message of messages)g.messages.push({id:uid(),from:message.speaker,text:message.text.trim().slice(0,1000),storyTime:root().storyTime||''});
+    for(const message of messages){
+     const memberPhotos=api.galleryPhotosForMember?.(message.speaker)||[];
+     const match=message.text.match(/\[\[photo:([^\]\r\n]+)\]\]/);
+     const photo=match?memberPhotos.find(p=>p.id===match[1]):null;
+     const text=message.text.replace(/\[\[photo:[^\]\r\n]+\]\]/g,'').trim();
+     if(text||photo)g.messages.push({id:uid(),from:message.speaker,text:text.slice(0,1000),
+       ...(photo?{images:[photo.image]}:{}),storyTime:root().storyTime||''});
+    }
     g.messages=g.messages.slice(-180);
    });
    state.status=messages.length?'已收到 '+messages.length+' 条群聊回复':'成员本轮没有回复';
@@ -109,7 +118,8 @@ export function createGroupsModule(api){
  async function handleClick(e){
   const button=e.target.closest('button[data-group-action]');if(!button||state.busy)return false;
   const act=button.dataset.groupAction,id=button.dataset.groupId;
-  if(act==='open'){state.active=id;state.status='';render();}
+  if(act==='view-share'){const group=groups().find(g=>g.id===state.active),msg=group?.messages?.find(m=>m.id===id);if(msg?.sharePost)api.openSharedPost?.(msg.sharePost,'groups');}
+  else if(act==='open'){state.active=id;state.status='';render();}
   else if(act==='back'){state.active='';state.status='';render();}
   else if(act==='create'){
    const name=host()?.querySelector('[data-group-input="name"]')?.value?.trim()||'新的群聊';
