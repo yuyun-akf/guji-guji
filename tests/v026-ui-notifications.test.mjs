@@ -119,3 +119,48 @@ test('wand icon samples colorful enabled host peers rather than a disabled gray 
  assert.match(body,/peerButton\.disabled/);
  assert.match(body,/sort\(\(x,y\)=>y\.score-x\.score\)/);
 });
+
+
+test('actual touch click creates ripple, click feedback, and a persistent particle overlay',()=>{
+ const begin=index.indexOf('/* Shared interaction system for every GujiGuji app.');
+ const end=index.indexOf('let phoneInteraction=null;',begin);
+ assert.ok(begin>0&&end>begin);
+ const classes=(...values)=>{
+  const set=new Set(values);
+  return {add:value=>set.add(value),remove:value=>set.delete(value),contains:value=>set.has(value)};
+ };
+ const listeners=new Map();
+ const panel={children:[],classList:classes(),append(x){this.children.push(x);},
+  getBoundingClientRect(){return {left:0,top:0,width:360,height:700};}};
+ const root={dataset:{},classList:classes('lp-open'),contains:()=>true,
+  addEventListener:(type,fn)=>listeners.set(type,fn),
+  querySelector:query=>query==='.lp-panel'?panel:null};
+ const makeEl=tag=>({tag,children:[],dataset:{},classList:classes(),
+  style:{setProperty(){}},append(...items){this.children.push(...items);},
+  addEventListener(){},remove(){},animate(){return{};}});
+ const button={dataset:{touchEffect:'like',wbAction:'like'},textContent:'♡ 200',
+  classList:classes(),style:{},offsetWidth:70,getAttribute:()=>null,
+  matches:query=>query.includes('button')&&!query.startsWith('input'),
+  closest:query=>query.includes('.lp-moment')?null:button,
+  getBoundingClientRect:()=>({left:30,top:400,width:65,height:30}),
+  append(item){this.ripple=item;}};
+ const source=index.slice(begin,end);
+ const controller=new Function('window','document',source+'return createInteractionController;')(
+  {matchMedia:()=>({matches:false}),getComputedStyle:()=>({position:'relative'})},
+  {createElement:makeEl})({
+  getRoot:()=>root,getNodes:()=>({interactionFeedback:{hidden:true,textContent:'',dataset:{}},
+   interactionMotion:{value:''}}),getMode:()=> 'standard'
+ });
+ controller.bind(root);
+ const e={button:0,clientX:40,clientY:410,detail:1,target:{closest:()=>button}};
+ listeners.get('pointerdown')(e);
+ listeners.get('pointerup')(e);
+ listeners.get('click')(e);
+ assert.equal(button.ripple?.className,'lp-touch-ripple');
+ assert.equal(button.classList.contains('lp-tap-flash'),true);
+ const burst=panel.children.find(x=>x.className==='lp-like-burst');
+ assert.ok(burst,'ripple alone is not enough: like burst overlay must be created');
+ assert.equal(burst.children[0].textContent,'♥');
+ assert.equal(burst.children[1].textContent,'+1');
+ controller.shutdown();
+});
