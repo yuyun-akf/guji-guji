@@ -21,7 +21,7 @@ function harness(){
    if(opts.systemPrompt.includes('自主发帖'))return '今天的拍摄顺利结束。';
    return JSON.stringify({posts:Array.from({length:5},(_,i)=>({
     author:i===0?'林知远':'网友'+i,handle:i===0?'@sample_account':'@'+i,
-    text:'公开动态 '+i,likes:i,comments:[{name:'路人',text:'测试评论'}]
+    text:'公开动态 '+i,likes:i,comments:[{name:'路人',text:'测试评论'},{name:'路人乙',text:'另一条评论'}]
    })),trending:Array.from({length:15},(_,i)=>({title:'话题 '+i,category:'讨论'}))});
   }
  };
