@@ -234,3 +234,22 @@ test('scanner picks explicitly configured main-character follower count from cha
  assert.equal(result.candidates[0].followers,35000000);
  assert.match(result.candidates[0].reference,/3500万/);
 });
+
+test('same-name linked worldbook details fill an explicit follower count missing from the card',async()=>{
+ const begin=index.indexOf('async function scanQunxingAccounts(');
+ const end=index.indexOf('async function loadWeiboController(',begin);
+ const scan=new Function('context','selectedCharacter','scanNpcSources','getCharacterName',
+  'explicitAccountFollowers',index.slice(begin,end)+'return scanQunxingAccounts;')(
+  ()=>({characterId:0}),
+  ()=>({name:'林知远',data:{description:'职业为演员，其他设定另见世界书'}}),
+  async()=>({candidates:[
+   {name:'林知远',description:'微博粉丝数量：2400万；近期分享多套插画教程'},
+   {name:'编剧',description:'剧组编剧'}
+  ],scanned:2,worlds:1}),
+  ch=>ch.name,role.explicitAccountFollowers);
+ const found=await scan();
+ assert.equal(found.candidates.length,2,'同名主角不能重复创建两个账号');
+ assert.equal(found.candidates[0].followers,24000000);
+ assert.match(found.candidates[0].reference,/关联世界书同名资料/);
+ assert.equal(found.candidates[1].name,'编剧');
+});
