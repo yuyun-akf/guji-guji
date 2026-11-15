@@ -1028,16 +1028,25 @@ export function createWeiboModule(api) {
   
 if(type==='clearInteractions'){
    if(!window.confirm('清空当前存档的点赞、评论、收藏和转发？转发生成的「我的动态」也会移除，原创动态与关注账号会保留。此操作不可撤销。'))return;
+   const clearActions=post=>{
+    const ids=new Set((post.actions?.comments||[]).map(c=>c.id));
+    if(ids.size){
+     post.comments=(post.comments||[]).filter(c=>!ids.has(c.id));
+     post.commentCount=Math.max(post.comments.length,Number(post.commentCount||0)-ids.size);
+    }
+    post.actions=post.actions?.owned?{owned:true}:{};
+   };
    await mutate((q,r)=>{
-    q.posts=q.posts.filter(post=>{
-     if(post.repostOf)return false;
-     const keep=Boolean(post.actions?.owned||post.autoPublished||
-      (post.authorId&&q.following.includes(post.authorId)));
-     if(keep)post.actions=post.actions?.owned?{owned:true}:{};
-     return keep;
-    });
+    q.posts=q.posts.filter(post=>!post.repostOf&&isPermanentPost(post,q));
+    q.posts.forEach(clearActions);
+    for(const feed of Object.values(q.generated?.feeds||{}))
+     if(Array.isArray(feed))feed.forEach(clearActions);
+    for(const topic of Object.values(q.generated?.hotBundles||{}))
+     if(Array.isArray(topic?.posts))topic.posts.forEach(clearActions);
     delete r.weiboSaved;
    });
+   for(const feed of [state.posts.home,state.posts.nearby,...Object.values(state.hotBundles).map(v=>v?.posts||[])])
+    (feed||[]).forEach(clearActions);
    feedback('已清空当前存档的互动记录');
    render();return;
   }
@@ -1117,7 +1126,7 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
   }
   if(type==='followAccount'){
    if(id.startsWith('post:')){
-    const post=byId(id.slice(5));if(post){await followPost(post,true);state.profileAccount=data().accounts.find(a=>a.name===post.author)?.id||id;}
+    const post=byId(id.slice(5));if(post){await followPost(post,true);state.profileAccount=accountForPost(post)?.id||id;}
    }else await mutate(q=>{if(q.accounts.some(a=>a.id===id))q.following=[...new Set([...q.following,id])];});
    render();return;
   }
