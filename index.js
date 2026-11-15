@@ -1433,15 +1433,25 @@ function phoneSelectionKey(ctx) {
 }
 
 /* Character-card-scoped public-account directory. Never contains story posts. */
+function qunxingAccountCardKey(ctx=context()){
+ const char=selectedCharacter(ctx);if(!char)return '';
+ const name=getCharacterName(char);
+ const avatar=String(char.avatar||char.data?.avatar||'').trim();
+ // Default/blank avatars are shared by many unrelated cards: never use them
+ // alone as an account-directory key.
+ return avatar&&avatar!=='none'&&avatar!=='default'
+  ?'avatar:'+avatar+':name:'+name
+  :'character:'+String(ctx.characterId)+':name:'+name;
+}
 function sharedQunxingAccounts(ctx=context()){
- const key=phoneSelectionKey(ctx);
+ const key=qunxingAccountCardKey(ctx);
  const byCharacter=ctx?.extensionSettings?.[SETTINGS_KEY]?.qunxingRoleAccounts;
  if(!key||!byCharacter||!Object.prototype.hasOwnProperty.call(byCharacter,key))return null;
  const list=byCharacter[key];
  return Array.isArray(list)?list.filter(a=>a&&a.source==='manual'&&typeof a.id==='string'):[];
 }
 function saveSharedQunxingAccounts(accounts,ctx=context()){
- const key=phoneSelectionKey(ctx);
+ const key=qunxingAccountCardKey(ctx);
  if(!key||!ctx?.extensionSettings||typeof ctx.saveSettingsDebounced!=='function')
   throw Error('无法保存角色卡的群星账号：扩展设置接口不可用');
  const list=Array.isArray(accounts)?accounts.filter(a=>a?.source==='manual'&&typeof a.id==='string')
