@@ -3323,3 +3323,105 @@
 #st-little-phone-root .lp-wb-bind-note{
  display:block;color:var(--lp-slate);font-size:11px;line-height:1.6;
 }
+
+
+/* Social UX + recognizable image upload, 0.23.0 */
+#st-little-phone-root .lp-album-picker{
+ border:2px dashed var(--lp-slate);border-radius:16px;min-height:155px;
+ background:color-mix(in srgb,var(--lp-ice) 60%,var(--lp-white));
+ display:flex;flex-direction:column;align-items:center;justify-content:center;
+ gap:7px;padding:22px 12px;text-align:center;cursor:pointer;position:relative;
+ color:var(--lp-navy);
+}
+#st-little-phone-root .lp-album-picker-icon{font-size:32px;line-height:1;}
+#st-little-phone-root .lp-album-picker strong{
+ padding:8px 20px;background:var(--lp-white);border-radius:12px;
+ border:1px solid var(--lp-slate);font-size:14px;
+}
+#st-little-phone-root .lp-album-picker-hint{font-size:11px;color:var(--lp-slate);}
+#st-little-phone-root .lp-album-file-input{
+ position:absolute;width:100%;height:100%;inset:0;opacity:0;cursor:pointer;
+}
+#st-little-phone-root .lp-album-preview{display:flex;flex-direction:column;gap:7px;}
+#st-little-phone-root .lp-album-preview[hidden]{display:none!important;}
+#st-little-phone-root .lp-album-preview-grid{
+ display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;
+}
+#st-little-phone-root .lp-album-preview-grid img{
+ width:100%;aspect-ratio:1;object-fit:cover;border-radius:7px;
+}
+#st-little-phone-root .lp-wb-actions.lp-wb-actions-inline{
+ display:flex;flex-wrap:nowrap;align-items:center;gap:4px;width:100%;min-width:0;
+}
+#st-little-phone-root .lp-wb-actions-inline >.lp-wb-action-compact{
+ flex:0 0 auto;font-size:11px;padding:5px 4px;line-height:1.25;
+}
+#st-little-phone-root .lp-wb-inline-comment{
+ flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:1px;
+ border:1px solid var(--lp-border);border-radius:16px;
+ background:var(--lp-ice);padding:0 3px 0 8px;
+}
+#st-little-phone-root .lp-wb-inline-comment input{
+ min-width:0;max-width:100%;width:100%;flex:1;height:30px;line-height:30px;
+ border:0;outline:0;background:transparent;color:var(--lp-navy);
+ font:inherit;font-size:11px;padding:0;
+}
+#st-little-phone-root .lp-wb-inline-comment .lp-wb-action{
+ flex:0 0 25px;padding:4px 0;font-size:14px;
+}
+#st-little-phone-root .lp-wb-share-menu{
+ display:flex;gap:7px;flex-wrap:wrap;padding:8px;
+ border:1px solid var(--lp-border);border-radius:12px;background:var(--lp-ice);
+}
+#st-little-phone-root .lp-wb-share-menu .lp-wb-action{
+ padding:8px 11px;border-radius:9px;background:var(--lp-white);
+ border:1px solid var(--lp-border);white-space:normal;flex:1;
+}
+#st-little-phone-root .lp-wb-author-link,
+#st-little-phone-root .lp-wb-avatar-button{
+ display:inline-flex;align-items:center;min-width:0;
+ border:0;background:transparent;padding:0;text-align:left;color:var(--lp-navy);
+ font:inherit;cursor:pointer;
+}
+#st-little-phone-root .lp-wb-author-link{font-weight:700;font-size:14px;}
+#st-little-phone-root .lp-wb-avatar-button .lp-wb-avatar{pointer-events:none;}
+#st-little-phone-root .lp-wb-account-search{
+ background:var(--lp-white);border:1px solid var(--lp-border);
+ border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:10px;
+}
+#st-little-phone-root .lp-wb-account-search input{
+ padding:10px 12px;border:1px solid var(--lp-border);border-radius:11px;
+ background:var(--lp-white);color:var(--lp-navy);width:100%;font:inherit;
+}
+#st-little-phone-root .lp-wb-account-search-results{display:flex;flex-direction:column;gap:4px;}
+#st-little-phone-root .lp-wb-search-result{
+ display:flex;align-items:center;gap:9px;text-align:left;
+ border:0;background:var(--lp-white);padding:7px;font:inherit;
+ color:var(--lp-navy);width:100%;white-space:normal;
+}
+#st-little-phone-root .lp-wb-search-result strong{font-size:12px;}
+#st-little-phone-root .lp-wb-search-result small{color:var(--lp-slate);font-size:11px;overflow-wrap:anywhere;}
+#st-little-phone-root .lp-wb-search-result .lp-wb-avatar{width:32px;height:32px;}
+#st-little-phone-root .lp-wb-account-page{
+ display:flex;flex-direction:column;gap:12px;background:var(--lp-white);
+ border-radius:15px;border:1px solid var(--lp-border);padding:16px 13px;
+}
+#st-little-phone-root .lp-wb-account-intro{display:flex;align-items:center;gap:12px;}
+#st-little-phone-root .lp-wb-account-intro>.lp-wb-avatar{width:62px;height:62px;}
+#st-little-phone-root .lp-wb-account-details{display:flex;flex-direction:column;gap:4px;}
+#st-little-phone-root .lp-wb-account-details strong{font-size:17px;}
+#st-little-phone-root .lp-wb-account-details small{font-size:12px;color:var(--lp-slate);}
+#st-little-phone-root .lp-wb-account-bio{margin:0;font-size:12px;white-space:pre-wrap;}
+#st-little-phone-root .lp-wb-profile-buttons button{
+ background:var(--lp-navy);color:var(--lp-white);padding:9px 16px;border:0;border-radius:12px;
+}
+#st-little-phone-root .lp-wb-account-stats{
+ display:grid;grid-template-columns:repeat(4,minmax(0,1fr));
+ gap:5px;padding:12px 0;border-top:1px solid var(--lp-border);
+}
+#st-little-phone-root .lp-wb-account-stats>div{
+ min-width:0;display:flex;flex-direction:column;align-items:center;gap:6px;
+ text-align:center;overflow-wrap:anywhere;
+}
+#st-little-phone-root .lp-wb-account-stats strong{font-size:12px;}
+#st-little-phone-root .lp-wb-account-stats small{font-size:11px;color:var(--lp-slate);}

@@ -7,7 +7,7 @@ const start=source.indexOf(' const FOLLOWER_FACTORS=');
 const end=source.indexOf(' const data=()=>',start);
 const units=new Function(source.slice(start,end)+'return {followerParts,formatFollowers,parseFollowerValue,readFollowerField};')();
 
-test('粉丝编辑器可用 人、万、亿，内部数量均为整数',()=>{
+test('粉丝编辑器可用 粉丝、万、亿，内部数量均为整数',()=>{
  assert.equal(units.parseFollowerValue('3500','wan'),35000000);
  assert.equal(units.parseFollowerValue('1.2','yi'),120000000);
  assert.equal(units.parseFollowerValue('12.5','wan'),125000);
@@ -23,10 +23,10 @@ test('旧粉丝数字可自动预填合适单位且回存不丢失精度',()=>{
  assert.deepEqual(units.followerParts(120000000),{value:'1.2',unit:'yi'});
 });
 test('粉丝展示有单位而非完整长数字',()=>{
- assert.equal(units.formatFollowers(35000000),'3500万');
- assert.equal(units.formatFollowers(120000000),'1.2亿');
- assert.equal(units.formatFollowers(9500),'9,500');
- assert.equal(units.formatFollowers(125000),'12.5万');
+ assert.equal(units.formatFollowers(35000000),'3500万粉丝');
+ assert.equal(units.formatFollowers(120000000),'1.2亿粉丝');
+ assert.equal(units.formatFollowers(9500),'9500粉丝');
+ assert.equal(units.formatFollowers(125000),'12.5万粉丝');
 });
 test('无效、负数或溢出输入必须拒绝，不能静默存0',()=>{
  for(const value of ['', '-1','1e6','一千万','3.2.1','Infinity']){

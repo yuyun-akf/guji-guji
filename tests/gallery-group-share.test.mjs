@@ -11,7 +11,7 @@ const parseModule=source=>new Function(source.replace(/^export /gm,''));
 
 test('all new JS modules parse and release version is consistent',()=>{
  for(const source of [code,weibo,album,groups])assert.doesNotThrow(()=>parseModule(source));
- assert.equal(manifest.version,'0.22.0');
+ assert.equal(manifest.version,'0.23.0');
  assert.match(code,/album\.js\?v=0\.21\.0/);
  assert.match(code,/groups\.js\?v=0\.21\.0/);
  assert.match(code,/weibo\.js\?v=0\.21\.0/);
@@ -101,8 +101,8 @@ test('groups preserve a shared-post snapshot inside the current story, without a
  saved.groupChats=[];assert.equal(saved.groupChats.length,0,'another story would have its own groups');
 });
 test('Qunxing keeps repost separate from sharing to chat or groups',()=>{
- assert.match(weibo,/control\('转发','repost'/);
- assert.match(weibo,/control\('分享','share'/);
+ assert.match(weibo,/control\('转发到我的群星','repost'/);
+ assert.match(weibo,/control\('分享','shareMenu'/);
  assert.match(weibo,/api\.sharePost\?\.\(p\)/);
  assert.match(weibo,/publishAlbumPhoto\(photo,caption\)/);
  assert.match(weibo,/photo\.owner!=='user'\|\|photo\.access!=='public'/);
