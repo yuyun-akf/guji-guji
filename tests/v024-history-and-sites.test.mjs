@@ -149,3 +149,31 @@ test('following list has a full clickable account link and goes to personal home
  assert.equal(h.module.back(),true);
  assert.equal(h.module.state.profileAccount,'');
 });
+
+test('following list actually routes a click on the avatar/name row to the profile',async()=>{
+ const makeElement=tag=>({
+  tagName:tag.toUpperCase(),className:'',dataset:{},textContent:'',children:[],
+  append(...items){this.children.push(...items);},
+  replaceChildren(...items){this.children=[...items];},
+  setAttribute(){},classList:{add(){},remove(){},toggle(){}},
+  parentElement:{scrollTop:0}
+ });
+ const document={visibilityState:'visible',createElement:makeElement,createTextNode:value=>({textContent:value})};
+ const source=weibo.replace('export function createWeiboModule','function createWeiboModule')
+  .replace('return {open,render,','return {renderMine,open,render,');
+ const factory=new Function('document','structuredClone',source+'\nreturn createWeiboModule;')(document,clone);
+ const context={characterId:0,chatId:'one',chatMetadata:{}};
+ const db={qunxing:{accounts:[{id:'actor',name:'宁肆锦',handle:'@ning',
+  source:'manual',kind:'角色',followers:42865700}],following:['actor'],posts:[]},contacts:[],messages:[]};
+ const view=makeElement('div');
+ const app=factory({context:()=>context,getNodes:()=>({weiboMe:view,weiboFeed:null}),
+  readRootData:()=>db,readData:()=>db,currentPersona:()=>({name:'u'})});
+ app.state.subview='following';
+ app.renderMine({weiboMe:view});
+ const row=view.children.find(c=>c.className?.includes('lp-wb-follow-row'));
+ const clickable=row?.children.find(c=>c.dataset?.wbAction==='openAccount');
+ assert.ok(clickable,'the following row must contain a direct openAccount target');
+ assert.ok(clickable.children.some(c=>c.className==='lp-wb-avatar'),'avatar must be inside clickable area');
+ app.handleClick({target:{closest:()=>clickable}});
+ assert.equal(app.state.profileAccount,'actor');
+});
