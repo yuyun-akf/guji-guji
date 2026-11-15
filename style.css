@@ -3118,3 +3118,76 @@
 @media (prefers-reduced-motion:reduce){
  #st-little-phone-root .lp-wb-confirm-dialog{animation:none!important;transition:none!important;}
 }
+
+
+/* v0.19.0: categorized settings navigation and independent memory editor. */
+#st-little-phone-root .lp-settings-menu,
+#st-little-phone-root .lp-settings-category{
+ width:100%;display:flex;flex-direction:column;align-items:stretch;gap:11px;
+ flex:0 0 auto;min-width:0;
+}
+#st-little-phone-root .lp-settings-menu[hidden],
+#st-little-phone-root .lp-settings-category[hidden],
+#st-little-phone-root .lp-memory-entry textarea[hidden],
+#st-little-phone-root .lp-memory-actions button[hidden],
+#st-little-phone-root .lp-memory-entry p[hidden]{display:none!important;}
+#st-little-phone-root .lp-settings-menu-intro{padding:8px 8px 3px;}
+#st-little-phone-root .lp-settings-menu-list{
+ display:flex;flex-direction:column;background:var(--lp-white);
+ border-radius:18px;overflow:hidden;
+ box-shadow:0 1px 4px color-mix(in srgb,var(--lp-navy) 6%,transparent);
+}
+#st-little-phone-root .lp-settings-nav{
+ width:100%;display:flex;align-items:center;justify-content:space-between;gap:15px;
+ padding:17px 19px;min-height:76px;
+ border:none;border-bottom:1px solid var(--lp-ice);
+ background:var(--lp-white);color:var(--lp-ink);text-align:left;
+ cursor:pointer;font:inherit;
+}
+#st-little-phone-root .lp-settings-nav:last-child{border-bottom:0;}
+#st-little-phone-root .lp-settings-nav>span{display:flex;flex-direction:column;gap:5px;min-width:0;font-size:15px;}
+#st-little-phone-root .lp-settings-nav small{
+ font-size:11px;font-weight:400;line-height:1.5;color:var(--lp-soft-ink);
+}
+#st-little-phone-root .lp-settings-nav>b{
+ color:var(--lp-slate);font-weight:400;font-size:25px;line-height:1;
+}
+#st-little-phone-root .lp-settings-category h2{margin-top:8px;}
+#st-little-phone-root .lp-settings-category h3{margin:14px 0 0;font-size:13px;color:var(--lp-ink);}
+#st-little-phone-root .lp-settings-category .lp-settings-link{
+ border-radius:12px;border:1px solid var(--lp-slate);
+ background:var(--lp-white);color:var(--lp-ink);
+}
+#st-little-phone-root .lp-settings-category .lp-field,
+#st-little-phone-root .lp-settings-category .lp-password-change,
+#st-little-phone-root .lp-settings-category .lp-settings-card{
+ background:color-mix(in srgb,var(--lp-white) 90%,var(--lp-ice));
+ border-radius:14px;padding:12px;
+}
+#st-little-phone-root .lp-settings-category select,
+#st-little-phone-root .lp-settings-category input:not([type="checkbox"]),
+#st-little-phone-root .lp-memory-editor{
+ color:var(--lp-ink);background:var(--lp-white);
+ border:1px solid var(--lp-slate);border-radius:10px;
+}
+#st-little-phone-root .lp-memory-list{display:flex;flex-direction:column;gap:10px;}
+#st-little-phone-root .lp-memory-entry{
+ background:var(--lp-white);border:1px solid var(--lp-slate);
+ border-radius:14px;padding:12px;color:var(--lp-ink);
+}
+#st-little-phone-root .lp-memory-entry summary{font-size:13px;font-weight:600;cursor:pointer;}
+#st-little-phone-root .lp-memory-text{
+ white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7;
+ padding:10px 0;color:var(--lp-ink)!important;
+}
+#st-little-phone-root .lp-memory-entry textarea{
+ width:100%;min-height:140px;resize:vertical;padding:10px;margin:10px 0;
+ font:inherit;line-height:1.6;
+}
+#st-little-phone-root .lp-memory-actions{display:flex;gap:8px;flex-wrap:wrap;}
+#st-little-phone-root .lp-memory-actions button{
+ border:1px solid var(--lp-slate);border-radius:10px;
+ padding:8px 12px;background:var(--lp-ice);color:var(--lp-ink);font:inherit;
+ font-size:12px;
+}
+#st-little-phone-root .lp-memory-entry .lp-memory-actions button:last-child{color:var(--lp-rose);}
