@@ -11,10 +11,10 @@ const parseModule=source=>new Function(source.replace(/^export /gm,''));
 
 test('all new JS modules parse and release version is consistent',()=>{
  for(const source of [code,weibo,album,groups])assert.doesNotThrow(()=>parseModule(source));
- assert.equal(manifest.version,'0.25.0');
- assert.match(code,/album\.js\?v=0\.25\.0/);
- assert.match(code,/groups\.js\?v=0\.25\.0/);
- assert.match(code,/weibo\.js\?v=0\.25\.0/);
+ assert.equal(manifest.version,'0.26.0');
+ assert.match(code,/album\.js\?v=0\.26\.0/);
+ assert.match(code,/groups\.js\?v=0\.26\.0/);
+ assert.match(code,/weibo\.js\?v=0\.26\.0/);
 });
 test('API list excludes modules that never use a model',()=>{
  const list=code.slice(code.indexOf('const PHONE_API_TARGETS=['),code.indexOf('const API_TARGET_IDS=',code.indexOf('const PHONE_API_TARGETS=[')));
