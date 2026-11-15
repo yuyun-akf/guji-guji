@@ -86,7 +86,7 @@ const APP_CATALOG=[
  {key:'settings',screen:'settings',name:'设置',ready:true},
  {key:'diagnostics',screen:'diagnostics',name:'运行日志',ready:true},
  {key:'shopping',screen:'shopping',name:'购物',ready:false},
- {key:'takeout',screen:'takeout',name:'外卖',ready:false},
+ {key:'takeout',screen:'takeout',name:'外卖',ready:true},
  {key:'theme',screen:'theme',name:'主题',ready:true}
 ];
 const APP_ICONS=Object.fromEntries(APP_CATALOG.map(item=>[item.key,item.key]));
@@ -119,10 +119,12 @@ let lockVerifyAttempt=0;
 let desktopSwipedAt=0;
 let weiboController=null;
 let weiboLoadPromise=null;
+let takeoutController=null;
+let takeoutLoadPromise=null;
 let clockTicker=null;
 let clockTickBusy=false;
 const weiboState={scope:'',posts:[],trending:[],tab:'feed',loading:false,selectedId:'',generationId:0};
-const SCREENS = new Set(['lock', 'home', 'weibo', 'wallet', 'chat', 'chatList', 'contacts', 'requests', 'profile', 'addNpc', 'discoverNpc', 'discover', 'me', 'chatOptions', 'settings', 'diagnostics', 'calendar', 'theme', 'presetPicker', 'worldPicker']);
+const SCREENS = new Set(['lock', 'home', 'weibo', 'wallet', 'takeout', 'chat', 'chatList', 'contacts', 'requests', 'profile', 'addNpc', 'discoverNpc', 'discover', 'me', 'chatOptions', 'settings', 'diagnostics', 'calendar', 'theme', 'presetPicker', 'worldPicker']);
 
 function context() {
     try {
@@ -2611,6 +2613,24 @@ async function loadWeiboController(){
  return weiboLoadPromise;
 }
 
+async function loadTakeoutController(){
+ if(takeoutController)return takeoutController;
+ if(takeoutLoadPromise)return takeoutLoadPromise;
+ takeoutLoadPromise=import('./takeout.js?v=0.14.0').then(module=>{
+  takeoutController=module.createTakeoutModule({
+   context,getNodes:()=>nodes,readRootData,writeData,readData,currentPersona,
+   walletChargeOrder,walletRefundOrder,walletMoney,phoneGenerate,stripModelReasoning,
+   storyScenePreview,recordError
+  });
+  return takeoutController;
+ }).catch(error=>{
+  recordError('加载外卖',error);
+  takeoutLoadPromise=null;
+  if(nodes?.takeoutContent)nodes.takeoutContent.textContent='外卖加载失败：'+String(error.message||error);
+  return null;
+ });
+ return takeoutLoadPromise;
+}
 function setScreen(screen) {
     if (!SCREENS.has(screen) || !nodes) return;
     if(root?.classList.contains('lp-open')&&phoneLockSettings().enabled&&!securityUnlocked&&screen!=='lock')screen='lock';
@@ -2622,7 +2642,7 @@ function setScreen(screen) {
     }
     nodes.back.hidden = screen === 'home'||screen==='lock';
     if(nodes.close)nodes.close.hidden=true;
-    const titles = {lock:'锁屏',home:'咕叽咕机',weibo:'群星',wallet:'吱付宝',chat:'',chatList:'咕叽聊',contacts:'咕叽聊',discover:'咕叽聊',me:'咕叽聊',requests:'新的朋友',profile:'联系人资料',addNpc:'添加 NPC',discoverNpc:'发现故事人物',chatOptions:'聊天设置',settings:'设置',diagnostics:'运行日志',calendar:'日历',theme:'主题',presetPicker:'选择预设条目',worldPicker:'选择世界书条目' };
+    const titles = {lock:'锁屏',home:'咕叽咕机',weibo:'群星',wallet:'吱付宝',takeout:'外卖',chat:'',chatList:'咕叽聊',contacts:'咕叽聊',discover:'咕叽聊',me:'咕叽聊',requests:'新的朋友',profile:'联系人资料',addNpc:'添加 NPC',discoverNpc:'发现故事人物',chatOptions:'聊天设置',settings:'设置',diagnostics:'运行日志',calendar:'日历',theme:'主题',presetPicker:'选择预设条目',worldPicker:'选择世界书条目' };
     nodes.title.textContent = screen === 'chat' ? contactDisplayName(context()) : titles[screen];
     nodes.chatMenu.hidden = screen !== 'chat';
     if(nodes.homeExit)nodes.homeExit.hidden=screen!=='home';
@@ -2635,6 +2655,10 @@ function setScreen(screen) {
     }
     if (screen === 'diagnostics') renderDiagnostics();
     if (screen === 'wallet')renderWallet(context());
+    if(screen==='takeout'){
+      if(takeoutController)takeoutController.open();
+      else void loadTakeoutController().then(mod=>{if(mod&&activeScreen==='takeout')mod.open();});
+    }
     if (screen === 'calendar'){
         if(previous!=='calendar')phoneCalendarReset(readData(context()));
         renderPhoneCalendar();
@@ -5409,6 +5433,14 @@ function makeUI() {
             <div data-lp="walletStatus" class="lp-wallet-inline-status" role="status"></div>
           </div>
         </section>
+        <section class="lp-screen lp-takeout-screen" data-lp-screen="takeout" aria-label="故事外卖" hidden>
+          <div class="lp-takeout-content" data-lp="takeoutContent" role="region" aria-label="外卖内容"></div>
+          <nav class="lp-takeout-tabs" data-lp="takeoutTabs" aria-label="外卖导航">
+            <button type="button" data-takeout-tab="browse" class="active"><span aria-hidden="true">⌂</span><small>浏览</small></button>
+            <button type="button" data-takeout-tab="cart"><span aria-hidden="true">▣</span><small>购物车</small></button>
+            <button type="button" data-takeout-tab="me"><span aria-hidden="true">♙</span><small>我</small></button>
+          </nav>
+        </section>
         <section class="lp-screen lp-chatlist" data-lp-screen="chatList" aria-label="消息列表" hidden>
           <div class="lp-list-body">
             <div data-lp="recentChats"></div>
@@ -5893,7 +5925,7 @@ function mount() {
         'friendLabel', 'friendActions','profileAvatar','profileName','profileDescription','contactEvidence','contactExchange','contactLinks','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcScanState','npcCandidates','npcSaveCandidates','storyPeopleList','viewPrimaryContact','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','avatarUserFile','resetCharAvatar','resetUserAvatar',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
-        'walletBalance','walletPending','walletBills','walletAdjustInput','walletSaveBalance','walletToChat','walletStatus',
+        'takeoutContent','takeoutTabs','walletBalance','walletPending','walletBills','walletAdjustInput','walletSaveBalance','walletToChat','walletStatus',
         'presetSource','presetInfo','presetEntries','worldBookList','worldSelectionSummary','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','saveSelections','savePresetPicker','saveWorldPicker','selectionSaveStatus','readMainlineMemory','memorySource','phoneToMainline','eventBridge','saveContextSettings','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themePreset','themeCustomColors','themeSaveColors','themeWallpaperPreview','themeDesktopEffect','themeBindWallpaper',
         'diagnostics', 'diagnosticState', 'copyDiagnostics', 'clearDiagnostics',
         'messages','messageActions','quotedPreview','quotedText','cancelQuote','emojiPanel','morePanel','chatImageInput','timeJumpPanel','timeJumpHint','timeJumpCurrent','timeJumpAmount','timeJumpUnit','timeJumpApply','timeJumpClose','paymentPanel','paymentTitle','paymentKind','paymentAmount','paymentNote','paymentBalance','paymentClose','paymentSend','input', 'generate', 'send', 'launcher']
@@ -5926,6 +5958,13 @@ function mount() {
     nodes.weiboGenerate.addEventListener('click',()=>void loadWeiboController().then(w=>w?.generate(weiboController?.state.tab==='nearby'?'nearby':'home')));
     nodes.weiboPublish.addEventListener('click',()=>void loadWeiboController().then(w=>w?.publish()));
     nodes.weiboDetailBack.addEventListener('click',()=>weiboController?.back());
+    nodes.takeoutTabs.addEventListener('click',event=>{
+      const b=event.target.closest('[data-takeout-tab]');
+      if(b)takeoutController?.selectTab(b.dataset.takeoutTab);
+    });
+    nodes.takeoutContent.addEventListener('click',event=>{
+      if(event.target.closest('[data-takeout-action]'))void takeoutController?.handleClick(event);
+    });
     nodes.weiboTabs.addEventListener('click',e=>{
         const b=e.target.closest('[data-weibo-tab]');if(b)weiboController?.selectTab(b.dataset.weiboTab);
     });
