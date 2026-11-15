@@ -539,6 +539,7 @@ function storyCompanionDays(data){
 function updateHomeHotSearch(){
  if(!nodes?.homeHotSearch)return;
  const topic=String(weiboController?.headline?.()||
+  readRootData(context())?.qunxing?.hotHeadline||
   readRootData(context())?.qunxing?.trends?.[0]?.title||
   '今天有什么新鲜事').replace(/^#+|#+$/g,'').trim().slice(0,58);
  const button=nodes.homeHotSearch;
