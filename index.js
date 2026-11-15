@@ -1192,6 +1192,60 @@ async function loadGroupsController(){
  return groupsLoadPromise;
 }
 
+/* 群星分享采用内容快照，旧帖子刷新后聊天卡片也不会消失。 */
+function makeShareSnapshot(post){
+ return {id:String(post?.id||'').slice(0,85),author:String(post?.author||'群星用户').slice(0,50),
+  handle:String(post?.handle||'').slice(0,50),text:String(post?.text||'').slice(0,1800),
+  image:typeof post?.image==='string'&&/^data:image\/(?:jpeg|png|webp);base64,/.test(post.image)?post.image:''};
+}
+function openQunxingShare(post){
+ pendingSharedPost=makeShareSnapshot(post);if(!pendingSharedPost.text)return;
+ setScreen('sharePicker');
+}
+function renderQunxingSharePicker(){
+ if(!nodes?.shareTargets)return;
+ const list=nodes.shareTargets;list.replaceChildren();
+ const post=pendingSharedPost;if(!post){list.textContent='没有可分享的群星动态';return;}
+ const summary=document.createElement('p');summary.textContent=post.author+'：'+post.text.slice(0,180);list.append(summary);
+ const ctx=context();
+ const add=(type,id,label)=>{const b=document.createElement('button');b.type='button';b.className='lp-list-action';
+  b.dataset.shareType=type;b.dataset.shareTarget=id;b.textContent=label;list.append(b);};
+ for(const id of [PRIMARY_CONTACT_ID,...readRootData(ctx).contacts.map(c=>c.id)])
+  if(isPhoneFriend(id))add('contact',id,'发给 '+contactDisplayName(ctx,id));
+ for(const group of readRootData(ctx).groupChats||[])add('group',group.id,'发到群聊 '+group.name);
+ if(!list.querySelector('button'))list.append(document.createTextNode('请先添加好友或创建群聊'));
+}
+async function completeQunxingShare(type,id){
+ const post=pendingSharedPost;if(!post)return;
+ const ctx=context(),meta=ctx?.chatMetadata;
+ try{
+  if(type==='contact'){
+   if(!isPhoneFriend(id))throw Error('目标联系人不是好友');
+   const data=structuredClone(readData(ctx,id));
+   appendPhoneMessage(data,'user','[群星分享] '+post.author+'：'+post.text.slice(0,900),{sharePost:post});
+   await writeData(ctx,data);
+   if(ctx.chatMetadata!==meta)return;
+   pendingSharedPost=null;activeContactId=id;render();setScreen('chat');
+  }else if(type==='group'){
+   const controller=await loadGroupsController();if(!controller)throw Error('群聊功能未加载');
+   await controller.shareToGroup(id,post);
+   if(ctx.chatMetadata!==meta)return;
+   pendingSharedPost=null;setScreen('groups');
+  }
+ }catch(e){setStatus('分享失败：'+String(e.message||e),'error');}
+}
+function openSharedPost(post,origin=activeScreen){
+ sharedPostPreview=makeShareSnapshot(post);sharedPostOrigin=origin;
+ setScreen('shareViewer');
+}
+function renderSharedPostViewer(){
+ const node=nodes?.sharePreview;if(!node)return;node.replaceChildren();
+ const post=sharedPostPreview;if(!post)return;
+ const author=document.createElement('strong');author.textContent=post.author;
+ const body=document.createElement('p');body.textContent=post.text;node.append(author,body);
+ if(post.image){const img=document.createElement('img');img.src=post.image;img.alt='群星动态配图';node.append(img);}
+}
+
 function apiSessionId(ctx) {
     return String(ctx?.characterId ?? 'none') + '::' + String(ctx?.chatId ?? ctx?.getCurrentChatId?.() ?? 'default');
 }
