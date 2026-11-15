@@ -3166,7 +3166,8 @@ function buildPrompt(data,ctx=null,char=null) {
         .map(message => {
             const payment=message.paymentId?walletState(data).transfers.find(tx=>tx.id===message.paymentId):null;
             const paymentText=payment?'['+walletTransferLabel(payment)+' ¥'+walletMoney(payment.amountCents)+
-                ' · '+walletStatusLabel(payment.status)+(payment.note?' · '+payment.note:'')+']':message.text;
+                ' · '+walletStatusLabel(payment.status)+(payment.note?' · '+payment.note:'')+']':
+                message.sharePost?'[群星分享 · '+message.sharePost.author+'] '+message.sharePost.text:message.text;
             return ({
             role: message.from === 'character' ? 'assistant' : 'user',
             content: !message.sticker && (Array.isArray(message.images)&&message.images.length||message.image)
@@ -3968,15 +3969,20 @@ function stickerPrompt(catalog) {
         '用 [[sticker:ID]] 表示角色自己选择发送图片；user 刚发送的表情包属于 user，不要当成角色自己发的，也不必原样复发。只能使用列出的ID，不要编造图片或地址。\n'+
         JSON.stringify(catalog.map(({id,label,usage})=>({id,label,...(usage?{usage}:{})})));
 }
-function parseStickerReply(reply,data,catalog) {
+function parseStickerReply(reply,data,catalog,photos=[]) {
     const messages=[];
-    const pattern=/\[\[sticker:([^\]\r\n]*)\]\]/g;
+    const pattern=/\[\[(sticker|photo):([^\]\r\n]*)\]\]/g;
     let cursor=0;
     const addText=text=>{for(const part of splitPhoneReply(text,data))messages.push({text:part});};
     for(const match of reply.matchAll(pattern)) {
         addText(reply.slice(cursor,match.index));
-        const sticker=catalog.find(item=>item.id===match[1]);
-        if(sticker)messages.push({text:'[表情包：'+sticker.label+']',image:sticker.image,sticker:true,stickerName:sticker.label});
+        if(match[1]==='sticker'){
+            const sticker=catalog.find(item=>item.id===match[2]);
+            if(sticker)messages.push({text:'[表情包：'+sticker.label+']',image:sticker.image,sticker:true,stickerName:sticker.label});
+        }else{
+            const photo=photos.find(item=>item.id===match[2]);
+            if(photo)messages.push({text:'[图片] '+(photo.description||photo.title||''),images:[photo.image]});
+        }
         cursor=match.index+match[0].length;
     }
     addText(reply.slice(cursor));
@@ -5797,6 +5803,15 @@ function renderMessages(data){
   const located=!message.paymentId?locationCard(message.text):null;
   if(located){bubble.classList.add('lp-location-shell');bubble.append(located);}
   else bubble.textContent=visibleStickerText(message,ctx,character);
+  if(message.sharePost){
+   const p=message.sharePost;bubble.textContent='';
+   const view=document.createElement('button');view.type='button';view.className='lp-shared-post';view.dataset.shareMessageId=message.id;
+   const author=document.createElement('strong');author.textContent='群星 · '+(p.author||'用户');
+   const preview=document.createElement('span');preview.textContent=String(p.text||'').slice(0,360);
+   view.append(author,preview);
+   if(p.image){const img=document.createElement('img');img.src=p.image;img.alt='群星分享配图';view.append(img);}
+   bubble.append(view);
+  }
   if(message.paymentId){
    const paymentCard=walletRenderCard(ctx,message);
    if(paymentCard){bubble.textContent='';bubble.append(paymentCard);}
@@ -5946,7 +5961,8 @@ async function runReply(ctx, char, data, session, existingJob = null) {
     try {
         const catalog=stickerLibrary(ctx);
         const selectedStickers=chooseStickerCandidates(catalog,data);
-        const systemPrompt = [await composePhonePrompt(ctx, char, data), messageStylePrompt(data), stickerPrompt(selectedStickers),
+        const rolePhotos=photosForActor(activeContactId,'chat',ctx);
+        const systemPrompt = [await composePhonePrompt(ctx, char, data), messageStylePrompt(data), stickerPrompt(selectedStickers),albumCatalogPrompt(activeContactId),
             paymentReplyInstructions(data,activeContactId)].filter(Boolean).join('\n\n');
         recordActivity('生成配置','使用当前酒馆连接'+(ctx?.mainApi?' · '+ctx.mainApi:'')+'；手机历史 '+buildPrompt(data).length+' 条；当前手机预设 '+(configuredPhonePreset(data)||'未选择')+'；启用世界书 '+selectedWorldBookNames(data).length+' 本。实际注入数请看「注入预览」，包含自动继承的原版启用条目。');
         const phoneHistory=buildPrompt(data,ctx,char);
@@ -5965,7 +5981,7 @@ async function runReply(ctx, char, data, session, existingJob = null) {
         const afterReceipt=applyPaymentModelTags(data,reply,activeContactId);
         const receiptChanged=walletState(data).transfers.some((tx,i)=>beforeStatuses[i]!==tx.id+':'+tx.status);
         const paymentResult=applyCharacterPaymentSendTag(data,afterReceipt,activeContactId);
-        const phoneMessages=paymentResult.text?parseStickerReply(paymentResult.text,data,catalog):[];
+        const phoneMessages=paymentResult.text?parseStickerReply(paymentResult.text,data,catalog,rolePhotos):[];
         if(!phoneMessages.length&&!paymentResult.created&&!receiptChanged)
             throw new Error('模型没有返回可发送的角色消息');
         for (const message of phoneMessages) appendPhoneMessage(data,'character',resolvePhonePlaceholders(message.text,ctx,char),message);
@@ -7174,6 +7190,7 @@ function mount() {
       if(w.state.tab==='discover')return w.generateHot();
       return w.generate(w.state.tab==='nearby'?'nearby':'home');
     }));
+    nodes.messages.addEventListener('click',event=>{const button=event.target.closest('[data-share-message-id]');if(!button)return;const message=readData(context()).messages.find(m=>m.id===button.dataset.shareMessageId);if(message?.sharePost)openSharedPost(message.sharePost,'chat');});
     nodes.albumContent.addEventListener('click',event=>{void albumController?.handleClick(event);});
     nodes.groupsContent.addEventListener('click',event=>{void groupsController?.handleClick(event);});
     nodes.shareTargets.addEventListener('click',event=>{const b=event.target.closest('[data-share-target]');if(b)void completeQunxingShare(b.dataset.shareType,b.dataset.shareTarget);});
