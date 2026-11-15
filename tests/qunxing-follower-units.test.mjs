@@ -44,8 +44,9 @@ test('三个账号编辑入口共用单位控件，用户修改后保存真实�
  assert.match(source,/readFollowerField\(row,'candidate-'/);
  const records={ownerName:{value:'我'},ownerHandle:{value:'@me'},ownerBio:{value:'故事'},
   ownerFollowers:{value:'1.2'},ownerFollowersUnit:{value:'yi'},
-  accountName:{value:'林知远'},accountHandle:{value:'@sample_account'},accountBio:{value:'演员'},
-  accountKind:{value:'角色'},accountPublic:{checked:true},accountFollowers:{value:'3500'},accountFollowersUnit:{value:'wan'}};
+  accountName:{value:'林知远'},accountHandle:{value:'@sample_account'},accountBio:{value:'签名'},
+  accountSubject:{value:'primary'},accountProfession:{value:'演员'},
+  accountPublic:{checked:true},accountFollowers:{value:'3500'},accountFollowersUnit:{value:'wan'}};
  let saved={qunxing:{profile:{},accounts:[],posts:[]},messages:[],contacts:[]};
  const ctx={characterId:0,chatId:'draft',chatMetadata:{},characters:[{name:'林知远'}]};
  const actionFactory=new Function('document','structuredClone',source.replace(/^export /gm,'').replace('return {open,render,','return {action,open,render,')+'\nreturn createWeiboModule;');
