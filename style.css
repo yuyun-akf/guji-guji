@@ -3425,3 +3425,47 @@
 }
 #st-little-phone-root .lp-wb-account-stats strong{font-size:12px;}
 #st-little-phone-root .lp-wb-account-stats small{font-size:11px;color:var(--lp-slate);}
+
+/* v0.24.0: full-width following links and role-authored history editor. */
+#st-little-phone-root .lp-wb-follow-row{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;}
+#st-little-phone-root .lp-wb-follow-row .lp-wb-follow-link{
+ display:flex;align-items:center;gap:10px;flex:1;min-width:0;
+ padding:8px;border:0;text-align:left;background:transparent;
+ color:var(--lp-navy);font:inherit;cursor:pointer;
+}
+#st-little-phone-root .lp-wb-follow-link>span:last-child{flex:1;min-width:0;overflow-wrap:anywhere;font-size:13px;}
+#st-little-phone-root .lp-wb-follow-row>.lp-wb-action{
+ flex:0 0 auto;padding:8px 10px;
+}
+#st-little-phone-root .lp-wb-history-editor{
+ margin:12px 0;padding:14px 12px;border-radius:14px;
+ border:1px solid var(--lp-border);background:var(--lp-white);color:var(--lp-navy);
+}
+#st-little-phone-root .lp-wb-history-editor>summary{
+ font-size:13px;font-weight:700;cursor:pointer;line-height:1.6;
+}
+#st-little-phone-root .lp-wb-history-hint{display:block;margin-top:9px;font-size:11px;color:var(--lp-slate);}
+#st-little-phone-root .lp-wb-history-form{
+ display:flex;flex-direction:column;gap:11px;padding-top:12px;
+}
+#st-little-phone-root .lp-wb-history-field{
+ display:flex;flex-direction:column;gap:6px;font-size:12px;min-width:0;
+}
+#st-little-phone-root .lp-wb-history-field input,
+#st-little-phone-root .lp-wb-history-field select,
+#st-little-phone-root .lp-wb-history-field textarea{
+ width:100%;min-width:0;padding:9px 11px;
+ border:1px solid var(--lp-border);border-radius:10px;
+ background:var(--lp-white);color:var(--lp-navy);font:inherit;font-size:13px;
+}
+#st-little-phone-root .lp-wb-history-field textarea{resize:vertical;min-height:83px;line-height:1.5;}
+#st-little-phone-root .lp-wb-history-actions{display:flex;gap:8px;flex-wrap:wrap;}
+#st-little-phone-root .lp-wb-history-form .lp-wb-action,
+#st-little-phone-root .lp-wb-history-editor~.lp-wb-action{
+ border:1px solid var(--lp-border);padding:9px 12px;
+ background:var(--lp-white);border-radius:10px;color:var(--lp-navy);
+ font-size:12px;white-space:normal;
+}
+#st-little-phone-root .lp-wb-history-form>.lp-wb-action{
+ color:var(--lp-white);background:var(--lp-navy);border:0;
+}
