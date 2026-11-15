@@ -143,11 +143,11 @@ test('loading status and redundant in-place success messages do not create toast
  assert.equal(h.nodes.interactionFeedback.dataset.kind,'success');
  h.instance.shutdown();
 });
-test('CSS-only shade and centered feedback replace unreliable particles',()=>{
- assert.match(style,/lp-click-feedback:not\\(:disabled\\)/);
- assert.match(style,/filter:brightness\\(\\.84\\)!important/);
- assert.match(style,/top:50%!important/);
- assert.match(style,/\\.lp-me-notification-setting\\{/);
- assert.match(index,/lp-click-feedback/);
- assert.doesNotMatch(source,/function burst\\(/);
+test('CSS pressed-state shading and centered feedback replace unreliable particles',()=>{
+ assert.ok(style.includes('lp-click-feedback:not(:disabled)'));
+ assert.ok(style.includes('filter:brightness(.84)!important'));
+ assert.ok(style.includes('top:50%!important'));
+ assert.ok(style.includes('.lp-me-notification-setting{'));
+ assert.ok(index.includes('lp-click-feedback'));
+ assert.ok(!source.includes('function burst('));
 });
