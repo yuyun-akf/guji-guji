@@ -770,7 +770,7 @@ if(type==='subview'){state.subview=id;state.editing='';render();nodes().weiboMe.
    const index=q.posts.filter(p=>p.autoPublished).length%accounts.length,account=accounts[index];
    // Mark attempted story time before generation to avoid duplicate posts and billing.
    await mutate(s=>{s.lastAutoStoryMinute=now;});
-   const raw=await api.phoneGenerate(context(),{systemPrompt:'扮演指定角色在故事世界的公开社交账号上自主发帖；只输出正文或 [SKIP]。',prompt:[{role:'user',
+   const raw=await api.phoneGenerate(context(),{task:'autonomy',systemPrompt:'扮演指定角色在故事世界的公开社交账号上自主发帖；只输出正文或 [SKIP]。',prompt:[{role:'user',
     content:'故事时间：'+scene+'。群星账号：'+account.name+'，身份 '+account.kind+'，'+account.bio+'，公众人物：'+(account.publicFigure?'是':'否')+
      '。近期剧情：'+clean(api.storyContext?.()||'',1400)+'。结合职业、性格、公共活动和时间线决定此时是否发布一条公开动态。不得公开私聊秘密，不得杜撰用户行为、未发生事件或已确定恋情。可以不发，输出 [SKIP]。否则只输出一条 20～180 字的社交动态，不要额外解释。'}]},api.readData(context()));
    if(scope()!==state.scope)return;
