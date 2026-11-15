@@ -3625,8 +3625,9 @@ function createInteractionController({getRoot,getNodes,getMode,onError}){
   if(/保存|导入|导出|重置/.test(message)&&/成功|已保存|完成|已更新|已导入|已导出/.test(message))toast(message,'success');
  }
  const target=e=>{
-  const el=e.target?.closest?.('button,summary,[role="button"],a[href],label.lp-entry-option,label.lp-checkline,label.lp-group-choice,input[type="checkbox"],input[type="radio"]');
-  return el&&getRoot()?.contains?.(el)&&!el.disabled&&
+  const hit=e.target?.closest?.('button,summary,[role="button"],a[href],label.lp-entry-option,label.lp-checkline,label.lp-group-choice,input[type="checkbox"],input[type="radio"]');
+  const el=hit?.matches?.('input[type="checkbox"],input[type="radio"]')?(hit.closest('label')||hit.parentElement):hit;
+  return el&&getRoot()?.contains?.(el)&&!hit.disabled&&
    el.getAttribute?.('aria-disabled')!=='true'?el:null;
  };
  const primary=el=>el?.matches?.('button,[role="button"]')&&
