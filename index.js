@@ -3132,7 +3132,7 @@ async function loadWeiboController(){
    selectedCharacter,currentPersona,stripModelReasoning,publishPhoneAppEvent,
    recordActivity,recordError,notifyInteraction,updateHomeHotSearch,
    readSharedAccounts:()=>sharedQunxingAccounts(context()),
-   saveSharedAccounts:accounts=>saveSharedQunxingAccounts(accounts,context()),
+   saveSharedAccounts:(accounts,originalCtx)=>saveSharedQunxingAccounts(accounts,originalCtx||context()),
    ensureSharedAccounts:()=>ensureSharedQunxingAccounts(context()),
    storyContext:weiboStoryContext,scanAccounts:scanQunxingAccounts
   });return weiboController;
