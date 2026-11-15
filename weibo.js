@@ -220,6 +220,7 @@ export function createWeiboModule(api) {
     ?{id:uid('c'),name:'网友',text:clean(c,350)}
     :{id:uid('c'),name:clean(c?.name||c?.author||'网友',40),text:clean(c?.text||c?.content,350)}
   ).filter(c=>c.text).slice(0,12);
+  if(comments.length<2)return null;
   // Model-supplied social scale belongs to each generated post, not the permanent account directory.
   // Keep it stable for this feed; the next explicit refresh receives new independent model values.
   const positive=value=>Number.isSafeInteger(Number(value))&&Number(value)>=0?Number(value):null;
@@ -998,7 +999,7 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
   if(type==='openAccount'||type==='openPostAuthor'){
    const post=type==='openPostAuthor'?byId(id):null;
    state.profileAccount=post?'post:'+post.id:id;
-   state.historyEditingId='';state.historyFormOpen=false;
+   state.adminHistoryAccount='';state.historyEditingId='';state.historyFormOpen=false;
    state.detail='';state.topic=null;state.sharingId='';render();return;
   }
   if(type==='followAccount'){
@@ -1136,6 +1137,7 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
   if(type==='newAccount'){state.editing='new';state.avatarDraft='';state.subview='accountEditor';render();return;}
   if(type==='editAccount'){state.editing=id;state.avatarDraft='';state.subview='accountEditor';render();return;}
   if(type==='deleteAccount'){
+   if(typeof window!=='undefined'&&typeof window.confirm==='function'&&!window.confirm('删除该群星账号？此操作无法撤销。'))return;
    await mutate(q=>{q.accounts=q.accounts.filter(a=>a.id!==id);q.following=q.following.filter(x=>x!==id);});
    state.editing='';render();return;
   }
