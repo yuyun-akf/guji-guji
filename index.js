@@ -1404,7 +1404,19 @@ async function phoneGenerate(ctx,options={},data){
  if(cfg.mode==='profile'){
   await loadSavedSiteSecretMetadata();
   const site=resolveSavedSite(cfg.profileId,ctx);
-  if(!site)throw new Error('所选酒馆站点 URL/Key 已失效，请重新选择');
+  if(!site){
+   // Previously saved provider profiles without a custom URL are still usable.
+   // They are deliberately NOT offered as separate URL/Key "sites" to new users.
+   const legacy=availableConnectionProfiles(ctx).profiles.find(p=>p.id===cfg.profileId);
+   if(legacy){
+    const service=ctx?.ConnectionManagerRequestService;
+    const result=await service.sendRequest(legacy.id,messages,budget,
+     {stream:false,extractData:true,includePreset:false,includeInstruct:false},
+     cfg.model?.trim()?{model:cfg.model.trim()}:{});
+    return typeof result==='string'?result:result?.content||'';
+   }
+   throw new Error('所选酒馆站点 URL/Key 已失效，请重新选择');
+  }
   const model=cfg.model?.trim()||site.defaultModel;
   if(!model)throw new Error('请选择站点模型或手动填写模型 ID');
   if(site.kind==='active'){
@@ -1477,7 +1489,12 @@ function renderSavedApiProfiles(selected=''){
   const opt=document.createElement('option');opt.value=site.id;opt.textContent=site.label;n.apiProfile.append(opt);
  }
  const resolved=resolveSavedSite(selected);
- n.apiProfile.value=resolved?.id||'';
+ const legacy=!resolved&&selected?availableConnectionProfiles(context()).profiles.find(p=>p.id===selected):null;
+ if(legacy){
+  const opt=document.createElement('option');opt.value=legacy.id;
+  opt.textContent='旧配置（无独立站点 URL，继续可用）';n.apiProfile.append(opt);
+ }
+ n.apiProfile.value=resolved?.id||(legacy?legacy.id:'');
  n.apiProfileHint.textContent=sites.length
   ?'按 URL 与密钥分组：同一站点的不同模型不再作为多个站点显示。密钥由酒馆服务器保管。'
   :'没有发现带 URL 的已存站点。请在酒馆配置站点 URL，或选用当前自定义 API。';
@@ -1495,7 +1512,16 @@ async function loadSavedSiteModels(selectedModel=''){
   if(!model||[...select.options].some(o=>o.value===model))return;
   const opt=document.createElement('option');opt.value=model;opt.textContent=label;select.append(opt);
  };
- if(!site){put('','请先选择酒馆已保存的站点');select.disabled=true;return;}
+ if(!site){
+  const old=availableConnectionProfiles(context()).profiles.find(p=>p.id===(n.apiProfile?.value||original));
+  if(old){
+   put(old.model);
+   select.disabled=false;select.value=selectedModel||old.model;
+   n.apiProfileHint.textContent='这是旧版仅按模型保存的档案，仍可使用；新的站点列表只展示有 URL 的配置。';
+   return;
+  }
+  put('','请先选择酒馆已保存的站点');select.disabled=true;return;
+ }
  select.disabled=false;
  for(const model of site.models)put(model);
  if(selectedModel)put(selectedModel);
@@ -1557,7 +1583,8 @@ async function savePhoneApi(){
  }
  if(mode==='profile'){
   await loadSavedSiteSecretMetadata();
-  if(!resolveSavedSite(entry.profileId,c))return setStatus('所选站点的 URL/Key 不可用，请重新选择','error');
+  if(!resolveSavedSite(entry.profileId,c)&&!availableConnectionProfiles(c).profiles.some(p=>p.id===entry.profileId))
+   return setStatus('所选站点的 URL/Key 不可用，请重新选择','error');
  }
  const data=structuredClone(readRootData(c));data.config||={};
  if(task==='default')data.config.api=entry;
