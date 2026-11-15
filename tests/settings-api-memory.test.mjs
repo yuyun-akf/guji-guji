@@ -93,10 +93,10 @@ test('unavailable saved connection has explicit error, never silently reuses act
   {config:{api:{mode:'inherit'},apiRoutes:{weibo:{mode:'profile',profileId:'gone'}}}}),/档案不可用/);
 });
 test('independent API secret is never forwarded to a different destination',async()=>{
- const api=apiFactory(()=> 'scope',()=>({
-  ChatCompletionService:{sendRequest:async()=>{throw Error('should not send request');}}
- }),new Map([['scope::memory','SECRET']]),new Map([['scope::memory','https://old.example/v1']]),MiniURL);
- await assert.rejects(()=>api.phoneGenerate({chatId:'x'},{task:'memory',prompt:'test'},
+ const ctx={ChatCompletionService:{sendRequest:async()=>{throw Error('should not send request');}}};
+ const api=apiFactory(()=> 'scope',()=>ctx,
+  new Map([['scope::memory','SECRET']]),new Map([['scope::memory','https://old.example/v1']]),MiniURL);
+ await assert.rejects(()=>api.phoneGenerate(ctx,{task:'memory',prompt:'test'},
   {config:{api:{mode:'inherit'},apiRoutes:{
    memory:{mode:'custom',url:'https://new.example/v1',model:'m'}
   }}}),/密钥/);
