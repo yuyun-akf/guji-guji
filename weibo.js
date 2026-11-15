@@ -487,9 +487,9 @@ export function createWeiboModule(api) {
   const stats=el('div','lp-wb-account-stats');
   const display=[
    ['粉丝',account.followers==null?'未设置':formatFollowers(account.followers)],
-   ['关注',Number.isFinite(+account.followingCount)&&account.followingCount!==''?String(account.followingCount):'未设置'],
-   ['获赞',Number.isFinite(+account.likesTotal)&&account.likesTotal!==''?String(account.likesTotal):knownLikes+'（已记录）'],
-   ['获评',Number.isFinite(+account.commentsTotal)&&account.commentsTotal!==''?String(account.commentsTotal):knownComments+'（已记录）']
+   ['关注',account.followingCount!=null&&Number.isFinite(+account.followingCount)?String(account.followingCount):'未设置'],
+   ['获赞',account.likesTotal!=null&&Number.isFinite(+account.likesTotal)?String(account.likesTotal):knownLikes+'（已记录）'],
+   ['获评',account.commentsTotal!=null&&Number.isFinite(+account.commentsTotal)?String(account.commentsTotal):knownComments+'（已记录）']
   ];
   for(const [label,value] of display){const tile=el('div');tile.append(el('strong','',value),el('small','',label));stats.append(tile);}
   head.append(stats);container.append(head);
@@ -713,6 +713,10 @@ export function createWeiboModule(api) {
    field(form,'个性签名','accountBio',active.bio||'');
    field(form,'是否为公众人物','accountPublic',active.publicFigure||false,'checkbox');
    followerField(form,'粉丝数量','accountFollowers',active.followers||0);
+   const extraFields=[['accountFollowing','关注数量（选填）',active.followingCount],
+    ['accountLikes','累计获赞（选填）',active.likesTotal],
+    ['accountComments','累计获评（选填）',active.commentsTotal]];
+   for(const [key,label,value] of extraFields){const input=field(form,label,key,value??'','number');input.min='0';input.step='1';}
    avatarPicker(form,'更换角色账号头像','accountAvatar',state.avatarDraft||active.avatar||'',active.name||'角色');
    form.append(control('保存群星账号','saveAccount'));parent.append(form);
   }
@@ -963,11 +967,17 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
    const name=clean(v('accountName')?.value,42);if(!name){feedback('请填写账号名称');return;}
    const edit=state.editing;const avatarDraft=state.avatarDraft;
    const previous=data().accounts.find(a=>a.id===edit);
-   let followers,subject;
+   const readOptional=key=>{
+    const value=v(key)?.value?.trim();if(!value)return null;
+    const n=Number(value);if(!Number.isSafeInteger(n)||n<0)throw Error('关注／获赞／获评需填写非负整数');
+    return n;
+   };
+   let followers,subject,followingCount,likesTotal,commentsTotal;
    try{
     followers=readFollowerField(wrap,'accountFollowers');
     subject=readSubject(v('accountSubject')?.value,
      subjectChoices(previous?.subject?.name?[previous.subject.name]:previous?.name?[previous.name]:[]));
+    followingCount=readOptional('accountFollowing');likesTotal=readOptional('accountLikes');commentsTotal=readOptional('accountComments');
    }catch(error){feedback(error.message);return;}
    await mutate(q=>{
     const old=q.accounts.find(x=>x.id===edit)||{};
@@ -975,7 +985,7 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
     const next={...old,id:old.id||uid('account'),name,handle:clean(v('accountHandle')?.value,45),bio:clean(v('accountBio')?.value,450),
      roleBrief:subject.type==='npc'&&sameSubject?(old.roleBrief||''):'',
      subject,kind:subject.type==='primary'?'角色':subject.type==='organization'?'组织':'NPC',
-     profession:clean(v('accountProfession')?.value,80),publicFigure:!!v('accountPublic')?.checked,
+     profession:clean(v('accountProfession')?.value,80),followingCount,likesTotal,commentsTotal,publicFigure:!!v('accountPublic')?.checked,
      followers,avatar:avatarDraft||old.avatar||'',source:'manual'};
     q.accounts=old.id?q.accounts.map(a=>a.id===old.id?next:a):[...q.accounts,next];
    });
