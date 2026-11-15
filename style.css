@@ -3825,3 +3825,27 @@
 #st-little-phone-root .lp-wb-refresh-running{
  opacity:.78;cursor:progress;user-select:none;
 }
+
+
+/* v0.27: small, optional icon rebound, without ripple/particle DOM overlays.
+   Press shade remains the guaranteed fallback on WebViews lacking CSS animation. */
+#st-little-phone-root[data-motion="standard"] .lp-panel
+ :is([data-wb-action="like"],[data-wb-action="favorite"]).lp-click-feedback:not(:disabled) {
+ animation:lpSocialTapRebound 250ms cubic-bezier(.2,.72,.23,1) both;
+}
+#st-little-phone-root[data-motion="gentle"] .lp-panel
+ :is([data-wb-action="like"],[data-wb-action="favorite"]).lp-click-feedback:not(:disabled) {
+ animation:lpSocialTapRebound 200ms cubic-bezier(.2,.72,.23,1) both;
+}
+@keyframes lpSocialTapRebound {
+ 0% {transform:scale(.96);}
+ 48% {transform:scale(1.06);}
+ 100% {transform:scale(1);}
+}
+#st-little-phone-root[data-motion="off"] .lp-panel
+ :is([data-wb-action="like"],[data-wb-action="favorite"]).lp-click-feedback {animation:none!important;}
+@media (prefers-reduced-motion: reduce) {
+ #st-little-phone-root .lp-panel :is([data-wb-action="like"],[data-wb-action="favorite"]).lp-click-feedback {
+  animation:none!important;
+ }
+}
