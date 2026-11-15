@@ -3657,6 +3657,13 @@ function createInteractionController({getRoot,getNodes,getMode,onError}){
   container.className='lp-like-burst';
   container.style.left=(rect.left+rect.width/2-frame.left)+'px';
   container.style.top=(rect.top+rect.height/2-frame.top)+'px';
+  const center=document.createElement('b');
+  center.className='lp-burst-symbol';center.textContent=small?'★':'♥';
+  container.append(center);
+  if(!small){
+   const count=document.createElement('em');
+   count.className='lp-burst-count';count.textContent='+1';container.append(count);
+  }
   for(let i=0;i<(small?5:8);i++){
    const particle=document.createElement('i');
    const angle=i*Math.PI*2/(small?5:8);
