@@ -1031,30 +1031,67 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
   }
   if(type==='generateAccountHistory'){
    const account=data().accounts.find(a=>a.id===id);
-   if(!account||account.source!=='manual')return;
-   const session=scope();
-   feedback('正在生成公开历史动态…');
+   if(!account||account.source!=='manual'||state.profileAccount!==id)return;
+   const details=nodes()?.weiboDetail;
+   const extra=clean(details?.querySelector('[data-wb-history-field="instructions"]')?.value,1400);
+   const count=Math.max(1,Math.min(5,Number(details?.querySelector('[data-wb-history-field="count"]')?.value)||3));
+   const session=scope(),scene=root().storyTime||'';
+   const cardSetting=clean(api.accountSubjectContext?.(subjectOfAccount(account))||account.roleBrief||'',2200);
+   const recent=accountHistory(account).slice(0,12).map(p=>clean(p.text,140)).join('；');
+   const contextText=clean(api.storyContext?.()||'',1200);
+   const range=historicalLikeRange(account.followers);
+   feedback('正在按人物设定及你的要求生成历史公开动态…');
    try{
-    const scene=root().storyTime||'';
-    const raw=await api.phoneGenerate(context(),{task:'weibo',maxTokens:2400,
-     systemPrompt:'为虚构社交账号生成少量过往公开动态，禁止补写重大事件、用户言行、私密关系或确定的经历。只返回合法JSON。',
-     prompt:[{role:'user',content:'账号：'+account.name+'；职业：'+savedProfession(account)+'；签名：'+account.bio+
-      '；当前故事时间：'+scene+'。创作5条之前公开的普通日常动态，不要编造学校名称、工作作品与现实个人隐私。JSON: {"posts":[{"text":"正文","likes":0,"comments":[]}]}'}]},api.readData(context()));
+    const prompt=[
+     '角色账号：'+account.name+'；职业：'+savedProfession(account)+'；签名：'+account.bio,
+     '公开人物：'+(account.publicFigure?'是':'否')+'；粉丝：'+formatFollowers(account.followers),
+     '绑定的角色卡／NPC设定（性格、言谈、行为边界必须遵守）：'+(cardSetting||'以账号设定为准，不补写未知设定'),
+     '当前故事时间：'+scene+'；已知剧情：'+contextText,
+     '此前已发布的内容（避免重复）：'+(recent||'暂无'),
+     '用户本次生成的明确要求（优先执行，不能覆盖故事已确定事实）：'+(extra||'以符合角色性格的日常公开动态为主'),
+     '生成 '+count+' 条该角色在故事当前时间之前公开发布的旧帖。应像真人发的不同时间的帖子，不要都像搞笑段子，不要重复同一口癖；不能代替 user 言行，不能编造重大工作、恋情或私生活。',
+     '每条都要有 2~6 条符合互联网语境的真实评论，不得输出空评论数组。评论者视角应独立，有粉丝或路人正常互动，允许不同看法。',
+     account.publicFigure&&Number(account.followers)>=1000000?
+       '已知账号为公众人物，互动量必须与 '+formatFollowers(account.followers)+' 相符。普通公开帖子点赞一般在 '+
+        range.min+'～'+range.max+' 之间，可按话题热度浮动；不要生成几百赞零评论的量级。':'点赞数根据账号类型和受众规模合理变化，不要一律几百或几万。',
+     '必须只返回合法 JSON：{"posts":[{"text":"帖子正文","likes":10000,"daysAgo":1,"comments":[{"name":"评论者","text":"评论内容"},{"name":"另一位评论者","text":"另一条评论"}]}]}。',
+     'daysAgo 是距当前剧情日 1～60 天的整数；所有内容必须先于故事当前时间，不得输出 Markdown 或额外解释。'
+    ].join('\n');
+    const raw=await api.phoneGenerate(context(),{
+     task:'weibo',maxTokens:Math.min(7000,1400+count*900),
+     systemPrompt:'你要根据绑定人物的全部明确设定创作虚构社交账号历史发帖；严格遵守角色性格、故事事实与已知公开信息。每条必须有正文、合理点赞数、评论列表。只返回合法 JSON。',
+     prompt:[{role:'user',content:prompt}]
+    },api.readData(context()));
     if(scope()!==session)return;
-    const response=parse(raw),posts=Array.isArray(response.posts)?response.posts.slice(0,5):[];
-    const sceneMs=Date.parse(scene);
+    const parsed=parse(raw),rows=Array.isArray(parsed.posts)?parsed.posts.slice(0,count):[];
+    const stamp=Date.parse(scene),valid=[];
+    for(let i=0;i<rows.length;i++){
+     const p=rows[i],text=clean(p?.text,1000);
+     if(!text)continue;
+     const comments=(Array.isArray(p?.comments)?p.comments:[]).map(c=>
+      typeof c==='string'?{id:uid('comment'),name:'网友',text:clean(c,350)}:
+      {id:uid('comment'),name:clean(c?.name||'网友',40),text:clean(c?.text,350)}
+     ).filter(c=>c.text).slice(0,8);
+     // Missing comments is not silently accepted as a completed generated history post.
+     if(comments.length<2)continue;
+     const sourceLikes=Math.floor(Number(p.likes));
+     const likes=Number.isSafeInteger(sourceLikes)?
+      Math.min(range.max,Math.max(range.min,sourceLikes)):
+      Math.min(range.max,Math.max(range.min,Math.round(Number(account.followers||0)*.002)));
+     const ago=Number.isSafeInteger(Number(p.daysAgo))?
+      Math.max(1,Math.min(60,Number(p.daysAgo))):i+1;
+     const time=Number.isFinite(stamp)?new Date(stamp-ago*86400000).toISOString().slice(0,16):'历史动态';
+     valid.push({id:uid('post'),author:account.name,authorId:account.id,
+      handle:account.handle,avatar:account.avatar,category:'历史公开动态',
+      text,likes,comments,time,zone:'world',actions:{},backfilled:true});
+    }
+    if(!valid.length)throw Error('模型没有返回至少两条评论的有效历史帖；未写入任何帖子。可补充要求后重新生成');
     await mutate(q=>{
-     const owner=q.accounts.find(a=>a.id===id);if(!owner)return;
-     for(let i=0;i<posts.length;i++){
-      const text=clean(posts[i]?.text,450);if(!text)continue;
-      const time=Number.isFinite(sceneMs)?new Date(sceneMs-(i+1)*86400000).toISOString().slice(0,16):'历史动态';
-      q.posts.push({id:uid('post'),author:owner.name,authorId:id,handle:owner.handle,avatar:owner.avatar,
-       category:'历史公开动态',text,likes:Math.max(0,Math.floor(Number(posts[i].likes)||0)),
-       comments:[],time,zone:'world',actions:{},backfilled:true});
-     }
-     q.posts=q.posts.slice(-300);
+     if(!q.accounts.some(a=>a.id===id))return;
+     q.posts.push(...valid);q.posts=q.posts.slice(-300);
     });
-    feedback('历史动态已保存');
+    state.historyEditingId='';state.historyFormOpen=false;
+    feedback('已保存 '+valid.length+' 条符合评论要求的历史帖'+(valid.length<rows.length?'；忽略了缺少评论的结果':''));
    }catch(e){feedback('生成历史动态失败：'+String(e.message||e));}
    render();return;
   }
