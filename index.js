@@ -5283,6 +5283,22 @@ function installWandEntry() {
     const title = document.createElement('span');
     title.textContent = '咕叽咕机';
     button.append(icon, title);
+    // Adopt computed theme color from a real SillyTavern magic-wand sibling.
+    // Many third-party themes style icons directly instead of the menu root.
+    const adoptHostWandColor=()=>{
+      const peer=[...menu.querySelectorAll('.extensionsMenuExtensionButton')]
+        .find(item=>!container.contains(item)&&item.getClientRects().length);
+      if(!peer)return;
+      const color=window.getComputedStyle(peer).color;
+      if(color&&color!=='transparent'){
+       button.style.setProperty('color',color,'important');
+       icon.style.setProperty('color',color,'important');
+       title.style.setProperty('color',color,'important');
+      }
+    };
+    adoptHostWandColor();
+    button.addEventListener('pointerenter',adoptHostWandColor);
+    button.addEventListener('focus',adoptHostWandColor);
     button.addEventListener('click', openPhone);
     container.append(button);
     menu.append(container);
@@ -6055,9 +6071,19 @@ function mount() {
     nodes.rescanRelations.addEventListener('click',()=>void rescanStoryRelationships());
     nodes.testAutonomy.addEventListener('click',()=>void testAutonomousMessage());
 
-    nodes.back.addEventListener('click', () => setScreen({
-        wallet:'home', chat: 'chatList', contacts: 'chatList', discover:'chatList', me:'chatList', profile: 'contacts', requests:'contacts', addNpc:'contacts', discoverNpc:'addNpc', chatOptions:'chat', presetPicker:'settings', worldPicker:'settings'
-    }[activeScreen] || 'home'));
+    nodes.back.addEventListener('click', () => {
+        // The phone's fixed header is the universal "one level back" control.
+        // App-specific detail pages must not turn a tap into an app exit.
+        if(activeScreen==='weibo'&&weiboController?.back())return;
+        if(activeScreen==='takeout'&&takeoutController?.back())return;
+        setScreen({
+          wallet:'home',takeout:'home',weibo:'home',chat:'chatList',
+          contacts:'chatList',discover:'chatList',me:'chatList',
+          profile:'contacts',requests:'contacts',addNpc:'contacts',
+          discoverNpc:'addNpc',chatOptions:'chat',
+          presetPicker:'settings',worldPicker:'settings'
+        }[activeScreen]||'home');
+    });
     root.addEventListener('click', event => {
         const button = event.target.closest('button[data-lp-open]');
         if(button&&root.contains(button)&&Date.now()-desktopSwipedAt>350)setScreen(button.dataset.lpOpen);
