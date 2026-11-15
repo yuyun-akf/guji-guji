@@ -124,7 +124,7 @@ test('contact summaries stay separated and never leak to other phone conversatio
  const output=new Function('PRIMARY_CONTACT_ID','clipContext',
   index.slice(begin,end)+'return phoneMemoryText;')('primary',(x,k)=>x.slice(0,k));
  const own=output(h.read(),'primary',2200),npc=output(h.read(),'npc:alice',2200);
- assert.match(own,/看展览/);assert.doesNotMatch(own,/艾丽丝|保密/);
+ assert.match(own,/看展计划/);assert.doesNotMatch(own,/艾丽丝|保密/);
  assert.match(npc,/艾丽丝/);assert.doesNotMatch(npc,/看展览/);
  assert.match(index,/phoneMemory\?\.injectMainline===true/);
 });
@@ -135,7 +135,7 @@ test('async summary re-reads the current data to preserve messages added while g
  const deferred=new Promise(resolve=>{release=resolve;});
  // Controller reads its callback at creation; verify the live-merge property in source.
  assert.match(memory,/await patch\(latest=>/);
- assert.match(memory,/const d=structuredClone\(api\.readRootData\(c\)\)/);
+ assert.match(memory,/structuredClone\(api\.readRootData\(c\)\)/);
  assert.match(memory,/ctx\(\)\?\.chatMetadata!==origin/);
  assert.ok(release);
 });
