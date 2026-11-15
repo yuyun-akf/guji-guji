@@ -767,9 +767,11 @@ if(type==='subview'){state.subview=id;state.editing='';render();nodes().weiboMe.
      const scanned=state.candidates[Number(row.dataset.wbCandidate)]?.name||name;
      subject=readSubject(raw,subjectChoices([scanned,name]));
     }catch(error){feedback(name+'：'+error.message);return;}
+    const candidateInfo=state.candidates[Number(row.dataset.wbCandidate)];
     chosen.push({name,handle:value('handle'),subject,
      kind:subject.type==='primary'?'角色':subject.type==='organization'?'组织':'NPC',
-     profession:value('profession'),bio:value('bio'),publicFigure:value('publicFigure'),followers});
+     profession:value('profession'),bio:value('bio'),publicFigure:value('publicFigure'),followers,
+     ...(subject.type==='npc'&&candidateInfo?.reference?{roleBrief:clean(candidateInfo.reference,1000)}:{})});
    }
    if(!chosen.length){feedback('请先勾选要保存的候选账号');return;}
    await mutate(q=>{
@@ -968,10 +970,11 @@ if(type==='subview'){state.subview=id;state.editing='';render();nodes().weiboMe.
    // Mark attempted story time before generation to avoid duplicate posts and billing.
    await mutate(s=>{s.lastAutoStoryMinute=now;});
    const photos=api.photosForAccount?.(account.name)||[];
+   const subjectContext=clean(api.accountSubjectContext?.(subjectOfAccount(account))||account.roleBrief||'',1400);
    const albumGuide=photos.slice(0,12).map(p=>p.id+'：'+(p.description||p.title||'照片')).join('；');
    const raw=await api.phoneGenerate(context(),{task:'autonomy',systemPrompt:'扮演指定账号主体（故事人物或组织）在剧情世界的公开社交账号上自主发帖；只输出正文或 [SKIP]。遵守账号绑定人物的职业、已知设定或组织性质，不混淆不同人物身份。如有适合的账号主体公开相册照片，可以在文末加 [[photo:照片ID]]；不能编造照片ID。',prompt:[{role:'user',
     content:'故事时间：'+scene+'。群星账号：'+account.name+'，职业／公开资料 '+publicAccountDescription(account)+'，账号主体 '+(subjectOfAccount(account).type==='organization'?'组织账号':'故事人物')+'，公众人物：'+(account.publicFigure?'是':'否')+
-     '。可用公开相册照片：'+albumGuide+'。近期剧情：'+clean(api.storyContext?.()||'',1400)+'。结合职业、性格、公共活动和时间线决定此时是否发布一条公开动态。不得公开私聊秘密，不得杜撰用户行为、未发生事件或已确定恋情。可以不发，输出 [SKIP]。否则只输出一条 20～180 字的社交动态，不要额外解释。'}]},api.readData(context()));
+     '。绑定人物设定（仅用于保持角色一致，不代表全部内容可公开）：'+subjectContext+'。可用公开相册照片：'+albumGuide+'。近期剧情：'+clean(api.storyContext?.()||'',1400)+'。结合职业、性格、公共活动和时间线决定此时是否发布一条公开动态。不得公开私聊秘密，不得杜撰用户行为、未发生事件或已确定恋情。可以不发，输出 [SKIP]。否则只输出一条 20～180 字的社交动态，不要额外解释。'}]},api.readData(context()));
    if(scope()!==state.scope)return;
    const reply=clean(api.stripModelReasoning(raw),450);
    if(!reply||/^\[SKIP\]$/i.test(reply)){if(force)feedback(account.name+' 选择暂不发布');return;}
