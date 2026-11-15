@@ -34,7 +34,7 @@ function harness(selectedMode='standard',reducedMotion=false){
   }};
  const nodes={interactionFeedback:feedback,interactionMotion:select};
  const document={createElement(){
-  return {classList:classList(),setAttribute(){},append(){},remove(){this.removed=true;},
+  return {classList:classList(),style:{setProperty(){}},setAttribute(){},append(){},addEventListener(){},remove(){this.removed=true;},
    animate(frames,options){
     const animation={frames,options,cancel(){}};
     this.animation=animation;
@@ -57,15 +57,18 @@ test('all ten open apps use the shared event and page transition system',()=>{
  assert.match(index,/data-lp="interactionFeedback"/);
  assert.match(style,/\.lp-app-portal/);
  assert.match(style,/\.lp-press-bounce/);
- assert.equal(manifest.version,'0.24.0');
+ assert.equal(manifest.version,'0.25.0');
 });
 test('pointer and keyboard controls press, release, and bounce',()=>{
  const h=harness();h.instance.bind(h.root);
  assert.equal(h.root.dataset.motion,'standard');
- const button={disabled:false,classList:classList(),offsetWidth:50,getAttribute:()=>null};
+ const button={disabled:false,classList:classList(),offsetWidth:50,textContent:'保存设置',dataset:{},
+  matches:()=>true,getBoundingClientRect:()=>({left:0,top:0,width:80,height:36}),
+  append(dot){this.lastRipple=dot;},getAttribute:()=>null};
  const event={button:0,target:{closest:()=>button}};
  h.listeners.get('pointerdown')(event);
  assert.equal(button.classList.contains('lp-press-down'),true);
+ assert.equal(button.lastRipple?.className,'lp-touch-ripple');
  h.listeners.get('pointerup')(event);
  assert.equal(button.classList.contains('lp-press-down'),false);
  h.listeners.get('click')(event);
@@ -123,4 +126,29 @@ test('status notifications are driven by actual results rather than physical tap
  const group=readFileSync(new URL('../weibo.js',import.meta.url),'utf8');
  assert.match(takeout,/api\.notifyInteraction\?\./);
  assert.match(group,/api\.notifyInteraction\?\./);
+});
+
+
+test('loading status and redundant in-place success messages do not create toasts',()=>{
+ const h=harness();
+ h.instance.bind(h.root);
+ h.instance.fromStatus('正在生成角色回复，请稍候…');
+ assert.equal(h.nodes.interactionFeedback.hidden,true);
+ h.instance.fromStatus('已收到回复。');
+ assert.equal(h.nodes.interactionFeedback.hidden,true);
+ h.instance.fromStatus('悬浮按钮已关闭');
+ assert.equal(h.nodes.interactionFeedback.hidden,true);
+ h.instance.fromStatus('锁屏设置已保存');
+ assert.equal(h.nodes.interactionFeedback.textContent,'锁屏设置已保存');
+ assert.equal(h.nodes.interactionFeedback.dataset.kind,'success');
+ h.instance.shutdown();
+});
+test('ripple is generated from pointer origin, with top-centered outcome feedback',()=>{
+ assert.match(style,/lpTouchRipple 450ms/);
+ assert.match(style,/lpTouchRipple/);
+ assert.match(style,/lpLikeParticle/);
+ assert.match(style,/lpCheckDraw 300ms/);
+ assert.match(style,/top:max\(12px/);
+ assert.match(index,/const x=Number\.isFinite\(e\.clientX\)/);
+ assert.match(index,/Math\.hypot\(/);
 });
