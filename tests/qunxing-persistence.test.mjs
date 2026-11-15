@@ -7,10 +7,10 @@ const script=readFileSync(new URL('../weibo.js',import.meta.url),'utf8');
 const sharedSource=index.slice(
  index.indexOf('function phoneSelectionKey('),index.indexOf('function savedPhoneSelections(')
 );
-const roleFactory=new Function('selectedCharacter','getCharacterName','SETTINGS_KEY','recordError',
+const roleFactory=new Function('selectedCharacter','getCharacterName','SETTINGS_KEY','DATA_KEY','recordError',
  sharedSource+'return {phoneSelectionKey,sharedQunxingAccounts,saveSharedQunxingAccounts,ensureSharedQunxingAccounts,explicitAccountFollowers};');
 const ROLE_KEY='test-phone-config';
-const role=roleFactory(c=>c.characters?.[c.characterId],c=>c.name,ROLE_KEY,()=>{});
+const role=roleFactory(c=>c.characters?.[c.characterId],c=>c.name,ROLE_KEY,'db',()=>{});
 const make=new Function('document','structuredClone',
  script.replace('export function createWeiboModule','function createWeiboModule')
   .replace('return {open,render,','return {data,mutate,open,render,')+
@@ -170,5 +170,5 @@ test('follower counts are read only from explicit numbers, with Chinese large-nu
  assert.equal(role.explicitAccountFollowers('社交媒体粉丝 1.2亿'),120000000);
  assert.equal(role.explicitAccountFollowers('粉丝数：5000000'),5000000);
  assert.equal(role.explicitAccountFollowers('曾经很受欢迎，很多粉丝'),null);
- assert.match(index,/followers:old\?\.followers\|\|0/,'the old import form remains compatible');
+ assert.match(script,/followers:Math\.max\(0,Math\.floor\(Number\(value\('followers'\)\)\|\|0\)\)/);
 });
