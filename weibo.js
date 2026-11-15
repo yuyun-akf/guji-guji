@@ -114,7 +114,7 @@ export function createWeiboModule(api) {
    feedback('已更新 '+arr.length+' 条'+name+'动态');
    api.recordActivity('群星刷新',name+'：'+arr.length+' 条','success');
   }catch(e){feedback('刷新失败：'+String(e.message||e));api.recordError('群星生成',e);}
-  finally{state.loading=false;if(state.tab!=='me')render();else if(nodes()?.weiboGenerate)nodes().weiboGenerate.disabled=false;}
+  finally{if(token===state.token){state.loading=false;if(state.tab!=='me')render();else if(nodes()?.weiboGenerate)nodes().weiboGenerate.disabled=false;}}
  }
 
  const topicKey=(zone,title)=>JSON.stringify([zone,title]);
@@ -225,8 +225,10 @@ export function createWeiboModule(api) {
    }
    if(!list.length)wrap.append(el('p','lp-wb-empty','还没有关注任何账号'));
   }else{
-   const arr=state.subview==='interactions'?allPosts().filter(p=>isSaved(actionState(p))):
+   const arr=state.subview==='interactions'?allPosts().filter(p=>isSaved(actionState(p))&&!p.repostOf):
     q.posts.filter(p=>p.actions?.owned);
+   if(state.subview==='interactions'&&arr.length)
+    wrap.append(control('清空我的互动记录','clearInteractions'));
    for(const p of arr.slice().reverse())wrap.append(card(p,false));
    if(!arr.length)wrap.append(el('p','lp-wb-empty','暂无内容'));
   }
@@ -270,7 +272,10 @@ export function createWeiboModule(api) {
   const interval=field(controls,'发布检测间隔（剧情分钟）','autoEveryMinutes',q.settings.autoEveryMinutes,'number');interval.min='30';interval.max='10080';
   field(controls,'周边环境补充（校园／公司／剧组等）','nearbyHint',q.settings.nearbyHint);
   controls.append(control('保存设置','saveSettings'),control('测试角色自主发布','testAuto'));
-  parent.append(controls,heading('管理角色账号','手动绑定角色、NPC、媒体和粉丝账号；不依赖角色卡预设'));
+  parent.append(controls);
+  parent.append(heading('互动记录管理','清理当前存档里的测试互动，不影响原创动态或账号'));
+  parent.append(control('清空测试互动记录','clearInteractions'));
+  parent.append(heading('管理角色账号','手动绑定角色、NPC、媒体和粉丝账号；不依赖角色卡预设'));
   for(const a of q.accounts){
    const line=el('div','lp-wb-account-line');line.append(avatar(a.avatar,a.name));
    line.append(el('span','',a.name+' · '+(a.handle||'未设ID')+' · '+(a.kind||'人物')));
@@ -368,7 +373,8 @@ export function createWeiboModule(api) {
    return;
   }
   if(state.tab==='home'){
-   const q=data(),seen=new Set(),all=[...state.posts.home,...q.posts.filter(p=>p.zone!=='nearby').slice().reverse(),...(root().weiboSaved||[])];
+   const q=data(),seen=new Set(),all=[...state.posts.home,
+    ...q.posts.filter(p=>p.zone!=='nearby'&&(p.actions?.owned||p.autoPublished)).slice(-15).reverse()];
    for(const p of all)if(p?.id&&!seen.has(p.id)){seen.add(p.id);n.weiboFeed.append(card(p,false));}
    if(!seen.size)n.weiboFeed.append(el('p','lp-wb-empty','点击下方按钮，查看故事世界的最新动态'));
   }else if(state.tab==='discover'){
@@ -378,7 +384,8 @@ export function createWeiboModule(api) {
    n.weiboNearby.append(heading('周边','校园、公司、剧组与身边的人'));
    const trends=state.nearbyTrends.length?state.nearbyTrends:data().nearbyTrends;
    if(trends.length){n.weiboNearby.append(heading('周边热议'));trendList(n.weiboNearby,trends,'nearby');}
-   const list=[...state.posts.nearby,...data().posts.filter(p=>p.zone==='nearby').slice().reverse()];
+   const list=[...state.posts.nearby,
+    ...data().posts.filter(p=>p.zone==='nearby'&&(p.actions?.owned||p.autoPublished)).slice(-12).reverse()];
    const seen=new Set();for(const p of list)if(!seen.has(p.id)){seen.add(p.id);n.weiboNearby.append(card(p,false));}
    if(!list.length)n.weiboNearby.append(el('p','lp-wb-empty','刷新周边，查看身边的动态'));
   }else if(state.tab==='me')renderMine(n);
@@ -413,6 +420,21 @@ export function createWeiboModule(api) {
  async function action(type,id){
   // Reading/profile/settings interactions remain available during feed generation.
   
+if(type==='clearInteractions'){
+   if(!window.confirm('清空当前存档的点赞、评论、收藏和转发？转发生成的「我的动态」也会移除，原创动态与关注账号会保留。此操作不可撤销。'))return;
+   await mutate((q,r)=>{
+    q.posts=q.posts.filter(post=>{
+     if(post.repostOf)return false;
+     const keep=Boolean(post.actions?.owned||post.autoPublished||
+      (post.authorId&&q.following.includes(post.authorId)));
+     if(keep)post.actions=post.actions?.owned?{owned:true}:{};
+     return keep;
+    });
+    delete r.weiboSaved;
+   });
+   feedback('已清空当前存档的互动记录');
+   render();return;
+  }
 if(type==='subview'){state.subview=id;state.editing='';render();nodes().weiboMe.parentElement.scrollTop=0;return;}
   if(type==='backMe'){state.subview='';state.editing='';render();nodes().weiboMe.parentElement.scrollTop=0;return;}
   if(type==='retryTopic'){await loadTopic();return;}
@@ -511,13 +533,34 @@ if(type==='subview'){state.subview=id;state.editing='';render();nodes().weiboMe.
    const a=actionState(p);let change={};
    if(type==='like')change={liked:!a.liked};
    else if(type==='favorite')change={favorited:!a.favorited};
-   else if(type==='repost')change={reposted:!a.reposted};
+   else if(type==='repost'){
+    const next=!a.reposted;
+    await mutate(q=>{
+     let original=q.posts.find(x=>x.id===p.id);
+     if(!original){original={...p,actions:{}};q.posts.push(original);}
+     original.actions={...(original.actions||{}),reposted:next};
+     q.posts=q.posts.filter(x=>!(x.repostOf===p.id&&x.actions?.owned));
+     if(next){
+      const me=q.profile;
+      q.posts.push({id:uid('repost'),author:me.nickname,handle:me.handle,avatar:me.avatar,
+       authorId:'self',category:'转发',text:'转发自 '+p.author+'：\n'+p.text,
+       comments:[],likes:0,zone:'world',time:root().storyTime||'',
+       repostOf:p.id,actions:{owned:true}});
+     }
+     q.posts=q.posts.slice(-180);
+    });
+    if(next){
+     const rootData=structuredClone(root());
+     api.publishPhoneAppEvent(rootData,{app:'weibo',action:'reposted',id:p.id,
+      detail:'转发 '+p.author+'：'+clean(p.text,110)});
+     await api.writeData(context(),{...rootData,__contactId:'primary'});
+    }
+    feedback(next?'已转发到我的动态':'已取消转发并移除我的动态');
+    render();return;
+   }
    else return;
    await persistAction(p,change);
-   if(type==='repost'&&change.reposted){
-    const d=structuredClone(root());api.publishPhoneAppEvent(d,{app:'weibo',action:'reposted',id:p.id,detail:'转发 '+p.author+'：'+clean(p.text,110)});
-    await api.writeData(context(),{...d,__contactId:'primary'});
-   }
+
   }render();
  }
  async function publish(){
@@ -603,6 +646,14 @@ if(type==='subview'){state.subview=id;state.editing='';render();nodes().weiboMe.
   }catch(e){feedback('主动发布失败：'+String(e.message||e));api.recordError('群星主动发帖',e);}
   finally{autoBusy=false;}
  }
- function open(){reset();render();if(!state.attempted.world){state.attempted.world=true;void generate('home');}}
+ function open(){
+  reset();
+  state.token++;state.loading=false;
+  state.tab='home';state.detail='';state.topic=null;state.subview='';
+  state.posts={home:[],nearby:[]};state.trends=[];state.nearbyTrends=[];state.attempted={};
+  render();
+  state.attempted.world=true;
+  void generate('home');
+ }
  return {open,render,generate,selectTab,back,publish,handleClick,handleFile,tick,state,parse,normalize};
 }
