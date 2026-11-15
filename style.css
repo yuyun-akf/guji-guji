@@ -2973,3 +2973,98 @@
  background:var(--lp-ice)!important;color:var(--lp-soft-ink)!important;border-color:var(--lp-slate)!important;
 }
 #st-little-phone-root .lp-payment-actions button{color:var(--lp-ink)!important;}
+
+
+/* v0.17.0 — global tactile feedback and icon-origin app transitions. */
+#st-little-phone-root .lp-interaction-feedback{
+ position:absolute;left:50%;bottom:max(62px,env(safe-area-inset-bottom,0px) + 48px);
+ transform:translateX(-50%);z-index:1005;
+ max-width:calc(100% - 35px);width:max-content;
+ padding:10px 15px;border-radius:17px;
+ background:color-mix(in srgb,var(--lp-navy) 90%,black);
+ color:var(--lp-white);box-shadow:0 6px 22px color-mix(in srgb,var(--lp-navy) 22%,transparent);
+ font-size:12px;line-height:1.5;text-align:center;
+ pointer-events:none;overflow-wrap:anywhere;
+}
+#st-little-phone-root .lp-interaction-feedback[hidden]{display:none!important;}
+#st-little-phone-root .lp-interaction-feedback[data-kind="success"]{
+ background:color-mix(in srgb,var(--lp-slate) 75%,var(--lp-navy));
+}
+#st-little-phone-root .lp-interaction-feedback[data-kind="error"]{
+ background:color-mix(in srgb,var(--lp-rose) 45%,#693e42);
+}
+#st-little-phone-root .lp-interaction-feedback[data-kind="pending"]{
+ background:color-mix(in srgb,var(--lp-navy) 76%,var(--lp-slate));
+}
+#st-little-phone-root .lp-app-portal{
+ position:absolute;top:0;left:0;width:100%;height:100%;
+ display:grid;place-items:center;z-index:998;
+ overflow:hidden;pointer-events:auto;
+ background:var(--lp-ice);
+ border:1px solid color-mix(in srgb,var(--lp-slate) 42%,transparent);
+ box-shadow:0 10px 27px color-mix(in srgb,var(--lp-navy) 14%,transparent);
+}
+#st-little-phone-root .lp-app-portal-icon{
+ width:100%;height:100%;display:grid;place-items:center;
+ background:transparent!important;
+}
+#st-little-phone-root .lp-app-portal-icon svg{
+ width:34px;height:34px;max-width:90%;max-height:90%;
+ color:var(--lp-navy);
+}
+#st-little-phone-root .lp-app-portal-icon img{
+ width:34px;height:34px;max-width:90%;max-height:90%;object-fit:contain;
+}
+#st-little-phone-root .lp-panel.lp-portal-running > .lp-header{opacity:0;}
+#st-little-phone-root[data-motion="gentle"] .lp-panel :is(button,summary,[role="button"]),
+#st-little-phone-root[data-motion="standard"] .lp-panel :is(button,summary,[role="button"]){
+ transition:transform 125ms cubic-bezier(.2,.7,.25,1),filter 125ms ease;
+ touch-action:manipulation;
+}
+#st-little-phone-root[data-motion="gentle"] .lp-panel :is(button,summary,[role="button"]).lp-press-down:not(.lp-desktop-app),
+#st-little-phone-root[data-motion="gentle"] .lp-panel :is(button,summary,[role="button"]):active:not(.lp-desktop-app){
+ transform:scale(.982)!important;filter:brightness(.98);
+}
+#st-little-phone-root[data-motion="standard"] .lp-panel :is(button,summary,[role="button"]).lp-press-down:not(.lp-desktop-app),
+#st-little-phone-root[data-motion="standard"] .lp-panel :is(button,summary,[role="button"]):active:not(.lp-desktop-app){
+ transform:scale(.953)!important;filter:brightness(.96);
+}
+@keyframes lpInteractionBounce{
+ 0%{transform:scale(.965);}
+ 52%{transform:scale(1.018);}
+ 100%{transform:scale(1);}
+}
+@keyframes lpInteractionBounceGentle{
+ 0%{transform:scale(.985);}
+ 52%{transform:scale(1.005);}
+ 100%{transform:scale(1);}
+}
+#st-little-phone-root[data-motion="standard"] .lp-panel .lp-press-bounce:not(.lp-desktop-app){
+ animation:lpInteractionBounce 220ms cubic-bezier(.2,.73,.22,1);
+}
+#st-little-phone-root[data-motion="gentle"] .lp-panel .lp-press-bounce:not(.lp-desktop-app){
+ animation:lpInteractionBounceGentle 160ms cubic-bezier(.2,.73,.22,1);
+}
+#st-little-phone-root[data-motion="standard"] .lp-desktop-app.lp-press-down .lp-desktop-app-icon{transform:scale(.92);}
+#st-little-phone-root[data-motion="gentle"] .lp-desktop-app.lp-press-down .lp-desktop-app-icon{transform:scale(.97);}
+#st-little-phone-root[data-motion="standard"] .lp-desktop-app.lp-press-bounce .lp-desktop-app-icon{
+ animation:lpInteractionBounce 220ms ease-out;
+}
+#st-little-phone-root[data-motion="gentle"] .lp-desktop-app.lp-press-bounce .lp-desktop-app-icon{
+ animation:lpInteractionBounceGentle 160ms ease-out;
+}
+#st-little-phone-root[data-motion="gentle"] .lp-desktop-app-icon,
+#st-little-phone-root[data-motion="standard"] .lp-desktop-app-icon{
+ transition:transform 125ms cubic-bezier(.2,.73,.22,1);
+}
+#st-little-phone-root[data-motion="off"] .lp-press-down,
+#st-little-phone-root[data-motion="off"] .lp-press-bounce,
+#st-little-phone-root[data-motion="off"] .lp-desktop-app-icon{
+ animation:none!important;transition:none!important;transform:none!important;
+}
+@media (prefers-reduced-motion:reduce){
+ #st-little-phone-root .lp-press-down,#st-little-phone-root .lp-press-bounce,
+ #st-little-phone-root .lp-desktop-app-icon,#st-little-phone-root .lp-app-portal{
+  animation:none!important;transition:none!important;
+ }
+}
