@@ -523,7 +523,7 @@ export function createWeiboModule(api) {
   const a=actionState(p),actions=el('div','lp-wb-actions lp-wb-actions-inline');
   const like=control('♡ '+((p.likes||0)+(a.liked?1:0)),'like',p.id,a.liked);
   like.title='点赞';like.classList.add('lp-wb-action-compact');
-  const favorite=control(a.favorited?'★':'☆','favorite',p.id,a.favorited);
+  const favorite=control(a.favorited?'★ 已收藏':'☆ 收藏','favorite',p.id,a.favorited);
   favorite.title='收藏';favorite.setAttribute('aria-label','收藏');favorite.classList.add('lp-wb-action-compact');
   const share=control('分享','shareMenu',p.id);
   share.classList.add('lp-wb-action-compact');
