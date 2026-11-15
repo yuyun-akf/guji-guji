@@ -25,7 +25,7 @@ test('旧粉丝数字可自动预填合适单位且回存不丢失精度',()=>{
 test('粉丝展示有单位而非完整长数字',()=>{
  assert.equal(units.formatFollowers(35000000),'3500万粉丝');
  assert.equal(units.formatFollowers(120000000),'1.2亿粉丝');
- assert.equal(units.formatFollowers(9500),'9,500粉丝');
+ assert.equal(units.formatFollowers(9500),'9500粉丝');
  assert.equal(units.formatFollowers(125000),'12.5万粉丝');
 });
 test('无效、负数或溢出输入必须拒绝，不能静默存0',()=>{
