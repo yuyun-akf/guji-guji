@@ -1165,6 +1165,8 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
      '角色账号：'+account.name+'；职业：'+savedProfession(account)+'；签名：'+account.bio,
      '公开人物：'+(account.publicFigure?'是':'否')+'；粉丝：'+formatFollowers(account.followers),
      '绑定的角色卡／NPC设定（性格、言谈、行为边界必须遵守）：'+(cardSetting||'以账号设定为准，不补写未知设定'),
+     '账号运营方式：'+accountOperatorGuide(account)+'；身份公开程度：'+(account.identityVisibility||'public')+
+      '；指定知情者：'+(account.identityKnownTo||'无')+'。私人小号不可自动公开和官方大号的关联。',
      '当前故事时间：'+scene+'；已知剧情：'+contextText,
      '此前已发布的内容（避免重复）：'+(recent||'暂无'),
      '用户本次生成的明确要求（优先执行，不能覆盖故事已确定事实）：'+(extra||'以符合角色性格的日常公开动态为主'),
@@ -1265,10 +1267,23 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
      subjectChoices(previous?.subject?.name?[previous.subject.name]:previous?.name?[previous.name]:[]));
     followingCount=readOptional('accountFollowing');likesTotal=readOptional('accountLikes');commentsTotal=readOptional('accountComments');
    }catch(error){feedback(error.message);return;}
+   const mode=v('accountOperatorMode')?.value||'self';
+   const operatorName=clean(v('accountOperatorName')?.value,70);
+   const visibility=v('accountIdentityVisibility')?.value||'public';
+   if(mode==='other'&&!operatorName){feedback('请填写指定运营者的姓名');return;}
+   if(!['self','team','joint','other'].includes(mode)||!['public','private','limited'].includes(visibility)){
+    feedback('账号运营方式或身份可见范围无效');return;
+   }
+   const handle=clean(v('accountHandle')?.value,45);
+   if(handle&&data().accounts.some(a=>a.id!==edit&&a.handle===handle)){
+    feedback('群星 ID 已被另一账号使用，请更换');return;
+   }
    await mutate(q=>{
     const old=q.accounts.find(x=>x.id===edit)||{};
     const sameSubject=old.subject?.type===subject.type&&old.subject?.name===subject.name;
-    const next={...old,id:old.id||uid('account'),name,handle:clean(v('accountHandle')?.value,45),bio:clean(v('accountBio')?.value,450),
+    const next={...old,id:old.id||uid('account'),name,handle,bio:clean(v('accountBio')?.value,450),
+     operatorMode:mode,operatorName,identityVisibility:visibility,
+     identityKnownTo:clean(v('accountIdentityKnownTo')?.value,180),
      roleBrief:subject.type==='npc'&&sameSubject?(old.roleBrief||''):'',
      subject,kind:subject.type==='primary'?'角色':subject.type==='organization'?'组织':'NPC',
      profession:clean(v('accountProfession')?.value,80),followingCount,likesTotal,commentsTotal,publicFigure:!!v('accountPublic')?.checked,
@@ -1431,7 +1446,10 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
    const albumGuide=photos.slice(0,12).map(p=>p.id+'：'+(p.description||p.title||'照片')).join('；');
    const raw=await api.phoneGenerate(context(),{task:'autonomy',systemPrompt:'扮演指定账号主体（故事人物或组织）在剧情世界的公开社交账号上自主发帖；只输出正文或 [SKIP]。遵守账号绑定人物的职业、已知设定或组织性质，不混淆不同人物身份。如有适合的账号主体公开相册照片，可以在文末加 [[photo:照片ID]]；不能编造照片ID。',prompt:[{role:'user',
     content:'故事时间：'+scene+'。群星账号：'+account.name+'，职业／公开资料 '+publicAccountDescription(account)+'，账号主体 '+(subjectOfAccount(account).type==='organization'?'组织账号':'故事人物')+'，公众人物：'+(account.publicFigure?'是':'否')+
-     '。绑定人物设定（仅用于保持角色一致，不代表全部内容可公开）：'+subjectContext+'。可用公开相册照片：'+albumGuide+'。近期剧情：'+clean(api.storyContext?.()||'',1400)+'。结合职业、性格、公共活动和时间线决定此时是否发布一条公开动态。不得公开私聊秘密，不得杜撰用户行为、未发生事件或已确定恋情。可以不发，输出 [SKIP]。否则只输出一条 20～180 字的社交动态，不要额外解释。'}]},api.readData(context()));
+     '。账号运营方式：'+accountOperatorGuide(account)+'。账号身份公开程度：'+(account.identityVisibility||'public')+
+      '；知情者：'+(account.identityKnownTo||'无')+'。绑定人物设定（仅用于保持角色一致，不代表全部内容可公开）：'+subjectContext+
+      '。可用公开相册照片：'+albumGuide+'。近期剧情：'+clean(api.storyContext?.()||'',1400)+
+      '。结合职业、性格、公共活动和时间线决定是否发布。私人小号不得自动暴露和绑定人物、官方大号的关系。不得公开私聊秘密，不得杜撰用户行为、未发生事件或已确定恋情。可以不发，输出 [SKIP]。否则只输出一条 20～180 字的社交动态，不要额外解释。'}]},api.readData(context()));
    if(scope()!==state.scope)return;
    const reply=clean(api.stripModelReasoning(raw),450);
    if(!reply||/^\[SKIP\]$/i.test(reply)){if(force)feedback(account.name+' 选择暂不发布');return;}
