@@ -1168,7 +1168,12 @@ async function phoneGenerate(ctx,options,data) {
     const result=await service.sendRequest({
         chat_completion_source:'custom',custom_url:url,
         custom_include_headers:JSON.stringify({Authorization:'Bearer '+key}),
-        model:cfg.model.trim(),messages,stream:false,max_tokens:cfg.maxTokens,temperature:0.85
+        model:cfg.model.trim(),messages,stream:false,
+        // A full 15-topic hot list cannot fit the ordinary 320-token response budget.
+        // Increase it only for explicit high-volume content requests, never globally.
+        max_tokens:Number.isFinite(Number(options?.maxTokens))&&Number(options.maxTokens)>0
+          ?Math.max(cfg.maxTokens,Math.min(10000,Math.floor(Number(options.maxTokens))))
+          :cfg.maxTokens,temperature:0.85
     });
     return typeof result==='string'?result:result?.content||'';
 }
