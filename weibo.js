@@ -777,7 +777,9 @@ if(type==='subview'){state.subview=id;state.editing='';render();nodes().weiboMe.
    await mutate(q=>{
     for(const candidate of chosen){
      const old=q.accounts.find(x=>x.name===candidate.name||(candidate.handle&&x.handle===candidate.handle));
+     const sameSubject=old?.subject?.type===candidate.subject.type&&old?.subject?.name===candidate.subject.name;
      const next={...old,...candidate,id:old?.id||uid('account'),
+      roleBrief:candidate.subject.type==='npc'?(candidate.roleBrief??(sameSubject?old.roleBrief||'':'')):'',
       avatar:old?.avatar||'',source:'manual'};
      q.accounts=old?q.accounts.map(x=>x.id===old.id?next:x):[...q.accounts,next];
     }
@@ -826,7 +828,9 @@ if(type==='subview'){state.subview=id;state.editing='';render();nodes().weiboMe.
    }catch(error){feedback(error.message);return;}
    await mutate(q=>{
     const old=q.accounts.find(x=>x.id===edit)||{};
+    const sameSubject=old.subject?.type===subject.type&&old.subject?.name===subject.name;
     const next={...old,id:old.id||uid('account'),name,handle:clean(v('accountHandle')?.value,45),bio:clean(v('accountBio')?.value,450),
+     roleBrief:subject.type==='npc'&&sameSubject?(old.roleBrief||''):'',
      subject,kind:subject.type==='primary'?'角色':subject.type==='organization'?'组织':'NPC',
      profession:clean(v('accountProfession')?.value,80),publicFigure:!!v('accountPublic')?.checked,
      followers,avatar:avatarDraft||old.avatar||'',source:'manual'};
