@@ -20,7 +20,7 @@ export function createGroupsModule(api){
    const heading=el('div','lp-group-header');
    if(group.avatar){const avatar=el('img','lp-group-avatar');avatar.src=group.avatar;avatar.alt='群聊头像';heading.append(avatar);}
    heading.append(el('strong','',group.name||'群聊'),el('small','',group.members.map(who).join('、')),
-    button('返回列表','back'),button(state.manage?'返回聊天':'管理群聊','manage'));target.append(heading);
+    button(state.manage?'完成管理':'管理群聊','manage'));target.append(heading);
    if(state.manage){
     const form=el('div','lp-group-create'),name=el('input');name.dataset.groupInput='editName';name.maxLength=40;name.value=group.name||'';name.placeholder='群聊名称';
     const avatar=el('input');avatar.type='file';avatar.accept='image/png,image/jpeg,image/webp';avatar.dataset.groupAvatar='true';
@@ -86,7 +86,7 @@ export function createGroupsModule(api){
    target.messages||=[];
    target.messages.push({id:uid(),from:'user',text:'[群星分享] '+(post.author||'用户')+' 的动态',sharePost:{id:post.id,author:post.author,text:post.text,handle:post.handle,image:post.image||''},storyTime:root().storyTime||''});
   });
-  if(state.active===groupId)render();
+  state.active=groupId;state.manage=false;render();
  }
  async function send(){
   const group=groups().find(g=>g.id===state.active),input=host()?.querySelector('[data-group-input="message"],[data-group-input="message"]');
