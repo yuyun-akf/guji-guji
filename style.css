@@ -3058,9 +3058,8 @@
  transition:transform 125ms cubic-bezier(.2,.73,.22,1);
 }
 #st-little-phone-root[data-motion="off"] .lp-press-down,
-#st-little-phone-root[data-motion="off"] .lp-press-bounce,
-#st-little-phone-root[data-motion="off"] .lp-desktop-app-icon{
- animation:none!important;transition:none!important;transform:none!important;
+#st-little-phone-root[data-motion="off"] .lp-press-bounce{
+ animation:none!important;transition:none!important;
 }
 @media (prefers-reduced-motion:reduce){
  #st-little-phone-root .lp-press-down,#st-little-phone-root .lp-press-bounce,
