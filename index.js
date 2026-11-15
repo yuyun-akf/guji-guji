@@ -6602,8 +6602,11 @@ function installWandEntry() {
         if(!peerButton||peerButton.disabled||peerButton.getAttribute('aria-disabled')==='true')return null;
         const style=window.getComputedStyle(peerIcon||peerButton);
         const buttonStyle=window.getComputedStyle(peerButton);
+        let pseudoColor='';
+        try{if(peerIcon)pseudoColor=window.getComputedStyle(peerIcon,'::before')?.color||'';}catch{}
         if(style.display==='none'||buttonStyle.display==='none'||Number(style.opacity)<.65)return null;
-        return {peerIcon,peerButton,score:saturation(style.color)+saturation(buttonStyle.color)*.15};
+        return {peerIcon,peerButton,pseudoColor,
+         score:Math.max(saturation(style.color),saturation(pseudoColor),saturation(buttonStyle.color)*.85)};
        }).filter(Boolean).sort((x,y)=>y.score-x.score);
       const peer=peers[0];
       if(!peer)return;
@@ -6615,12 +6618,28 @@ function installWandEntry() {
        if(value&&value!=='transparent'&&value!=='rgba(0, 0, 0, 0)')
         element.style.setProperty(key,value,'important');
       };
-      paint(button,'color',peerButtonStyle.color);
-      paint(title,'color',labelStyle.color);
-      paint(icon,'color',iconStyle.color);
+      // Some SillyTavern themes color FontAwesome's ::before rather than
+      // the actual icon node. Sample that accent before inheriting gray labels.
+      const swatches=[peer.pseudoColor,iconStyle.color,labelStyle.color,peerButtonStyle.color]
+       .filter(value=>typeof value==='string'&&value.length>0)
+       .sort((a,b)=>saturation(b)-saturation(a));
+      const accent=swatches[0]||peerButtonStyle.color;
+      if(saturation(accent)>12){
+       paint(button,'color',accent);
+       paint(title,'color',accent);
+       paint(icon,'color',accent);
+      }else{
+       paint(button,'color',peerButtonStyle.color);
+       paint(title,'color',labelStyle.color);
+       paint(icon,'color',iconStyle.color);
+      }
       for(const k of ['font-size','font-family','font-weight','line-height','letter-spacing'])
        paint(button,k,peerButtonStyle.getPropertyValue(k));
-      // Full opacity prevents gray disabled-neighbor styling from leaking in.
+      // A translucent or grayscale ancestor otherwise keeps everything gray.
+      paint(container,'opacity','1');
+      paint(container,'filter','none');
+      paint(button,'opacity','1');
+      paint(button,'filter','none');
       paint(title,'opacity','1');
       paint(icon,'opacity','1');
     };
