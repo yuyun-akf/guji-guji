@@ -51,7 +51,7 @@ test('settings no longer contain the duplicate run-log entry or inactive API app
 test('API sites are grouped by URL and key rather than displayed as model presets',()=>{
  assert.match(index,/function savedApiSites\(/);
  assert.match(index,/function resolveSavedSite\(/);
- assert.match(index,/site\.profileIds\.includes\(value\)/);
+ assert.match(index,/s\.profileIds\.includes\(value\)/);
  assert.match(index,/api\/secrets\/read/);
  assert.match(index,/api\/backends\/chat-completions\/status/);
  assert.match(index,/getTavernRequestHeaders/);
@@ -92,7 +92,7 @@ test('Qunxing account search/profile works without paying to generate a heat lis
  const app=make({context:()=>ctx,getNodes:()=>({weiboFeed:null}),readRootData:()=>root,readData:()=>root,
   writeData:async(_ctx,data)=>{root=data;},selectedCharacter:()=>({name:'林知远'}),
   currentPersona:()=>({name:'u'}),stripModelReasoning:s=>s,
-  phoneGenerate:async()=>JSON.stringify({posts:[{text:'今天的一个普通下午',likes:1}]}),
+  phoneGenerate:async()=>JSON.stringify({posts:[{text:'今天的一个普通下午',likes:1,comments:[{name:'甲',text:'收到'},{name:'乙',text:'很好'}]}]}),
   recordActivity:()=>{},recordError:()=>{},notifyInteraction:()=>{}});
  await app.action('followAccount','actor');
  assert.deepEqual(root.qunxing.following,['actor']);
