@@ -266,7 +266,7 @@ export function createWeiboModule(api) {
   form.append(control('保存个人资料','saveProfile'));parent.append(form);
  }
  function renderSettings(parent,q){
-  parent.append(heading('群星设置','所有身份与数据按当前故事存档保存'));
+  parent.append(el('p','lp-wb-settings-note','所有身份与数据按当前故事存档保存'));
   const controls=el('div','lp-wb-editor');
   field(controls,'允许角色按剧情时间主动发布','autoEnabled',q.settings.autoEnabled,'checkbox');
   const interval=field(controls,'发布检测间隔（剧情分钟）','autoEveryMinutes',q.settings.autoEveryMinutes,'number');interval.min='30';interval.max='10080';
