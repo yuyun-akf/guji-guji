@@ -564,7 +564,7 @@ export function createWeiboModule(api) {
    const list=q.accounts.filter(a=>q.following.includes(a.id));
    for(const a of list){
     const line=el('div','lp-wb-account-line');
-    line.append(avatar(a.avatar,a.name),el('span','',a.name+' '+(a.handle||'')),
+    line.append(avatar(a.avatar,a.name),control(a.name+' '+(a.handle||''),'openAccount',a.id),
       control('取消关注','unfollowAccount',a.id));wrap.append(line);
    }
    if(!list.length)wrap.append(el('p','lp-wb-empty','还没有关注任何账号'));
@@ -651,7 +651,7 @@ export function createWeiboModule(api) {
   for(const a of q.accounts){
    const line=el('div','lp-wb-account-line');line.append(avatar(a.avatar,a.name));
    line.append(el('span','',a.name+' · '+(a.handle||'未设ID')+' · '+(savedProfession(a)||(subjectOfAccount(a).type==='organization'?'组织账号':'故事人物'))+' · '+formatFollowers(a.followers)));
-   line.append(control('编辑','editAccount',a.id));line.append(control('删除','deleteAccount',a.id));
+   line.append(control('主页','openAccount',a.id));line.append(control('编辑','editAccount',a.id));line.append(control('删除','deleteAccount',a.id));
    parent.append(line);
   }
   parent.append(control('＋ 新建账号','newAccount'));
@@ -709,11 +709,11 @@ export function createWeiboModule(api) {
   const n=nodes();if(!n?.weiboFeed)return;
   reset();
   const pageNames={mine:'我的动态',interactions:'我的互动',following:'关注列表',profile:'个人资料',settings:'群星设置'};
-  if(n.title)n.title.textContent=state.detail?'动态详情':state.topic?'热搜详情':state.tab==='me'&&state.subview?(pageNames[state.subview]||'群星'):'群星';
+  if(n.title)n.title.textContent=state.profileAccount?'个人主页':state.detail?'动态详情':state.topic?'热搜详情':state.tab==='me'&&state.subview?(pageNames[state.subview]||'群星'):'群星';
   n.weiboGenerate.disabled=state.loading||state.hotLoading;
   n.weiboGenerate.textContent=state.tab==='nearby'?'刷新周边帖子':state.tab==='discover'?'重新生成15条热搜':'刷新更多';
   n.weiboTabs.querySelectorAll('[data-weibo-tab]').forEach(b=>b.classList.toggle('selected',b.dataset.weiboTab===state.tab));
-  const expanded=Boolean(state.detail||state.topic);
+  const expanded=Boolean(state.profileAccount||state.detail||state.topic);
   const panels={home:n.weiboFeed,discover:n.weiboHot,nearby:n.weiboNearby,compose:n.weiboCompose,me:n.weiboMe};
   Object.entries(panels).forEach(([key,node])=>{
    node.hidden=key!==state.tab||expanded;
@@ -726,7 +726,9 @@ export function createWeiboModule(api) {
   n.weiboFeedback.hidden=!n.weiboFeedback.textContent;
   if(expanded){
    // No scrolling duplicate back control in detail view.
-   if(state.detail){
+   if(state.profileAccount){
+    renderAccountProfile(n.weiboDetail);
+   }else if(state.detail){
     const p=byId(state.detail);
     if(p){
      n.weiboDetail.append(card(p,true));
@@ -755,6 +757,7 @@ export function createWeiboModule(api) {
    for(const p of all)if(p?.id&&!seen.has(p.id)){seen.add(p.id);n.weiboFeed.append(card(p,false));}
    if(!seen.size)n.weiboFeed.append(el('p','lp-wb-empty','点击下方按钮，查看故事世界的最新动态'));
   }else if(state.tab==='discover'){
+   renderAccountSearch(n.weiboHot);
    n.weiboHot.append(heading('世界热搜','公共话题与热门讨论'));
    if(state.hotLoading)n.weiboHot.append(el('p','lp-wb-empty','正在一次生成15条热搜、帖子及评论…'));
    trendList(n.weiboHot,state.trends,'home');
@@ -816,7 +819,7 @@ if(type==='clearInteractions'){
    feedback('已清空当前存档的互动记录');
    render();return;
   }
-if(type==='subview'){state.subview=id;state.editing='';render();nodes().weiboMe.parentElement.scrollTop=0;return;}
+if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';render();nodes().weiboMe.parentElement.scrollTop=0;return;}
   if(type==='backMe'){state.subview='';state.editing='';render();nodes().weiboMe.parentElement.scrollTop=0;return;}
   if(type==='retryTopic'){state.topic=null;state.tab='discover';await generateHot();return;}
   if(type==='scanAccounts'){
@@ -874,6 +877,46 @@ if(type==='subview'){state.subview=id;state.editing='';render();nodes().weiboMe.
    });
    state.candidates=[];state.scanMessage='已保存 '+chosen.length+' 个已确认账号，未勾选的没有写入。';
    feedback(state.scanMessage);render();return;
+  }
+  if(type==='openAccount'||type==='openPostAuthor'){
+   const post=type==='openPostAuthor'?byId(id):null;
+   state.profileAccount=post?'post:'+post.id:id;
+   state.detail='';state.topic=null;state.sharingId='';render();return;
+  }
+  if(type==='followAccount'){
+   if(id.startsWith('post:')){
+    const post=byId(id.slice(5));if(post){await followPost(post,true);state.profileAccount=data().accounts.find(a=>a.name===post.author)?.id||id;}
+   }else await mutate(q=>{if(q.accounts.some(a=>a.id===id))q.following=[...new Set([...q.following,id])];});
+   render();return;
+  }
+  if(type==='generateAccountHistory'){
+   const account=data().accounts.find(a=>a.id===id);
+   if(!account||account.source!=='manual')return;
+   const session=scope();
+   feedback('正在生成公开历史动态…');
+   try{
+    const scene=root().storyTime||'';
+    const raw=await api.phoneGenerate(context(),{task:'weibo',maxTokens:2400,
+     systemPrompt:'为虚构社交账号生成少量过往公开动态，禁止补写重大事件、用户言行、私密关系或确定的经历。只返回合法JSON。',
+     prompt:[{role:'user',content:'账号：'+account.name+'；职业：'+savedProfession(account)+'；签名：'+account.bio+
+      '；当前故事时间：'+scene+'。创作5条之前公开的普通日常动态，不要编造学校名称、工作作品与现实个人隐私。JSON: {"posts":[{"text":"正文","likes":0,"comments":[]}]}'}]},api.readData(context()));
+    if(scope()!==session)return;
+    const response=parse(raw),posts=Array.isArray(response.posts)?response.posts.slice(0,5):[];
+    const sceneMs=Date.parse(scene);
+    await mutate(q=>{
+     const owner=q.accounts.find(a=>a.id===id);if(!owner)return;
+     for(let i=0;i<posts.length;i++){
+      const text=clean(posts[i]?.text,450);if(!text)continue;
+      const time=Number.isFinite(sceneMs)?new Date(sceneMs-(i+1)*86400000).toISOString().slice(0,16):'历史动态';
+      q.posts.push({id:uid('post'),author:owner.name,authorId:id,handle:owner.handle,avatar:owner.avatar,
+       category:'历史公开动态',text,likes:Math.max(0,Math.floor(Number(posts[i].likes)||0)),
+       comments:[],time,zone:'world',actions:{},backfilled:true});
+     }
+     q.posts=q.posts.slice(-300);
+    });
+    feedback('历史动态已保存');
+   }catch(e){feedback('生成历史动态失败：'+String(e.message||e));}
+   render();return;
   }
   if(type==='newAccount'){state.editing='new';state.avatarDraft='';render();return;}
   if(type==='editAccount'){state.editing=id;state.avatarDraft='';render();return;}
@@ -994,19 +1037,13 @@ if(type==='subview'){state.subview=id;state.editing='';render();nodes().weiboMe.
   t=alias[t]||t;
   if(!['home','discover','nearby','compose','me'].includes(t))return;
   if(t==='discover'){
-   void (async()=>{
-    // A paid hot-trend generation must be confirmed by the user first.
-    if(!state.trends.length&&!state.hotLoading&&!(await confirmHotSearch()))return;
-    state.tab='discover';state.detail='';state.topic=null;state.subview='';
-    feedback('');render();
-    if(!state.trends.length&&!state.hotLoading)await generateHot();
-   })();
-   return;
+   state.tab='discover';state.detail='';state.topic=null;state.profileAccount='';state.subview='';
+   feedback('');render();return;
   }
   if(t!==state.tab)feedback('');
   if(t==='me'&&state.tab==='me')state.subview='';
   if(t!=='me')state.subview='';
-  state.tab=t;state.detail='';state.topic=null;render();
+  state.tab=t;state.detail='';state.topic=null;state.profileAccount='';state.sharingId='';render();
   if(nodes()?.weiboFeed?.parentElement)nodes().weiboFeed.parentElement.scrollTop=0;
   if(t==='home'&&!state.attempted.world){state.attempted.world=true;void generate('home');}
   if(t==='nearby'&&!state.attempted.nearby){
@@ -1014,7 +1051,8 @@ if(type==='subview'){state.subview=id;state.editing='';render();nodes().weiboMe.
   }
  }
  function back(){
-   if(state.detail)state.detail='';
+   if(state.profileAccount)state.profileAccount='';
+   else if(state.detail)state.detail='';
    else if(state.topic)state.topic=null;
    else if(state.subview)state.subview='';
    else return false;
