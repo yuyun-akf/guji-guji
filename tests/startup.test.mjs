@@ -67,6 +67,9 @@ test('full mount binds actual template controls including moments; disable prese
     }
     const root = host.document.getElementById('st-little-phone-root');
     assert.equal(typeof root.querySelector('[data-lp="momentsPost"]').listeners.click, 'function');
+    assert.equal(typeof root.querySelector('[data-lp="messageBannerToggle"]').listeners.change, 'function',
+        'new notification checkbox must be registered before mount binds listeners');
+    assert.ok(runtime.api.controls().messageBannerStatus,'notification feedback must be registered');
     // Exercise the actual mounted handlers, not just picker state helpers.
     const input = root.querySelector('[data-lp="chatImageInput"]');
     let prevented = 0;
