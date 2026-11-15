@@ -536,6 +536,18 @@ function storyCompanionDays(data){
  const now=Date.parse(today+'T00:00:00Z'),start=Date.parse(first+'T00:00:00Z');
  return Number.isFinite(now)&&Number.isFinite(start)?Math.max(1,Math.floor((now-start)/86400000)+1):1;
 }
+function updateHomeHotSearch(){
+ if(!nodes?.homeHotSearch)return;
+ const topic=String(weiboController?.headline?.()||
+  readRootData(context())?.qunxing?.trends?.[0]?.title||
+  '今天有什么新鲜事').replace(/^#+|#+$/g,'').trim().slice(0,58);
+ const button=nodes.homeHotSearch;
+ const icon=button.querySelector('span')||document.createElement('span');
+ icon.textContent='⌕';
+ button.replaceChildren(document.createTextNode('#'+topic+'#'),icon);
+ button.setAttribute('aria-label','查看群星热搜：'+topic);
+ button.title='查看群星热搜：'+topic;
+}
 function renderDesktop(){
  if(!nodes?.homePages)return;
  const order=desktopOrder();
@@ -592,6 +604,7 @@ function renderDesktop(){
  const weather=scene.weather;
  nodes.homeScene.textContent=[loc,weather].filter(Boolean).join(' · ');
  nodes.homeScene.hidden=!loc&&!weather;
+ updateHomeHotSearch();
 }
 function renderDesktopSort(){
  if(!nodes?.desktopSortList)return;
@@ -2895,7 +2908,7 @@ async function loadWeiboController(){
   weiboController=module.createWeiboModule({
    context,getNodes:()=>nodes,readRootData,writeData,readData,phoneGenerate,
    selectedCharacter,currentPersona,stripModelReasoning,publishPhoneAppEvent,
-   recordActivity,recordError,notifyInteraction,storyContext:weiboStoryContext,scanAccounts:scanQunxingAccounts
+   recordActivity,recordError,notifyInteraction,updateHomeHotSearch,storyContext:weiboStoryContext,scanAccounts:scanQunxingAccounts
   });return weiboController;
  }).catch(error=>{
   if(nodes?.weiboFeedback)nodes.weiboFeedback.textContent='群星加载失败：'+String(error.message||error);
@@ -3148,8 +3161,8 @@ function setScreen(screen, options={}) {
     if(screen==='lock')renderLock();
     if(screen==='home')renderDesktop();
     if(screen==='weibo'){
-        if(weiboController)weiboController.open();
-        else void loadWeiboController().then(w=>{if(w&&activeScreen==='weibo')w.open();});
+        if(weiboController)weiboController.open(options);
+        else void loadWeiboController().then(w=>{if(w&&activeScreen==='weibo')w.open(options);});
     }
     if (screen === 'diagnostics') renderDiagnostics();
     if (screen === 'wallet')renderWallet(context());
@@ -5763,6 +5776,8 @@ function openPhone() {
 function closePhone() {
     if (!mounted || !root) return;
     phoneInteraction?.pause();
+    // Only closing the entire virtual phone invalidates generated Qunxing posts.
+    weiboController?.endPhoneSession?.();
     root.classList.remove('lp-open');
     securityUnlocked=false;lockVerifyAttempt++;
     void tickStoryClock({onClose:true});
@@ -5949,7 +5964,7 @@ function makeUI() {
             </div>
             <div data-lp="homeCharacter" class="lp-home-character"></div>
           </div>
-          <button type="button" class="lp-home-search" data-lp="homeHotSearch" aria-label="查看群星热搜">群星 · 热搜 <span>⌕</span></button>
+          <button type="button" class="lp-home-search" data-lp="homeHotSearch" aria-label="查看群星热搜">#今天有什么新鲜事# <span>⌕</span></button>
           <div class="lp-desktop-wrap" data-lp="homeSwipe">
             <div class="lp-desktop-pages" data-lp="homePages"></div>
           </div>
@@ -6599,14 +6614,24 @@ function mount() {
     nodes.homeDots.addEventListener('click',e=>{
         const b=e.target.closest('[data-desktop-page]');if(b)switchDesktopPage(Number(b.dataset.desktopPage));
     });
-    nodes.homeHotSearch.addEventListener('click',()=>{setScreen('weibo');void loadWeiboController().then(w=>w?.selectTab('discover'));});
+    nodes.homeHotSearch.addEventListener('click',()=>{
+      void loadWeiboController().then(async w=>{
+        if(!w||!(await w.confirmHotSearch()))return;
+        if(!root?.classList.contains('lp-open'))return;
+        setScreen('weibo',{tab:'discover',confirmed:true});
+      });
+    });
     nodes.desktopSortList.addEventListener('click',e=>{
         const b=e.target.closest('[data-desktop-move]');if(b)moveDesktopApp(b.dataset.desktopKey,Number(b.dataset.desktopMove));
     });
     nodes.clockMode.addEventListener('change',()=>{nodes.clockCustomFields.hidden=nodes.clockMode.value!=='custom';});
     nodes.clockSave.addEventListener('click',()=>void savePhoneClockPrefs());
     nodes.lockSaveEnabled.addEventListener('click',()=>void savePhoneLockEnabled());
-    nodes.weiboGenerate.addEventListener('click',()=>void loadWeiboController().then(w=>w?.generate(weiboController?.state.tab==='nearby'?'nearby':'home')));
+    nodes.weiboGenerate.addEventListener('click',()=>void loadWeiboController().then(w=>{
+      if(!w)return;
+      if(w.state.tab==='discover')return w.generateHot();
+      return w.generate(w.state.tab==='nearby'?'nearby':'home');
+    }));
     nodes.weiboPublish.addEventListener('click',()=>void loadWeiboController().then(w=>w?.publish()));
     nodes.weiboDetailBack.addEventListener('click',()=>weiboController?.back());
     nodes.shoppingTabs.addEventListener('click',event=>{
