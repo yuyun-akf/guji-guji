@@ -359,6 +359,9 @@ export function createWeiboModule(api) {
    const follow=control('＋ 关注','follow',p.id);follow.classList.add('lp-wb-follow');top.append(follow);
   }else if(q.following.includes(stableId)){top.append(control('已关注','unfollow',p.id,true));}
   box.append(top,el('p','lp-wb-text',p.text));
+   if(typeof p.image==='string'&&/^data:image\/(?:jpeg|png|webp);base64,/.test(p.image)){
+    const photo=el('img','lp-wb-post-image');photo.src=p.image;photo.alt='群星动态照片';photo.loading='lazy';box.append(photo);
+   }
   const comments=el('div','lp-wb-comments');
   for(const c of (detailed?(p.comments||[]):(p.comments||[]).slice(0,3))){
    const line=el('p');line.append(el('b','',c.name+'：'),document.createTextNode(c.text));
@@ -367,7 +370,7 @@ export function createWeiboModule(api) {
   if(comments.childNodes.length)box.append(comments);
   const a=actionState(p),actions=el('div','lp-wb-actions');
   actions.append(control('♡ '+((p.likes||0)+(a.liked?1:0)),'like',p.id,a.liked),
-   control('评论','detail',p.id),control('转发','repost',p.id,a.reposted),control('收藏','favorite',p.id,a.favorited));
+   control('评论','detail',p.id),control('转发','repost',p.id,a.reposted),control('分享','share',p.id),control('收藏','favorite',p.id,a.favorited));
   box.append(actions);
   if(!detailed)box.append(control('查看详情','detail',p.id));
   return box;
@@ -712,6 +715,7 @@ if(type==='subview'){state.subview=id;state.editing='';render();nodes().weiboMe.
    state.editing='';state.avatarDraft='';feedback('角色账号已保存');render();return;
   }
   const p=byId(id);if(!p)return;
+  if(type==='share'){api.sharePost?.(p);return;}
   if(type==='detail'){state.detail=id;render();return;}
   if(type==='follow'||type==='unfollow'){await followPost(p,type==='follow');render();return;}
   if(type==='sendComment'){
@@ -763,6 +767,15 @@ if(type==='subview'){state.subview=id;state.editing='';render();nodes().weiboMe.
   const r=structuredClone(root());api.publishPhoneAppEvent(r,{app:'weibo',action:'posted',id:post.id,detail:'发布群星：'+clean(text,170)});
   await api.writeData(context(),{...r,__contactId:'primary'});
   n.weiboComposeText.value='';state.tab='home';feedback('发布成功');render();
+ }
+ async function publishAlbumPhoto(photo,caption){
+  if(photo?.owner!=='user'||photo?.access!=='public'||typeof photo.image!=='string')
+   throw Error('不能使用不属于 user 或未允许公开的相册照片');
+  const me=data().profile,text=clean(caption||photo.title||'分享照片',1000);
+  const post={id:uid('post'),author:me.nickname,handle:me.handle,avatar:me.avatar,
+   authorId:'self',category:'图片',text,image:photo.image,comments:[],likes:0,time:root().storyTime||'',zone:'world',actions:{owned:true}};
+  await mutate(q=>{q.posts.push(post);q.posts=q.posts.slice(-180);});
+  feedback('相册照片已发布');state.tab='home';render();return post;
  }
  function selectTab(t){
   const alias={feed:'home',hot:'discover',saved:'me'};
@@ -836,14 +849,20 @@ if(type==='subview'){state.subview=id;state.editing='';render();nodes().weiboMe.
    const index=q.posts.filter(p=>p.autoPublished).length%accounts.length,account=accounts[index];
    // Mark attempted story time before generation to avoid duplicate posts and billing.
    await mutate(s=>{s.lastAutoStoryMinute=now;});
-   const raw=await api.phoneGenerate(context(),{task:'autonomy',systemPrompt:'扮演指定角色在故事世界的公开社交账号上自主发帖；只输出正文或 [SKIP]。',prompt:[{role:'user',
+   const photos=api.photosForAccount?.(account.name)||[];
+   const albumGuide=photos.slice(0,12).map(p=>p.id+'：'+(p.description||p.title||'照片')).join('；');
+   const raw=await api.phoneGenerate(context(),{task:'autonomy',systemPrompt:'扮演指定角色在故事世界的公开社交账号上自主发帖；只输出正文或 [SKIP]。如有适合的本角色公开相册照片，可以在文末加 [[photo:照片ID]]；不能编造照片ID。',prompt:[{role:'user',
     content:'故事时间：'+scene+'。群星账号：'+account.name+'，身份 '+account.kind+'，'+account.bio+'，公众人物：'+(account.publicFigure?'是':'否')+
-     '。近期剧情：'+clean(api.storyContext?.()||'',1400)+'。结合职业、性格、公共活动和时间线决定此时是否发布一条公开动态。不得公开私聊秘密，不得杜撰用户行为、未发生事件或已确定恋情。可以不发，输出 [SKIP]。否则只输出一条 20～180 字的社交动态，不要额外解释。'}]},api.readData(context()));
+     '。可用公开相册照片：'+albumGuide+'。近期剧情：'+clean(api.storyContext?.()||'',1400)+'。结合职业、性格、公共活动和时间线决定此时是否发布一条公开动态。不得公开私聊秘密，不得杜撰用户行为、未发生事件或已确定恋情。可以不发，输出 [SKIP]。否则只输出一条 20～180 字的社交动态，不要额外解释。'}]},api.readData(context()));
    if(scope()!==state.scope)return;
-   const body=clean(api.stripModelReasoning(raw),450);
-   if(!body||/^\[SKIP\]$/i.test(body)){if(force)feedback(account.name+' 选择暂不发布');return;}
+   const reply=clean(api.stripModelReasoning(raw),450);
+   if(!reply||/^\[SKIP\]$/i.test(reply)){if(force)feedback(account.name+' 选择暂不发布');return;}
+   const requested=reply.match(/\[\[photo:([^\]\r\n]+)\]\]/);
+   const chosen=requested?photos.find(p=>p.id===requested[1]):null;
+   const body=reply.replace(/\[\[photo:[^\]\r\n]+\]\]/g,'').trim();
+   if(!body){if(force)feedback(account.name+' 本轮没有可发送内容');return;}
    const post={id:uid('post'),author:account.name,handle:account.handle,authorId:account.id,avatar:account.avatar||'',
-    category:account.kind,text:body,comments:[],likes:0,time:scene,zone:'world',autoPublished:true,actions:{}};
+    category:account.kind,text:body,...(chosen?{image:chosen.image}:{}),comments:[],likes:0,time:scene,zone:'world',autoPublished:true,actions:{}};
    await mutate(s=>{s.posts.push(post);s.posts=s.posts.slice(-180);});
    feedback(account.name+' 已发布新动态');api.recordActivity('群星主动发帖',account.name+' 发布动态','success');render();
   }catch(e){feedback('主动发布失败：'+String(e.message||e));api.recordError('群星主动发帖',e);}
@@ -863,5 +882,5 @@ if(type==='subview'){state.subview=id;state.editing='';render();nodes().weiboMe.
    state.attempted.world=true;void generate('home');
   }
  }
- return {open,render,generate,generateHot,confirmHotSearch,endPhoneSession,headline,selectTab,back,publish,handleClick,handleFile,tick,state,parse,normalize,openTopic};
+ return {open,render,generate,generateHot,confirmHotSearch,endPhoneSession,headline,selectTab,back,publish,publishAlbumPhoto,handleClick,handleFile,tick,state,parse,normalize,openTopic};
 }
