@@ -1431,6 +1431,56 @@ function phoneSelectionKey(ctx) {
     const avatar=String(char.avatar||char.data?.avatar||'').trim();
     return avatar ? 'avatar:'+avatar : 'character:'+String(ctx.characterId)+':'+getCharacterName(char);
 }
+
+/* Character-card-scoped public-account directory. Never contains story posts. */
+function sharedQunxingAccounts(ctx=context()){
+ const key=phoneSelectionKey(ctx);
+ const byCharacter=ctx?.extensionSettings?.[SETTINGS_KEY]?.qunxingRoleAccounts;
+ if(!key||!byCharacter||!Object.prototype.hasOwnProperty.call(byCharacter,key))return null;
+ const list=byCharacter[key];
+ return Array.isArray(list)?list.filter(a=>a&&a.source==='manual'&&typeof a.id==='string'):[];
+}
+function saveSharedQunxingAccounts(accounts,ctx=context()){
+ const key=phoneSelectionKey(ctx);
+ if(!key||!ctx?.extensionSettings||typeof ctx.saveSettingsDebounced!=='function')
+  throw Error('无法保存角色卡的群星账号：扩展设置接口不可用');
+ const list=Array.isArray(accounts)?accounts.filter(a=>a?.source==='manual'&&typeof a.id==='string')
+  .map(a=>({...a,source:'manual'})).slice(0,90):[];
+ const settings=ctx.extensionSettings[SETTINGS_KEY]||={};
+ const groups=settings.qunxingRoleAccounts||={};
+ if(JSON.stringify(groups[key])===JSON.stringify(list))return true;
+ const previous=groups[key];groups[key]=list;
+ try{ctx.saveSettingsDebounced();}
+ catch(error){if(previous===undefined)delete groups[key];else groups[key]=previous;throw error;}
+ return true;
+}
+function ensureSharedQunxingAccounts(ctx=context()){
+ if(sharedQunxingAccounts(ctx)!==null)return;
+ const local=ctx?.chatMetadata?.[DATA_KEY]?.qunxing?.accounts;
+ const legacy=Array.isArray(local)?local.filter(a=>a?.source==='manual'):[];
+ if(!legacy.length)return;
+ try{saveSharedQunxingAccounts(legacy,ctx);}
+ catch(error){recordError('继承已保存的群星账号',error);}
+}
+/* A numeric count is used only when explicitly stated in the character data. */
+function explicitAccountFollowers(text){
+ const input=String(text||'').slice(0,22000);
+ const expressions=[
+  /(?:微博|群星|抖音|社交媒体|全平台|个人账号)[^\n。；]{0,16}?粉丝(?:数量|总量|数|量)?\s*(?:[:：为约达有超过]|达到|高达)?\s*([\d,.]+)\s*(亿|万|千|[kKmM])?/g,
+  /(?:粉丝(?:数量|总量|数|量)|followers)\s*(?:[:：=为约达有超过]|达到|高达)?\s*([\d,.]+)\s*(亿|万|千|[kKmM])?/gi
+ ];
+ for(const re of expressions){
+  for(const found of input.matchAll(re)){
+   const raw=Number(found[1].replace(/,/g,'')),unit=found[2]||'';
+   if(!Number.isFinite(raw)||raw<0)continue;
+   const factor={'亿':100000000,'万':10000,'千':1000,k:1000,K:1000,m:1000000,M:1000000}[unit]||1;
+   const count=Math.round(raw*factor);
+   if(count>0&&count<=1000000000)return count;
+  }
+ }
+ return null;
+}
+
 function savedPhoneSelections(ctx) {
     const key=phoneSelectionKey(ctx);
     const all=ctx?.extensionSettings?.[SETTINGS_KEY]?.phoneSelections;
@@ -3005,12 +3055,18 @@ async function scanQunxingAccounts(extraWorld=''){
  const result=await scanNpcSources(ctx,extraWorld);
  const charName=getCharacterName(main);
  const mainInfo=main.data||main;
- const primary={name:charName,kind:'角色',handle:'',bio:'',publicFigure:false,
-  reference:[mainInfo.description,mainInfo.personality,mainInfo.scenario].filter(x=>typeof x==='string').join('\n').slice(0,1000),
+ const ownDescription=[mainInfo.description,mainInfo.personality,mainInfo.scenario,
+  mainInfo.creator_notes,mainInfo.system_prompt,mainInfo.mes_example]
+  .filter(x=>typeof x==='string').join('\n').slice(0,22000);
+ const followers=explicitAccountFollowers(ownDescription);
+ const primary={name:charName,kind:'角色',handle:'',bio:'',publicFigure:/(?:顶流|公众人物|艺人|演员|明星|歌手|爱豆|偶像|网红)/.test(ownDescription),
+  ...(followers!==null?{followers}:{}),
+  reference:ownDescription.slice(0,4000),
   source:'当前角色卡'};
  const candidates=[primary,...result.candidates.map(c=>({
   name:c.name,kind:'NPC',handle:'',bio:'',publicFigure:false,
-  reference:String(c.description||'').slice(0,1000),source:c.source||'故事资料'
+  ...(explicitAccountFollowers(c.description)!==null?{followers:explicitAccountFollowers(c.description)}:{}),
+  reference:String(c.description||'').slice(0,2000),source:c.source||'故事资料'
  }))];
  const unique=new Set();
  return {...result,candidates:candidates.filter(a=>{
@@ -3025,7 +3081,11 @@ async function loadWeiboController(){
    context,getNodes:()=>nodes,readRootData,writeData,readData,
    phoneGenerate:(ctx,options,data)=>phoneGenerate(ctx,{...options,task:options?.task||'weibo'},data),
    selectedCharacter,currentPersona,stripModelReasoning,publishPhoneAppEvent,
-   recordActivity,recordError,notifyInteraction,updateHomeHotSearch,storyContext:weiboStoryContext,scanAccounts:scanQunxingAccounts
+   recordActivity,recordError,notifyInteraction,updateHomeHotSearch,
+   readSharedAccounts:()=>sharedQunxingAccounts(context()),
+   saveSharedAccounts:accounts=>saveSharedQunxingAccounts(accounts,context()),
+   ensureSharedAccounts:()=>ensureSharedQunxingAccounts(context()),
+   storyContext:weiboStoryContext,scanAccounts:scanQunxingAccounts
   });return weiboController;
  }).catch(error=>{
   if(nodes?.weiboFeedback)nodes.weiboFeedback.textContent='群星加载失败：'+String(error.message||error);
