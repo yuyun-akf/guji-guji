@@ -961,6 +961,7 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
   if(type==='openAccount'||type==='openPostAuthor'){
    const post=type==='openPostAuthor'?byId(id):null;
    state.profileAccount=post?'post:'+post.id:id;
+   state.historyEditingId='';state.historyFormOpen=false;
    state.detail='';state.topic=null;state.sharingId='';render();return;
   }
   if(type==='followAccount'){
@@ -1036,7 +1037,7 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
    const extra=clean(details?.querySelector('[data-wb-history-field="instructions"]')?.value,1400);
    const count=Math.max(1,Math.min(5,Number(details?.querySelector('[data-wb-history-field="count"]')?.value)||3));
    const session=scope(),scene=root().storyTime||'';
-   const cardSetting=clean(api.accountSubjectContext?.(subjectOfAccount(account))||account.roleBrief||'',2200);
+   const cardSetting=clean([api.accountSubjectContext?.(subjectOfAccount(account))||'',account.roleBrief||''].filter(Boolean).join('\n'),4500);
    const recent=accountHistory(account).slice(0,12).map(p=>clean(p.text,140)).join('；');
    const contextText=clean(api.storyContext?.()||'',1200);
    const range=historicalLikeRange(account.followers);
