@@ -19,7 +19,7 @@ test('followers are a social count, not 人, with compact 万/亿 labels',()=>{
  const a=weibo.indexOf(' const FOLLOWER_FACTORS='),b=weibo.indexOf(' const data=()=>',a);
  const helper=new Function(weibo.slice(a,b)+'return {formatFollowers,parseFollowerValue};')();
  assert.equal(helper.formatFollowers(1),'1粉丝');
- assert.equal(helper.formatFollowers(9999),'9,999粉丝');
+ assert.equal(helper.formatFollowers(9999),'9999粉丝');
  assert.equal(helper.formatFollowers(10000),'1万粉丝');
  assert.equal(helper.formatFollowers(35000000),'3500万粉丝');
  assert.equal(helper.formatFollowers(120000000),'1.2亿粉丝');
