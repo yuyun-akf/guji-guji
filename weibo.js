@@ -18,9 +18,9 @@ export function createWeiboModule(api) {
  };
  const formatFollowers=count=>{
   const total=Math.max(0,Math.floor(Number(count)||0));
-  if(total>=100000000)return (total/100000000).toLocaleString('zh-CN',{maximumFractionDigits:2})+'亿粉丝';
-  if(total>=10000)return (total/10000).toLocaleString('zh-CN',{maximumFractionDigits:2})+'万粉丝';
-  return total.toLocaleString('zh-CN')+'粉丝';
+  if(total>=100000000)return (total/100000000).toLocaleString('zh-CN',{useGrouping:false,maximumFractionDigits:2})+'亿粉丝';
+  if(total>=10000)return (total/10000).toLocaleString('zh-CN',{useGrouping:false,maximumFractionDigits:2})+'万粉丝';
+  return String(total)+'粉丝';
  };
  const parseFollowerValue=(amount,unit='person')=>{
   const input=String(amount??'').trim();
