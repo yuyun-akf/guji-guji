@@ -3744,3 +3744,44 @@
 @media(prefers-reduced-motion:reduce) {
  #st-little-phone-root .lp-message-banner {animation:none!important;}
 }
+
+
+/* Reliable tactile feedback: no ripple, JS particles or reflow.
+   :active works directly in Android WebView; click is only a brief fallback. */
+#st-little-phone-root[data-motion] .lp-panel :is(button,summary,[role="button"],a[href],label):not(:disabled){
+ transition:filter 120ms ease-out,background-color 120ms ease-out;
+ -webkit-tap-highlight-color:transparent;
+}
+#st-little-phone-root[data-motion] .lp-panel :is(button,summary,[role="button"],a[href],label):active:not(:disabled),
+#st-little-phone-root[data-motion] .lp-panel :is(button,summary,[role="button"],a[href],label).lp-press-down:not(:disabled),
+#st-little-phone-root[data-motion] .lp-panel :is(button,summary,[role="button"],a[href],label).lp-click-feedback:not(:disabled){
+ filter:brightness(.84)!important;
+}
+#st-little-phone-root[data-motion] .lp-panel :is(button,[role="button"]).lp-primary-press:not(.lp-desktop-app){
+ transform:scale(.97)!important;
+}
+#st-little-phone-root .lp-panel :is(button,summary,[role="button"],a[href],label):disabled {
+ cursor:default;opacity:.6;
+}
+#st-little-phone-root .lp-interaction-feedback{
+ top:50%!important;left:50%!important;bottom:auto!important;right:auto!important;
+ transform:translate(-50%,-50%)!important;
+ max-width:min(86%,320px);z-index:4500;
+ padding:12px 19px;border-radius:15px;font-size:13px;
+}
+#st-little-phone-root .lp-me-notification-setting{
+ margin:0 13px 14px!important;width:auto!important;align-self:stretch;
+ border-radius:16px;padding:14px;
+}
+#st-little-phone-root .lp-wb-refresh-button:disabled,
+#st-little-phone-root [data-lp="weiboGenerate"]:disabled{
+ opacity:.78;cursor:progress;
+}
+#st-little-phone-root .lp-wb-comment-total{
+ padding:0 3px 4px;color:var(--lp-slate);font-size:11px;
+}
+@media(prefers-reduced-motion:reduce){
+ #st-little-phone-root[data-motion] .lp-panel :is(button,summary,[role="button"],a[href],label){
+  transition:none!important;
+ }
+}
