@@ -190,9 +190,14 @@ export function createWeiboModule(api) {
   const nearby=zone==='nearby',name=nearby?'周边':'世界';
   const session=scope(),sessionId=state.sessionId,token=++state.token;
   state.loading=true;state.attempted[nearby?'nearby':'world']=true;
+  // Manual refresh replaces the selected feed immediately, before requesting
+  // new posts. Original posts and interaction records are never erased here.
+  state.posts[nearby?'nearby':'home']=[];
   feedback('正在刷新'+name+'帖子…');render();
   const all=[];let headlineCandidate='';
   try{
+   await persistGenerated(nearby?'nearby':'home');
+   if(session!==scope()||sessionId!==state.sessionId||token!==state.token)return;
    // Home feed remains a two-batch request. Nearby uses exactly ONE API call.
    for(let batch=0;batch<(nearby?1:2);batch++){
     let response;
@@ -216,13 +221,11 @@ export function createWeiboModule(api) {
     }
    }
    if(all.length<3)throw Error('本次有效帖子不足，请点击刷新重试');
-   // Replaces this zone only on an explicit refresh or a new phone session.
    state.posts[nearby?'nearby':'home']=all.slice(0,nearby?12:10);
-   if(headlineCandidate){
-    state.headline=headlineCandidate;updateHomeHeadline();
-    // Preserve only the short desktop headline, not any generated feed or comments.
-    await mutate(q=>{q.hotHeadline=headlineCandidate;});
-   }
+   if(headlineCandidate)state.headline=headlineCandidate;
+   await persistGenerated(nearby?'nearby':'home',
+    headlineCandidate?{hotHeadline:headlineCandidate}:{});
+   if(headlineCandidate)updateHomeHeadline();
    feedback('已更新 '+all.length+' 条'+name+'动态');
    api.recordActivity?.('群星刷新',name+'：'+all.length+' 条','success');
   }catch(e){
@@ -242,8 +245,12 @@ export function createWeiboModule(api) {
   if(!api.selectedCharacter(context())){feedback('请先选择故事角色');return;}
   const session=scope(),sessionId=state.sessionId;
   state.hotLoading=true;state.attempted.hot=true;
+  // Explicit refresh replaces this list rather than appending a second set.
+  state.trends=[];state.hotBundles={};state.topic=null;
   feedback('正在生成15条热搜及对应讨论…');render();
   try{
+   await persistGenerated('hot');
+   if(session!==scope()||sessionId!==state.sessionId)return;
    // ONE model invocation generates both the topics and their actual conversations.
    const response=await api.phoneGenerate(context(),{
     systemPrompt:'只返回紧凑且合法的JSON，不输出推理。',
@@ -266,12 +273,12 @@ export function createWeiboModule(api) {
    if(session!==scope()||sessionId!==state.sessionId)return;
    if(!topics.length)throw Error('热搜生成没有返回可用的帖子与评论');
    state.trends=topics;state.hotBundles=bundles;
-   state.headline=topics[0].title;updateHomeHeadline();
-   await mutate(q=>{q.hotHeadline=topics[0].title;});
+   state.headline=topics[0].title;
+   await persistGenerated('hot',{hotHeadline:topics[0].title});
+   updateHomeHeadline();
    feedback('已生成 '+topics.length+'/15 条热搜及对应讨论'+(topics.length<15?'；模型返回不足15条，可手动重试':''));
    api.recordActivity?.('群星热搜','生成 '+topics.length+' 条热搜及对应帖子','success');
   }catch(error){
-   state.attempted.hot=false;
    feedback('热搜生成失败：'+String(error.message||error));
    api.recordError?.('群星热搜',error);
   }finally{
@@ -444,7 +451,7 @@ export function createWeiboModule(api) {
   form.append(control('保存个人资料','saveProfile'));parent.append(form);
  }
  function renderSettings(parent,q){
-  parent.append(el('p','lp-wb-settings-note','所有身份与数据按当前故事存档保存'));
+  parent.append(el('p','lp-wb-settings-note','角色与 NPC 账号保存后，同一张角色卡的其他聊天也可直接使用；帖子、互动与热搜仍属于当前故事存档。'));
   const controls=el('div','lp-wb-editor');
   field(controls,'允许角色按剧情时间主动发布','autoEnabled',q.settings.autoEnabled,'checkbox');
   const interval=field(controls,'发布检测间隔（剧情分钟）','autoEveryMinutes',q.settings.autoEveryMinutes,'number');interval.min='30';interval.max='10080';
@@ -483,6 +490,7 @@ export function createWeiboModule(api) {
       ['handle','群星 ID',existing?.handle||candidate.handle||'','text'],
       ['kind','身份类型',existing?.kind||candidate.kind||'角色','text'],
       ['bio','公开简介（请自行审阅）',existing?.bio||candidate.bio||'','text'],
+      ['followers','粉丝数量（角色卡明确写出时才预填）',existing?.followers??candidate.followers??0,'number'],
       ['publicFigure','公众人物',existing?.publicFigure||candidate.publicFigure||false,'checkbox']]){
        const item=field(row,label,'candidate-'+index+'-'+key,value,type);
        item.dataset.wbCandidateField=key;
@@ -644,13 +652,14 @@ if(type==='subview'){state.subview=id;state.editing='';render();nodes().weiboMe.
     };
     const name=value('name');if(!name)continue;
     chosen.push({name,handle:value('handle'),kind:value('kind')||'角色',
-      bio:value('bio'),publicFigure:value('publicFigure')});
+      bio:value('bio'),publicFigure:value('publicFigure'),
+      followers:Math.max(0,Math.floor(Number(value('followers'))||0))});
    }
    if(!chosen.length){feedback('请先勾选要保存的候选账号');return;}
    await mutate(q=>{
     for(const candidate of chosen){
      const old=q.accounts.find(x=>x.name===candidate.name||(candidate.handle&&x.handle===candidate.handle));
-     const next={...old,...candidate,id:old?.id||uid('account'),followers:old?.followers||0,
+     const next={...old,...candidate,id:old?.id||uid('account'),
       avatar:old?.avatar||'',source:'manual'};
      q.accounts=old?q.accounts.map(x=>x.id===old.id?next:x):[...q.accounts,next];
     }
@@ -838,8 +847,8 @@ if(type==='subview'){state.subview=id;state.editing='';render();nodes().weiboMe.
  function open(options={}){
   reset();
   state.detail='';state.topic=null;state.subview='';
-  // Returning from another app within this phone session MUST NOT reset posts
-  // or spend another API call. A new phone session is reset by endPhoneSession().
+  // All feeds now survive entire-phone closing. Only switching to a different
+  // story chat loads its own saved list; manual refresh replaces the current tab.
   state.tab=options.tab==='discover'?'discover':'home';
   render();
   if(state.tab==='discover'){
