@@ -11,7 +11,7 @@ assert.ok(begin>=0&&end>begin,'inline universal interaction controller exists');
 const source=index.slice(begin,end);
 const classList=(...names)=>{
  const values=new Set(names);
- return {add(name){values.add(name);},remove(name){values.delete(name);},contains(name){return values.has(name);}};
+ return {add(...names){names.forEach(n=>values.add(n));},remove(...names){names.forEach(n=>values.delete(n));},contains(name){return values.has(name);}};
 };
 function harness(selectedMode='standard',reducedMotion=false){
  const listeners=new Map();
@@ -59,7 +59,7 @@ test('all ten open apps use the shared event and page transition system',()=>{
  assert.match(style,/\.lp-press-bounce/);
  assert.equal(manifest.version,'0.26.1');
 });
-test('pointer and keyboard controls press, release, and bounce',()=>{
+test('pointer and keyboard controls shade while held and flash after click',()=>{
  const h=harness();h.instance.bind(h.root);
  assert.equal(h.root.dataset.motion,'standard');
  const button={disabled:false,classList:classList(),offsetWidth:50,textContent:'保存设置',dataset:{},
@@ -68,11 +68,11 @@ test('pointer and keyboard controls press, release, and bounce',()=>{
  const event={button:0,target:{closest:()=>button}};
  h.listeners.get('pointerdown')(event);
  assert.equal(button.classList.contains('lp-press-down'),true);
- assert.equal(button.lastRipple?.className,'lp-touch-ripple');
+ assert.equal(button.classList.contains('lp-primary-press'),true);
  h.listeners.get('pointerup')(event);
  assert.equal(button.classList.contains('lp-press-down'),false);
  h.listeners.get('click')(event);
- assert.equal(button.classList.contains('lp-press-bounce'),true);
+ assert.equal(button.classList.contains('lp-click-feedback'),true);
  h.listeners.get('keydown')({...event,key:'Enter'});
  assert.equal(button.classList.contains('lp-press-down'),true);
  h.listeners.get('keyup')(event);
@@ -143,12 +143,11 @@ test('loading status and redundant in-place success messages do not create toast
  assert.equal(h.nodes.interactionFeedback.dataset.kind,'success');
  h.instance.shutdown();
 });
-test('ripple is generated from pointer origin, with top-centered outcome feedback',()=>{
- assert.match(style,/lpTouchRipple 450ms/);
- assert.match(style,/lpTouchRipple/);
- assert.match(style,/lpLikeParticle/);
- assert.match(style,/lpCheckDraw 300ms/);
- assert.match(style,/top:max\(12px/);
- assert.match(index,/const x=Number\.isFinite\(e\.clientX\)/);
- assert.match(index,/Math\.hypot\(/);
+test('CSS-only shade and centered feedback replace unreliable particles',()=>{
+ assert.match(style,/lp-click-feedback:not\\(:disabled\\)/);
+ assert.match(style,/filter:brightness\\(\\.84\\)!important/);
+ assert.match(style,/top:50%!important/);
+ assert.match(style,/\\.lp-me-notification-setting\\{/);
+ assert.match(index,/lp-click-feedback/);
+ assert.doesNotMatch(source,/function burst\\(/);
 });
