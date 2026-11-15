@@ -18,6 +18,15 @@ export function createAlbumModule(api){
   header.append(el('strong','','故事相册'),el('small','','图片按角色卡保存；发送和发帖记录仍属于当前剧情存档。'));
   wrap.append(header);
   const form=el('div','lp-album-form'), file=el('input');file.type='file';file.accept='image/jpeg,image/png,image/webp';file.multiple=true;file.dataset.albumField='files';
+  file.className='lp-album-file-input';
+  const picker=el('label','lp-album-picker');
+  picker.setAttribute('aria-label','点击选择照片，可多选');
+  const pickerIcon=el('span','lp-album-picker-icon','▧');
+  const pickerTitle=el('strong','','＋ 选择照片');
+  const pickerHint=el('small','lp-album-picker-hint','点击这里从手机相册选择 · 支持多选 JPG / PNG / WebP');
+  picker.append(pickerIcon,pickerTitle,pickerHint,file);
+  const preview=el('div','lp-album-preview');
+  preview.dataset.albumPreview='true';preview.hidden=true;
   const owner=el('select');owner.dataset.albumField='owner';
   for(const person of people()){const option=el('option','',person.name);option.value=person.id;owner.append(option);}
   const caption=el('input');caption.dataset.albumField='description';caption.maxLength=240;caption.placeholder='外貌、衣着、场景等可核对的图片描述';
@@ -27,7 +36,7 @@ export function createAlbumModule(api){
    const o=el('option','',label);o.value=id;access.append(o);
   }
   access.value='chat';
-  form.append(field('选择照片（可多选）',file),field('照片属于谁',owner),field('照片名称',title),field('图片内容 / 外貌描述',caption),
+  form.append(picker,preview,field('照片属于谁',owner),field('照片名称',title),field('图片内容 / 外貌描述',caption),
     field('使用权限',access),action('upload','添加到相册'));
   wrap.append(form);
   if(state.message)wrap.append(el('p','lp-album-feedback',state.message));
@@ -46,6 +55,22 @@ export function createAlbumModule(api){
   }
   if(!photos.length)list.append(el('p','lp-album-empty','还没有照片。上传后，可以为每张照片标注人物与用途。'));
   wrap.append(list);
+ }
+ function handleChange(event){
+  if(!event.target?.matches?.('[data-album-field="files"]'))return false;
+  const root=host(),area=root?.querySelector('[data-album-preview]');
+  const files=[...(event.target.files||[])];if(!area)return false;
+  area.replaceChildren();area.hidden=!files.length;
+  if(!files.length)return true;
+  area.append(el('strong','',files.length+' 张已选择照片'));
+  const grid=el('div','lp-album-preview-grid');
+  for(const file of files.slice(0,40)){
+   const img=document.createElement('img');img.alt=file.name;img.title=file.name;
+   const url=URL.createObjectURL(file);img.src=url;img.onload=()=>URL.revokeObjectURL(url);
+   grid.append(img);
+  }
+  area.append(grid);
+  return true;
  }
  async function encode(file){
   if(!['image/jpeg','image/png','image/webp'].includes(file?.type)||file.size>12*1024*1024)
@@ -103,5 +128,5 @@ export function createAlbumModule(api){
    say('已完成照片操作');return true;
   }catch(e){say('照片操作失败：'+String(e.message||e),true);return true;}
  }
- return {open:render,render,handleClick};
+ return {open:render,render,handleClick,handleChange};
 }
