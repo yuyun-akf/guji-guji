@@ -97,7 +97,7 @@ export function createWeiboModule(api) {
    const feeds={...(previous.feeds||{})};
    if(posts!==null)feeds[kind]=posts;
    const revisions={...(previous.revisions||{})};
-   revisions[kind]=Math.max(Date.now(),(Number(revisions[kind])||0)+1);
+   revisions[kind]=Math.max(Date.now(),...Object.values(revisions).map(x=>(Number(x)||0)+1));
    q.generated={
     ...previous,feeds,
     ...(trends!==null?{trends,hotBundles}:{}),
@@ -110,6 +110,7 @@ export function createWeiboModule(api) {
   });
  }
  function headline(){
+  reset();
   return state.trends[0]?.title||state.headline||root()?.qunxing?.hotHeadline||data().trends?.[0]?.title||'今天有什么新鲜事';
  }
  function updateHomeHeadline(){
