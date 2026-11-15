@@ -1,7 +1,7 @@
 /* 群星 · story-aware public social feed. Persists identities and interactions per story chat. */
 export function createWeiboModule(api) {
  const state={scope:'',tab:'home',detail:'',topic:null,subview:'',posts:{home:[],nearby:[]},trends:[],nearbyTrends:[],loading:false,hotLoading:false,attempted:{},token:0,sessionId:0,headline:'',hotBundles:{},queuedNearby:false,confirming:false,editing:'',avatarDraft:'',avatarOwnerDraft:'',candidates:[],scanLoading:false,scanMessage:''};
- let writes=Promise.resolve(), autoBusy=false;
+ let writes=Promise.resolve(), autoBusy=false,closeHotConfirmation=null;
  const context=()=>api.context(), nodes=()=>api.getNodes(), root=()=>api.readRootData(context());
  const uid=(prefix='qx')=>prefix+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
  const scope=()=>[context()?.characterId,context()?.chatId,context()?.groupId].join(':');
@@ -39,12 +39,14 @@ export function createWeiboModule(api) {
   };
  function reset(){
   const next=scope();if(next===state.scope)return;
+  closeHotConfirmation?.(false);
   state.scope=next;state.tab='home';state.detail='';state.topic=null;state.subview='';state.posts={home:[],nearby:[]};state.candidates=[];state.scanMessage='';state.scanLoading=false;
   state.trends=[];state.nearbyTrends=[];state.hotBundles={};state.headline='';
   state.attempted={};state.loading=false;state.hotLoading=false;state.queuedNearby=false;
   state.token++;state.sessionId++;
  }
  function endPhoneSession(){
+  closeHotConfirmation?.(false);
   // Only closing the entire phone clears transient generated content.
   reset();state.sessionId++;state.token++;state.loading=false;state.hotLoading=false;
   state.posts={home:[],nearby:[]};state.trends=[];state.nearbyTrends=[];
@@ -168,7 +170,7 @@ export function createWeiboModule(api) {
    if(token===state.token&&sessionId===state.sessionId){
     state.loading=false;render();
     if(state.queuedNearby){
-     state.queuedNearby=false;
+     state.queuedNearby=false;state.attempted.nearby=false;
      if(!state.posts.nearby.length&&state.tab==='nearby')void generate('nearby');
     }
    }
@@ -249,8 +251,9 @@ export function createWeiboModule(api) {
    let closed=false;
    const finish=ok=>{
     if(closed)return;closed=true;state.confirming=false;
-    mask.remove();resolve(ok);
+    closeHotConfirmation=null;mask.remove();resolve(ok);
    };
+   closeHotConfirmation=finish;
    cancel.addEventListener('click',()=>finish(false));
    accept.addEventListener('click',()=>finish(true));
    mask.addEventListener('click',event=>{if(event.target===mask)finish(false);});
