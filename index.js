@@ -1336,7 +1336,8 @@ async function phoneGenerate(ctx,options={},data){
   if(!profiles.profiles.some(p=>p.id===cfg.profileId))
    throw new Error('所选酒馆连接档案不可用，请在 API 设置中重新选择');
   const response=await service.sendRequest(cfg.profileId,messages,budget,
-   {stream:false,extractData:true,includePreset:false,includeInstruct:false});
+   {stream:false,extractData:true,includePreset:false,includeInstruct:false},
+   cfg.model?.trim()?{model:cfg.model.trim()}:{});
   return typeof response==='string'?response:response?.content||'';
  }
  if(cfg.mode==='inherit'){
@@ -1401,15 +1402,86 @@ function renderSavedApiProfiles(selected=''){
   option.textContent='已选档案暂不可用，请重新选择';
  }
  n.apiProfileHint.textContent=profiles.error||
-  '使用酒馆保存的连接配置直接请求；不会切换正文当前连接。';
+  '使用酒馆已保存的 URL 与密钥，经由酒馆服务器发起请求；不会切换正文模型，也不会复制明文 Key。';
 }
+
+/** Query models via SillyTavern's own authenticated server endpoint. Never read/export raw API keys. */
+async function loadSavedSiteModels(selectedModel=''){
+ const n=nodes;if(!n?.apiProfileModel)return;
+ const profileId=n.apiProfile?.value;
+ const select=n.apiProfileModel,manual=n.apiProfileModelManual;
+ select.replaceChildren();
+ const put=(model,label=model)=>{
+  if(!model||[...select.options].some(o=>o.value===model))return;
+  const opt=document.createElement('option');opt.value=model;opt.textContent=label;select.append(opt);
+ };
+ if(!profileId){put('','请先选择酒馆保存的站点');select.disabled=true;return;}
+ select.disabled=false;
+ const service=context()?.ConnectionManagerRequestService;
+ let profile;
+ try{profile=service?.getProfile?.(profileId);}catch{}
+ if(!profile){put('','无法读取所选连接配置');select.disabled=true;return;}
+ const source=service?.validateProfile?.(profile);
+ if(profile.model)put(profile.model);
+ // Other saved profiles for the same API + site may refer to additional models.
+ const all=availableConnectionProfiles(context()).profiles;
+ for(const item of all){
+  try{
+   const p=service.getProfile(item.id);
+   if(p.api===profile.api&&p['api-url']===profile['api-url']&&p.model)put(p.model);
+  }catch{}
+ }
+ if(selectedModel)put(selectedModel);
+ if(!select.options.length)put('','尚未发现已保存的模型');
+ select.value=selectedModel||profile.model||select.options[0]?.value||'';
+ if(manual)manual.value='';
+ if(n.apiProfileHint)n.apiProfileHint.textContent='已载入保存的站点，正在通过酒馆尝试获取可用模型列表…';
+ // The official /status endpoint reads its secret from SillyTavern's server-side
+ // store using secret-id; the browser never receives the raw stored key.
+ if(source?.selected!=='openai'||!source?.source||typeof context()?.getRequestHeaders!=='function'){
+  if(n.apiProfileHint)n.apiProfileHint.textContent='当前站点不支持酒馆聊天补全模型列表接口，可使用连接配置中的模型或手动填入模型 ID。';
+  return;
+ }
+ const fromId=profileId;
+ try{
+  const body={chat_completion_source:source.source,secret_id:profile['secret-id']};
+  if(source.source==='custom'){
+   if(typeof profile['api-url']!=='string'||!profile['api-url'].trim())throw Error('此配置没有保存有效的站点 URL');
+   body.custom_url=profile['api-url'];
+  }
+  // Provider-specific alternate endpoint values, when present in an official profile.
+  else if(profile['api-url']){
+   if(source.source==='siliconflow')body.siliconflow_endpoint=profile['api-url'];
+   if(source.source==='zai')body.zai_endpoint=profile['api-url'];
+   if(source.source==='minimax')body.minimax_endpoint=profile['api-url'];
+  }
+  const response=await fetch('/api/backends/chat-completions/status',{
+   method:'POST',headers:context().getRequestHeaders(),body:JSON.stringify(body),cache:'no-store'
+  });
+  if(!response.ok)throw Error('模型列表接口返回 '+response.status);
+  const json=await response.json();
+  if(n.apiProfile?.value!==fromId)return;
+  const remote=Array.isArray(json?.data)?json.data.map(v=>typeof v==='string'?v:v?.id).filter(v=>typeof v==='string'&&v):[];
+  for(const id of remote.slice(0,500))put(id);
+  select.value=selectedModel||profile.model||select.options[0]?.value||'';
+  if(n.apiProfileHint)n.apiProfileHint.textContent=remote.length
+   ?'通过酒馆安全读取到 '+remote.length+' 个模型；请求时沿用所选连接的已保存密钥。'
+   :'该站点未提供模型列表；可以使用保存的模型或手动填写 ID。';
+ }catch(error){
+  if(n.apiProfile?.value!==fromId)return;
+  if(n.apiProfileHint)n.apiProfileHint.textContent='站点模型列表不可用：'+String(error.message||error)+
+   '。仍可选择连接配置中保存的模型，或手动输入模型 ID。';
+ }
+}
+
 async function savePhoneApi(){
  const c=context(),n=nodes;
  if(!c?.chatMetadata||!n)return false;
  const task=currentApiTarget(),mode=n.apiMode.value;
  if(!['follow','inherit','custom','profile'].includes(mode)||
    (task==='default'&&mode==='follow'))return setStatus('连接方式无效','error');
- const entry={mode,url:n.apiUrl.value.trim(),model:n.apiModel.value.trim(),
+ const entry={mode,url:n.apiUrl.value.trim(),
+  model:mode==='profile'?(n.apiProfileModelManual?.value.trim()||n.apiProfileModel?.value||''):n.apiModel.value.trim(),
   profileId:n.apiProfile.value,maxTokens:320};
  if(mode==='custom'){
   try{normalizeApiUrl(entry.url);}catch(e){setStatus(e.message,'error');return false;}
@@ -1450,6 +1522,7 @@ function loadPhoneApiUI(){
  n.apiMode.value=cfg.routeMode;
  n.apiUrl.value=cfg.url;n.apiModel.value=cfg.model;n.apiKey.value='';
  renderSavedApiProfiles(cfg.profileId);showApiFields();updateApiInfo();
+ if(cfg.mode==='profile')void loadSavedSiteModels(cfg.model);
 }
 async function testPhoneApi(){
  if(!await savePhoneApi())return;
@@ -6936,7 +7009,10 @@ function makeUI() {
             <option value="custom">独立 OpenAI 兼容 API</option>
           </select></label>
           <div class="lp-api-custom" data-lp="apiProfileFields" hidden>
-            <label class="lp-field">酒馆已保存连接<select data-lp="apiProfile"></select></label>
+            <label class="lp-field">选择酒馆已保存的站点／连接<select data-lp="apiProfile"></select></label>
+            <label class="lp-field">该站点可选模型<select data-lp="apiProfileModel"></select></label>
+            <label class="lp-field">模型 ID（无法拉取时可选填）<input data-lp="apiProfileModelManual" type="text" autocomplete="off" placeholder="不填写则使用上方选中的模型"/></label>
+            <button type="button" class="lp-settings-link" data-lp="apiReloadModels">从酒馆拉取该站点模型</button>
             <p class="lp-settings-hint" data-lp="apiProfileHint">正在读取可用连接…</p>
           </div>
           <div class="lp-api-custom" data-lp="customApiFields" hidden>
@@ -7217,7 +7293,7 @@ function mount() {
         'friendLabel', 'friendActions','profileAvatar','profileName','profileDescription','contactEvidence','contactExchange','contactLinks','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcScanState','npcCandidates','npcSaveCandidates','storyPeopleList','viewPrimaryContact','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','avatarUserFile','resetCharAvatar','resetUserAvatar',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
-        'settingsMenu','apiTask','apiProfile','apiProfileFields','apiProfileHint','apiTest',
+        'settingsMenu','apiTask','apiProfile','apiProfileModel','apiProfileModelManual','apiReloadModels','apiProfileFields','apiProfileHint','apiTest',
         'phoneMemoryEnabled','phoneMemoryInterval','phoneMemoryInjectMainline','phoneMemorySchedule','phoneMemoryStatus','phoneMemorySave','phoneMemoryRun','phoneMemoryList',
         'shoppingContent','shoppingTabs','takeoutContent','takeoutTabs','walletBalance','walletPending','walletBills','walletAdjustInput','walletSaveBalance','walletToChat','walletStatus',
         'presetSource','presetInfo','presetEntries','worldBookList','worldSelectionSummary','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','saveSelections','savePresetPicker','saveWorldPicker','selectionSaveStatus','readMainlineMemory','memorySource','phoneToMainline','eventBridge','saveContextSettings','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themePreset','themeCustomColors','themeSaveColors','themeWallpaperPreview','themeDesktopEffect','interactionMotion','interactionFeedback','themeBindWallpaper','themeName','themeSaveNamed','themeRename','themeDelete','themeExport','themeImport','themeFeedback','themeCssFile','themeCssReset','themeCssStatus','themeFontFile','themeDesktopIconSize','themeDesktopGap','themeBubbleRadius','themeIconTarget','themeIconFile','themeIconReset','themeFloatingIconFile','themeFloatingIconReset','themeCopySelectors',
@@ -7405,7 +7481,9 @@ function mount() {
     nodes.saveWorldPicker.addEventListener('click',()=>void saveSelectionSettings(true));
 
     nodes.apiTask.addEventListener('change',loadPhoneApiUI);
-    nodes.apiMode.addEventListener('change',showApiFields);
+    nodes.apiMode.addEventListener('change',()=>{showApiFields();if(nodes.apiMode.value==='profile')void loadSavedSiteModels(readApiOptions(readRootData(context()),currentApiTarget()).model);});
+    nodes.apiProfile.addEventListener('change',()=>void loadSavedSiteModels());
+    nodes.apiReloadModels.addEventListener('click',()=>void loadSavedSiteModels(nodes.apiProfileModelManual.value.trim()||nodes.apiProfileModel.value));
     nodes.saveApi.addEventListener('click',()=>void savePhoneApi());
     nodes.apiTest.addEventListener('click',()=>void testPhoneApi());
     nodes.saveMessageStyle.addEventListener('click', () => void savePhoneMessageStyle());
