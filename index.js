@@ -1,5 +1,5 @@
 /**
- * GujiGuji v0.19.0: a modular phone shell with isolated per-chat context.
+ * GujiGuji v0.20.0: a modular phone shell with isolated per-chat context.
  * No direct host-module imports; uses only the documented context surface.
  */
 
@@ -3139,7 +3139,7 @@ async function scanQunxingAccounts(extraWorld=''){
 async function loadWeiboController(){
  if(weiboController)return weiboController;
  if(weiboLoadPromise)return weiboLoadPromise;
- weiboLoadPromise=import('./weibo.js?v=0.19.0').then(module=>{
+ weiboLoadPromise=import('./weibo.js?v=0.20.0').then(module=>{
   weiboController=module.createWeiboModule({
    context,getNodes:()=>nodes,readRootData,writeData,readData,
    phoneGenerate:(ctx,options,data)=>phoneGenerate(ctx,{...options,task:options?.task||'weibo'},data),
@@ -3160,7 +3160,7 @@ async function loadWeiboController(){
 async function loadShoppingController(){
  if(shoppingController)return shoppingController;
  if(shoppingLoadPromise)return shoppingLoadPromise;
- shoppingLoadPromise=import('./shopping.js?v=0.19.0').then(module=>{
+ shoppingLoadPromise=import('./shopping.js?v=0.20.0').then(module=>{
   shoppingController=module.createShoppingModule({context,getNodes:()=>nodes});
   return shoppingController;
  }).catch(error=>{
@@ -3174,7 +3174,7 @@ async function loadShoppingController(){
 async function loadTakeoutController(){
  if(takeoutController)return takeoutController;
  if(takeoutLoadPromise)return takeoutLoadPromise;
- takeoutLoadPromise=import('./takeout.js?v=0.19.0').then(module=>{
+ takeoutLoadPromise=import('./takeout.js?v=0.20.0').then(module=>{
   takeoutController=module.createTakeoutModule({
    context,getNodes:()=>nodes,readRootData,writeData,readData,currentPersona,
    walletChargeOrder,walletRefundOrder,walletMoney,
@@ -3194,7 +3194,7 @@ async function loadTakeoutController(){
 async function loadPhoneMemoryController(){
  if(memoryController)return memoryController;
  if(memoryLoadPromise)return memoryLoadPromise;
- memoryLoadPromise=import('./memory.js?v=0.19.0').then(module=>{
+ memoryLoadPromise=import('./memory.js?v=0.20.0').then(module=>{
   memoryController=module.createPhoneMemoryModule({
    context,getNodes:()=>nodes,readRootData,writeData,recordError,recordActivity,
    stripModelReasoning,notifyInteraction,
@@ -6724,7 +6724,7 @@ function makeUI() {
           <p class="lp-settings-hint">记忆记录可在「记忆管理」中查看、修改、删除。删除操作只影响当前故事存档。</p>
           </div>
           <div class="lp-settings-status" data-lp="settingsStatus" role="status" aria-live="polite"></div>
-          <p class="lp-settings-hint">咕叽咕机 · v0.19.0</p>
+          <p class="lp-settings-hint">咕叽咕机 · v0.20.0</p>
         </section>
         <section class="lp-screen lp-picker" data-lp-screen="presetPicker" hidden>
           <div class="lp-picker-head" data-lp="presetPickerTitle">预设</div>
