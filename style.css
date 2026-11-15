@@ -2977,7 +2977,7 @@
 
 /* v0.17.0 — global tactile feedback and icon-origin app transitions. */
 #st-little-phone-root .lp-interaction-feedback{
- position:absolute;left:50%;bottom:max(62px,env(safe-area-inset-bottom,0px) + 48px);
+ position:absolute;left:50%;top:max(12px,env(safe-area-inset-top,0px) + 8px);bottom:auto;
  transform:translateX(-50%);z-index:1005;
  max-width:calc(100% - 35px);width:max-content;
  padding:10px 15px;border-radius:17px;
@@ -3469,3 +3469,82 @@
 #st-little-phone-root .lp-wb-history-form>.lp-wb-action{
  color:var(--lp-white);background:var(--lp-navy);border:0;
 }
+
+
+/* v0.25: per-touch ripple, purposeful primary-button spring, like particles, animated checks.
+   Keep all effects scoped to the virtual phone and independent of story data. */
+#st-little-phone-root .lp-ripple-host {
+ position:relative;isolation:isolate;overflow:hidden;
+}
+#st-little-phone-root .lp-touch-ripple {
+ position:absolute;z-index:1;display:block;border-radius:50%;
+ pointer-events:none;user-select:none;
+ background:currentColor;opacity:0;
+ transform:translate(-50%,-50%) scale(0);
+ animation:lpTouchRipple 450ms cubic-bezier(.18,.72,.2,1) forwards;
+}
+@keyframes lpTouchRipple {
+ 0% {opacity:.28;transform:translate(-50%,-50%) scale(0);}
+ 75% {opacity:.14;}
+ 100% {opacity:0;transform:translate(-50%,-50%) scale(1);}
+}
+/* Ordinary navigation uses ripple only; strong spring is limited to action buttons. */
+#st-little-phone-root[data-motion="gentle"] .lp-panel :is(button,summary,[role="button"]):active:not(.lp-desktop-app):not(.lp-press-down),
+#st-little-phone-root[data-motion="standard"] .lp-panel :is(button,summary,[role="button"]):active:not(.lp-desktop-app):not(.lp-press-down) {
+ transform:none!important;filter:none!important;
+}
+#st-little-phone-root .lp-like-burst {
+ position:absolute;z-index:1100;pointer-events:none;width:1px;height:1px;
+}
+#st-little-phone-root .lp-like-burst i {
+ position:absolute;display:block;left:0;top:0;width:6px;height:6px;
+ border-radius:50%;pointer-events:none;
+ animation:lpLikeParticle 420ms cubic-bezier(.18,.72,.2,1) both;
+}
+@keyframes lpLikeParticle {
+ 0% {opacity:1;transform:translate(-50%,-50%) scale(.65);}
+ 52% {opacity:1;}
+ 100% {opacity:0;transform:translate(calc(-50% + var(--bx)),calc(-50% + var(--by))) scale(.25);}
+}
+#st-little-phone-root .lp-panel input[type="checkbox"] {
+ appearance:none;-webkit-appearance:none;
+ position:relative;display:inline-block;vertical-align:middle;flex-shrink:0;
+ width:19px;height:19px;min-width:19px;min-height:19px;
+ border:1.5px solid var(--lp-slate);border-radius:5px;
+ background:var(--lp-white);box-sizing:border-box;cursor:pointer;
+ transition:background 180ms ease,border-color 180ms ease;
+}
+#st-little-phone-root .lp-panel input[type="checkbox"]:checked {
+ background:var(--lp-navy);border-color:var(--lp-navy);
+ animation:lpCheckFill 220ms cubic-bezier(.24,.8,.25,1);
+}
+#st-little-phone-root .lp-panel input[type="checkbox"]:checked::after {
+ content:"";position:absolute;width:8px;height:4px;left:4px;top:4px;
+ border:solid var(--lp-white);border-width:0 0 2px 2px;
+ transform:rotate(-45deg);transform-origin:center center;
+ animation:lpCheckDraw 300ms cubic-bezier(.25,.65,.3,1) both;
+}
+@keyframes lpCheckFill {
+ 0% {transform:scale(.8);}
+ 65% {transform:scale(1.08);}
+ 100% {transform:scale(1);}
+}
+@keyframes lpCheckDraw {
+ from {clip-path:inset(0 100% 0 0);opacity:0;}
+ to {clip-path:inset(0 0 0 0);opacity:1;}
+}
+#st-little-phone-root .lp-panel input[type="checkbox"]:focus-visible {
+ outline:2px solid var(--lp-slate);outline-offset:2px;
+}
+#st-little-phone-root .lp-panel input[type="checkbox"]:disabled {
+ opacity:.5;cursor:default;
+}
+@media (prefers-reduced-motion:reduce) {
+ #st-little-phone-root .lp-touch-ripple,#st-little-phone-root .lp-like-burst,
+ #st-little-phone-root .lp-panel input[type="checkbox"]:checked,
+ #st-little-phone-root .lp-panel input[type="checkbox"]:checked::after {
+  animation:none!important;transition:none!important;
+ }
+}
+#st-little-phone-root[data-motion="off"] .lp-touch-ripple,
+#st-little-phone-root[data-motion="off"] .lp-like-burst {display:none!important;}
