@@ -63,7 +63,7 @@ test('pointer and keyboard controls press, release, and bounce',()=>{
  const h=harness();h.instance.bind(h.root);
  assert.equal(h.root.dataset.motion,'standard');
  const button={disabled:false,classList:classList(),offsetWidth:50,textContent:'保存设置',dataset:{},
-  matches:()=>true,getBoundingClientRect:()=>({left:0,top:0,width:80,height:36}),
+  matches:selector=>selector.includes('button'),getBoundingClientRect:()=>({left:0,top:0,width:80,height:36}),
   append(dot){this.lastRipple=dot;},getAttribute:()=>null};
  const event={button:0,target:{closest:()=>button}};
  h.listeners.get('pointerdown')(event);
