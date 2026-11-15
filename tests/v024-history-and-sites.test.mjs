@@ -104,7 +104,8 @@ function roleApp(mockResult){
 test('actor history respects character context, custom instructions, huge audience, and includes real comments',async()=>{
  const h=roleApp(()=>({posts:[{text:'今天下戏吃了点东西',likes:389,daysAgo:2,
   comments:[{name:'粉丝甲',text:'终于出现了'},{name:'路人乙',text:'这句挺好笑'}]}]}));
- await h.module.action('openAccount','actor');
+ h.module.state.subview='settings';
+ await h.module.action('manageHistory','actor');
  await h.module.action('generateAccountHistory','actor');
  const [post]=h.root().qunxing.posts;
  assert.ok(post);
@@ -118,7 +119,8 @@ test('actor history respects character context, custom instructions, huge audien
 
 test('manual actor post creation and editing preserve user-chosen counts and comments',async()=>{
  const h=roleApp(()=>({posts:[]}));
- await h.module.action('openAccount','actor');
+ h.module.state.subview='settings';
+ await h.module.action('manageHistory','actor');
  await h.module.action('saveHistoryPost','actor');
  assert.equal(h.root().qunxing.posts.length,1);
  assert.equal(h.root().qunxing.posts[0].likes,138000);
@@ -134,7 +136,8 @@ test('manual actor post creation and editing preserve user-chosen counts and com
 
 test('AI-generated historical posts without comments are never falsely marked complete',async()=>{
  const h=roleApp(()=>({posts:[{text:'没有评论的帖子',likes:389,comments:[]}]}));
- await h.module.action('openAccount','actor');
+ h.module.state.subview='settings';
+ await h.module.action('manageHistory','actor');
  await h.module.action('generateAccountHistory','actor');
  assert.equal(h.root().qunxing.posts.length,0);
 });
