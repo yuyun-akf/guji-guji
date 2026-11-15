@@ -77,7 +77,13 @@ test('theme controls are wired and external recovery remains independent',()=>{
  }
  assert.match(index,/function restoreDefaultThemeFromHost/);
  assert.match(index,/function resetPhonePasswordFromHost/);
- assert.match(index,/内置主题不可删除/);
+ assert.match(index,/请先选择自定义主题再删除/);
+ assert.match(index,/琉璃繁缕（内置）/);
+ for(const name of ['鸢尾流光','海棠春信','金盏朝露']){
+  assert.ok(index.includes("name:'"+name+"'"),name);
+ }
+ assert.doesNotMatch(index,/瑞士纸韵|瑞士花影|瑞士珊瑚|瑞士麦穗/);
+ assert.match(index,/nodes\.themeDelete\.disabled=isBuiltInPalette\(theme\.palette\)/);
  assert.match(css,/\.lp-theme-library-tools/);
 });
 test('wallet diamonds stay inside icon canvas and settings gear uses concentric circles',()=>{
