@@ -57,7 +57,7 @@ test('all ten open apps use the shared event and page transition system',()=>{
  assert.match(index,/data-lp="interactionFeedback"/);
  assert.match(style,/\.lp-app-portal/);
  assert.match(style,/\.lp-press-bounce/);
- assert.equal(manifest.version,'0.21.0');
+ assert.equal(manifest.version,'0.21.1');
 });
 test('pointer and keyboard controls press, release, and bounce',()=>{
  const h=harness();h.instance.bind(h.root);
