@@ -79,6 +79,7 @@ const STICKER_PAGE_SIZE = 24;
 const stickerPages = {manage:1,send:1};
 let notificationTimer = null;
 const transientApiKeys = new Map();
+const transientApiKeyUrls = new Map();
 const APP_CATALOG=[
  {key:'chat',screen:'chatList',name:'咕叽聊',ready:true},
  {key:'wallet',screen:'wallet',name:'吱付宝',ready:true},
@@ -1206,6 +1207,9 @@ async function phoneGenerate(ctx,options={},data){
  const key=transientApiKeys.get(apiKeySlot(ctx,cfg.override?task:'default'))||
   (task==='chat'&&!cfg.override?transientApiKeys.get(apiSessionId(ctx)):'');
  if(!key)throw new Error('此 API 的密钥未在本次会话中设置，请先打开 API 配置');
+ const slot=apiKeySlot(ctx,cfg.override?task:'default');
+ if(transientApiKeyUrls.has(slot)&&transientApiKeyUrls.get(slot)!==cfg.url)
+  throw new Error('该 API 地址已变更，请重新输入对应密钥');
  const url=normalizeApiUrl(cfg.url);
  if(!cfg.model.trim())throw new Error('独立 API 尚未设置模型');
  const response=await service.sendRequest({
@@ -1255,7 +1259,9 @@ async function savePhoneApi(){
  if(mode==='custom'){
   try{normalizeApiUrl(entry.url);}catch(e){setStatus(e.message,'error');return false;}
   if(!entry.model)return setStatus('请填写独立 API 模型名称','error');
-  const keySlot=apiKeySlot(c,task);
+  const keySlot=apiKeySlot(c,task),previous=readApiOptions(readRootData(c),task);
+  if(previous.url!==entry.url&&!n.apiKey.value.trim())
+   return setStatus('API 地址已变更，请输入新地址对应的密钥','error');
   if(!n.apiKey.value.trim()&&!transientApiKeys.has(keySlot)&&
     !(task==='default'&&transientApiKeys.has(apiSessionId(c))))
     return setStatus('请先填写此连接的 API 密钥','error');
@@ -1273,7 +1279,10 @@ async function savePhoneApi(){
  }
  try{
   await writeData(c,{...data,__contactId:PRIMARY_CONTACT_ID});
-  if(n.apiKey.value.trim())transientApiKeys.set(apiKeySlot(c,task),n.apiKey.value.trim());
+  if(n.apiKey.value.trim()){
+   transientApiKeys.set(apiKeySlot(c,task),n.apiKey.value.trim());
+   transientApiKeyUrls.set(apiKeySlot(c,task),entry.url);
+  }
   n.apiKey.value='';loadPhoneApiUI();
   setStatus('API 配置已保存：'+PHONE_API_TARGETS.find(x=>x[0]===task)?.[1]);
   return true;
