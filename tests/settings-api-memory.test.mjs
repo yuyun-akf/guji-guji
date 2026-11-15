@@ -8,8 +8,9 @@ const html=index.slice(index.indexOf('<section class="lp-screen lp-settings"'),i
 const apiBegin=index.indexOf('const PHONE_API_TARGETS=[');
 const apiEnd=index.indexOf('function currentApiTarget(){',apiBegin);
 const apiText=index.slice(apiBegin,apiEnd);
-const apiFactory=new Function('apiSessionId','context','transientApiKeys','transientApiKeyUrls','URL',
- apiText+'return {readApiOptions,availableConnectionProfiles,phoneGenerate,apiKeySlot};');
+const noSecretFetch=async()=>({ok:true,json:async()=>({api_key_custom:[]})});
+const apiFactory=new Function('apiSessionId','context','transientApiKeys','transientApiKeyUrls','URL','fetch',
+ apiText+'return {readApiOptions,availableConnectionProfiles,savedApiSites,phoneGenerate,apiKeySlot};');
 function MiniURL(raw){
  const parts=String(raw).match(/^(https?):\/\/([^/?#]+)(\/[^?#]*)?$/);
  if(!parts)throw Error('bad url');
@@ -62,14 +63,17 @@ test('settings navigation has six isolated groups, one-level back and unchanged 
 test('per-app routing inherits global or overrides with saved profiles/custom API',async()=>{
  const keys=new Map([['1::chat-a::memory','SECRET']]),sent=[];
  const ctx={characterId:1,chatId:'chat-a',mainApi:'openai',
+  getRequestHeaders:()=>({'Content-Type':'application/json'}),
   ConnectionManagerRequestService:{
-   getSupportedProfiles:()=>[{id:'p2',name:'另一组模型',model:'model-2',mode:'cc'}],
+   getSupportedProfiles:()=>[{id:'p2',name:'测试站点',model:'model-2',mode:'cc'}],
+   getProfile:()=>({id:'p2',name:'测试站点',model:'model-2',api:'custom',
+    'api-url':'https://saved.example.test/v1','secret-id':'secret-id-2'}),
    sendRequest:async(...args)=>{sent.push({kind:'profile',args});return {content:'PROFILE OK'};}
   },
   ChatCompletionService:{sendRequest:async payload=>{sent.push({kind:'custom',payload});return {content:'CUSTOM OK'};}},
   generateRaw:async()=>{sent.push({kind:'inherit'});return 'DEFAULT OK';}
  };
- const api=apiFactory(c=>c.characterId+'::'+c.chatId,()=>ctx,keys,new Map([['1::chat-a::memory','https://example.test/v1']]),MiniURL);
+ const api=apiFactory(c=>c.characterId+'::'+c.chatId,()=>ctx,keys,new Map([['1::chat-a::memory','https://example.test/v1']]),MiniURL,noSecretFetch);
  const data={config:{api:{mode:'inherit'},apiRoutes:{
   weibo:{mode:'profile',profileId:'p2'},
   memory:{mode:'custom',url:'https://example.test/v1',model:'memory-model'}
@@ -88,14 +92,14 @@ test('per-app routing inherits global or overrides with saved profiles/custom AP
 });
 test('unavailable saved connection has explicit error, never silently reuses active model',async()=>{
  const ctx={ConnectionManagerRequestService:{getSupportedProfiles:()=>[],sendRequest:async()=>{throw Error('must not call');}}};
- const api=apiFactory(()=> 'scope',()=>ctx,new Map(),new Map(),MiniURL);
+ const api=apiFactory(()=> 'scope',()=>ctx,new Map(),new Map(),MiniURL,noSecretFetch);
  await assert.rejects(()=>api.phoneGenerate(ctx,{task:'weibo',prompt:'test'},
-  {config:{api:{mode:'inherit'},apiRoutes:{weibo:{mode:'profile',profileId:'gone'}}}}),/档案不可用/);
+  {config:{api:{mode:'inherit'},apiRoutes:{weibo:{mode:'profile',profileId:'gone'}}}}),/站点.*失效/);
 });
 test('independent API secret is never forwarded to a different destination',async()=>{
  const ctx={ChatCompletionService:{sendRequest:async()=>{throw Error('should not send request');}}};
  const api=apiFactory(()=> 'scope',()=>ctx,
-  new Map([['scope::memory','SECRET']]),new Map([['scope::memory','https://old.example/v1']]),MiniURL);
+  new Map([['scope::memory','SECRET']]),new Map([['scope::memory','https://old.example/v1']]),MiniURL,noSecretFetch);
  await assert.rejects(()=>api.phoneGenerate(ctx,{task:'memory',prompt:'test'},
   {config:{api:{mode:'inherit'},apiRoutes:{
    memory:{mode:'custom',url:'https://new.example/v1',model:'m'}
