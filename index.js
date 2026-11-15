@@ -1289,16 +1289,27 @@ function availableConnectionProfiles(ctx=context()){
  }catch(e){return {profiles:[],error:'无法读取连接档案：'+String(e.message||e)};}
 }
 
+let tavernHeadersPromise=null;
+async function getTavernRequestHeaders(omitContentType=false){
+ const c=context();
+ if(typeof c?.getRequestHeaders==='function')return c.getRequestHeaders(omitContentType?{omitContentType:true}:{});
+ // The official frontend helper is available as a public ST module even if
+ // getContext() does not expose it on a particular SillyTavern build.
+ if(!tavernHeadersPromise)tavernHeadersPromise=import('/script.js').then(m=>m.getRequestHeaders);
+ try{
+  const fn=await tavernHeadersPromise;
+  if(typeof fn==='function')return fn(omitContentType?{omitContentType:true}:{});
+ }catch{tavernHeadersPromise=null;}
+ throw Error('酒馆请求安全令牌接口不可用');
+}
 let savedSiteSecrets=null,savedSiteSecretsPromise=null;
 async function loadSavedSiteSecretMetadata(){
  if(savedSiteSecrets)return savedSiteSecrets;
  if(savedSiteSecretsPromise)return savedSiteSecretsPromise;
- const ctx=context();
- if(typeof ctx?.getRequestHeaders!=='function')return {};
  savedSiteSecretsPromise=(async()=>{
   try{
    const response=await fetch('/api/secrets/read',{
-    method:'POST',headers:ctx.getRequestHeaders({omitContentType:true}),cache:'no-store'
+    method:'POST',headers:await getTavernRequestHeaders(true),cache:'no-store'
    });
    if(!response.ok)throw Error('酒馆密钥目录暂不可读');
    const data=await response.json();
@@ -1496,7 +1507,7 @@ async function loadSavedSiteModels(selectedModel=''){
  if(site.profileId){
   try{source=service?.validateProfile?.(service.getProfile(site.profileId))||source;}catch{}
  }
- if(source?.selected!=='openai'||!source?.source||typeof context()?.getRequestHeaders!=='function'){
+ if(source?.selected!=='openai'||!source?.source){
   n.apiProfileHint.textContent='站点不支持模型查询，可使用已保存模型或手动填写模型 ID。';return;
  }
  const requested=site.id;
@@ -1509,7 +1520,7 @@ async function loadSavedSiteModels(selectedModel=''){
    if(source.source==='minimax')body.minimax_endpoint=site.url;
   }
   const response=await fetch('/api/backends/chat-completions/status',{
-   method:'POST',headers:context().getRequestHeaders(),body:JSON.stringify(body),cache:'no-store'
+   method:'POST',headers:await getTavernRequestHeaders(),body:JSON.stringify(body),cache:'no-store'
   });
   if(!response.ok)throw Error('模型列表接口返回 '+response.status);
   const json=await response.json();
