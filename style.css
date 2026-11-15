@@ -2802,3 +2802,16 @@
 #st-little-phone-root .lp-takeout-tabs span{font-size:23px;line-height:1;}
 #st-little-phone-root .lp-takeout-tabs small{font-size:12px;}
 #st-little-phone-root .lp-takeout-shop[hidden]{display:none!important;}
+
+
+#gujiguji-extension-settings .gujiguji-host-recovery{
+ display:flex;flex-direction:column;gap:8px;margin-top:15px;padding:12px;
+ border:1px solid #8b9bc188;border-radius:11px;background:#e0e8f230;
+}
+#gujiguji-extension-settings .gujiguji-host-recovery strong{font-size:13px;color:inherit;}
+#gujiguji-extension-settings .gujiguji-host-recovery button{
+ width:100%;margin:0!important;padding:10px 12px;min-height:38px;
+}
+#gujiguji-extension-settings .gujiguji-host-recovery small{
+ display:block;margin:1px 0 0;opacity:.8;line-height:1.5;
+}
