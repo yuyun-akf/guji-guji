@@ -213,7 +213,7 @@ export function createWeiboModule(api) {
    wrap.append(menu);return;
   }
   const bar=el('div','lp-wb-subpage-bar');
-  bar.append(control('‹ 返回','backMe'),el('strong','',names[state.subview]||'群星'));
+  bar.append(el('strong','',names[state.subview]||'群星'));
   wrap.append(bar);
   if(state.subview==='settings')renderSettings(wrap,q);
   else if(state.subview==='profile')renderProfile(wrap,q);
@@ -339,11 +339,11 @@ export function createWeiboModule(api) {
   });
   n.weiboDetail.hidden=!expanded;
   n.weiboDetail.replaceChildren();
-  n.weiboDetailBack.hidden=!expanded;
+  n.weiboDetailBack.hidden=true; // Fixed phone header is the only back control.
   n.weiboRefreshBox.hidden=expanded||!['home','discover','nearby'].includes(state.tab);
   n.weiboFeedback.hidden=!n.weiboFeedback.textContent;
   if(expanded){
-   n.weiboDetail.append(n.weiboDetailBack);
+   // No scrolling duplicate back control in detail view.
    if(state.detail){
     const p=byId(state.detail);
     if(p){
@@ -543,11 +543,12 @@ if(type==='subview'){state.subview=id;state.editing='';render();nodes().weiboMe.
   }
  }
  function back(){
-  if(state.detail)state.detail='';
-  else if(state.topic)state.topic=null;
-  else if(state.subview)state.subview='';
-  render();
- }
+   if(state.detail)state.detail='';
+   else if(state.topic)state.topic=null;
+   else if(state.subview)state.subview='';
+   else return false;
+   render();return true;
+  }
  function handleClick(event){
   const n=event.target?.closest?.('[data-wb-action],[data-wb-topic]');if(!n)return false;
   if(n.dataset.wbTopic!==undefined){void openTopic(n.dataset.wbTopic,n.dataset.wbZone==='nearby'?'nearby':'home');return true;}
