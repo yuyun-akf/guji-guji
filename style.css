@@ -3067,3 +3067,54 @@
   animation:none!important;transition:none!important;
  }
 }
+
+/* v0.17.1 — story-world hot-search preview and explicit generation confirmation. */
+#st-little-phone-root .lp-home-search{
+ display:flex;align-items:center;gap:12px;text-align:left;
+ overflow:hidden;white-space:nowrap;text-overflow:ellipsis;
+ color:var(--lp-ink);
+}
+#st-little-phone-root .lp-home-search span{
+ margin-left:auto;flex:0 0 auto;
+}
+#st-little-phone-root .lp-wb-hot-item{
+ flex-wrap:wrap;row-gap:7px;align-content:center;
+}
+#st-little-phone-root .lp-wb-hot-preview{
+ flex:0 0 100%;width:100%;margin:0;padding-left:26px;
+ font-size:11px;line-height:1.5;
+ color:var(--lp-soft-ink);opacity:.92;
+ overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;
+ -webkit-line-clamp:2;
+}
+#st-little-phone-root .lp-wb-confirm-overlay{
+ position:absolute;inset:0;z-index:1100;
+ display:flex;align-items:center;justify-content:center;
+ background:color-mix(in srgb,var(--lp-navy) 30%,transparent);
+ padding:18px;overscroll-behavior:contain;
+}
+#st-little-phone-root .lp-wb-confirm-dialog{
+ max-width:320px;width:100%;background:var(--lp-white);
+ border:1px solid var(--lp-slate);border-radius:20px;
+ box-shadow:0 16px 35px color-mix(in srgb,var(--lp-navy) 24%,transparent);
+ padding:22px 18px;color:var(--lp-ink);
+ display:flex;flex-direction:column;gap:12px;
+}
+#st-little-phone-root .lp-wb-confirm-dialog strong{font-size:17px;}
+#st-little-phone-root .lp-wb-confirm-dialog p{
+ margin:0;color:var(--lp-soft-ink);font-size:13px;line-height:1.65;
+}
+#st-little-phone-root .lp-wb-confirm-actions{
+ display:flex;gap:12px;justify-content:flex-end;margin-top:5px;
+}
+#st-little-phone-root .lp-wb-confirm-actions button{
+ padding:11px 15px;min-width:90px;border-radius:12px;
+ border:1px solid var(--lp-slate);background:var(--lp-ice);color:var(--lp-ink);
+ font:inherit;
+}
+#st-little-phone-root .lp-wb-confirm-actions .lp-wb-confirm-yes{
+ background:var(--lp-navy);border-color:var(--lp-navy);color:var(--lp-white);
+}
+@media (prefers-reduced-motion:reduce){
+ #st-little-phone-root .lp-wb-confirm-dialog{animation:none!important;transition:none!important;}
+}
