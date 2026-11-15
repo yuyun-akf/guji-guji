@@ -36,6 +36,45 @@ export function createWeiboModule(api) {
   const unit=wrap?.querySelector('[data-wb-field="'+name+'Unit"]');
   return parseFollowerValue(input?.value,unit?.value||'person');
  };
+ // Bind accounts to a named person across story saves or an independent organization.
+ const subjectChoices=(extraNames=[])=>{
+  const people=Array.isArray(api.accountSubjects?.())?api.accountSubjects():[];
+  const primary=people.find(p=>p?.id==='primary')||{name:api.selectedCharacter?.(context())?.name||'当前主角色'};
+  const result=[{value:'primary',type:'primary',name:primary.name,label:primary.name+'（主角色）'}];
+  const seen=new Set([String(primary.name).trim().toLocaleLowerCase()]);
+  for(const person of [...people.filter(p=>p.id!=='primary'),...extraNames.map(name=>({name}))]){
+   const name=clean(person?.name,65),key=name.toLocaleLowerCase();
+   if(!name||seen.has(key))continue;
+   seen.add(key);result.push({value:'npc:'+encodeURIComponent(name),type:'npc',name,label:name+'（NPC）'});
+  }
+  result.push({value:'organization',type:'organization',name:'',label:'独立组织账号（媒体／表白墙／后援会等）'});
+  return result;
+ };
+ const subjectOfAccount=account=>{
+  const given=account?.subject;
+  if(given&&['primary','npc','organization'].includes(given.type)){
+   if(given.type==='primary')return {type:'primary',name:subjectChoices()[0].name};
+   if(given.type==='organization')return {type:'organization',name:''};
+   if(clean(given.name,65))return {type:'npc',name:clean(given.name,65)};
+  }
+  const name=clean(account?.name,65),kind=clean(account?.kind,40);
+  if(name&&name===subjectChoices()[0].name)return {type:'primary',name};
+  if(/^(?:媒体|粉丝|官方|组织|校园组织|机构|企业|品牌|后援会|公众账号)$/.test(kind)
+      ||/官方号|后援会|表白墙|广播站|资讯号|日报/.test(name))return {type:'organization',name:''};
+  return {type:'npc',name};
+ };
+ const subjectValue=subject=>subject?.type==='primary'?'primary':subject?.type==='organization'?'organization':'npc:'+encodeURIComponent(subject?.name||'');
+ const readSubject=(raw,options)=>{
+  const found=options.find(x=>x.value===raw);
+  if(!found)throw Error('请选择有效的故事人物或独立组织账号');
+  return {type:found.type,name:found.type==='organization'?'':found.name};
+ };
+ const savedProfession=account=>{
+  if(typeof account?.profession==='string')return clean(account.profession,80);
+  const kind=clean(account?.kind,40);
+  return ['角色','NPC','人物','媒体','粉丝','组织','网友'].includes(kind)?'':kind;
+ };
+ const publicAccountDescription=account=>[savedProfession(account),clean(account?.bio,130)].filter(Boolean).join('；');
  const data=()=>{
   const r=root(),q=r.qunxing||{};
   // NPC/character identities are shared across chats of this character card.
@@ -455,6 +494,16 @@ export function createWeiboModule(api) {
   }
  }
 
+ function subjectField(parent,label,name,account,extraNames=[]){
+  const options=subjectChoices(extraNames),bound=subjectOfAccount(account),wanted=subjectValue(bound);
+  if(!options.some(x=>x.value===wanted)&&bound.type==='npc'&&bound.name)
+   options.splice(options.length-1,0,{value:wanted,type:'npc',name:bound.name,label:bound.name+'（已保存的人物）'});
+  const row=el('label','lp-wb-field');row.append(el('span','',label));
+  const select=document.createElement('select');select.dataset.wbField=name;
+  for(const item of options){const option=document.createElement('option');option.value=item.value;option.textContent=item.label;select.append(option);}
+  select.value=options.some(x=>x.value===wanted)?wanted:'primary';
+  row.append(select);parent.append(row);return select;
+ }
  const field=(parent,label,name,value='',type='text')=>{
   const row=el('label','lp-wb-field');row.append(el('span','',label));
   const input=document.createElement('input');input.type=type;input.dataset.wbField=name;
