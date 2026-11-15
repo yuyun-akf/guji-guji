@@ -425,11 +425,86 @@ export function createWeiboModule(api) {
   else wrap.textContent=clean(name,1)||'☆';
   return wrap;
  }
+ function authorButton(account,post){
+  const btn=el('button','lp-wb-author-link',post.author||account?.name||'群星用户');
+  btn.type='button';btn.dataset.wbAction=account?'openAccount':'openPostAuthor';
+  btn.dataset.wbPost=account?.id||post.id;
+  return btn;
+ }
+ function accountMatches(post,account){
+  return post&&account&&(post.authorId===account.id||
+   account.handle&&post.handle===account.handle||post.author===account.name);
+ }
+ function accountHistory(account){
+  const q=data(),cached=q.generated?.feeds||{};
+  const pool=[...q.posts,...state.posts.home,...state.posts.nearby,
+   ...(cached.home||[]),...(cached.nearby||[])],seen=new Set();
+  return pool.filter(p=>p?.id&&accountMatches(p,account)&&!seen.has(p.id)&&seen.add(p.id))
+   .sort((a,b)=>(Date.parse(b.time)||0)-(Date.parse(a.time)||0));
+ }
+ function renderAccountSearch(parent){
+  const pane=el('div','lp-wb-account-search');
+  const input=document.createElement('input');input.type='search';input.dataset.wbAccountSearch='true';
+  input.placeholder='搜索昵称或群星 ID';input.value=state.searchQuery;
+  input.setAttribute('aria-label','搜索群星账号');input.autocomplete='off';
+  const result=el('div','lp-wb-account-search-results');
+  result.dataset.wbSearchResults='true';
+  pane.append(input,result);parent.append(pane);renderAccountSearchResults(result);
+ }
+ function renderAccountSearchResults(container){
+  if(!container)return;
+  container.replaceChildren();
+  const query=state.searchQuery.trim().toLocaleLowerCase();
+  const list=data().accounts.filter(a=>!query||[a.name,a.handle,savedProfession(a)].some(
+   value=>String(value||'').toLocaleLowerCase().includes(query))).slice(0,25);
+  if(!list.length){container.append(el('small','','没有找到匹配账号，可在「我 → 群星设置」添加'));return;}
+  for(const a of list){
+   const button=control('', 'openAccount',a.id);
+   button.classList.add('lp-wb-search-result');
+   button.append(avatar(a.avatar,a.name),el('strong','',a.name),el('small','',a.handle||'未设置群星 ID'));
+   container.append(button);
+  }
+ }
+ function renderAccountProfile(container){
+  const p=state.profileAccount;
+  const source=p.startsWith('post:')?byId(p.slice(5)):null;
+  const account=source?actor(source)||{id:p,name:source.author,handle:source.handle||'',avatar:source.avatar||'',followers:null}:data().accounts.find(a=>a.id===p);
+  if(!account){container.append(el('p','lp-wb-empty','账号已删除或不可读取'));return;}
+  const q=data(),history=accountHistory(account);
+  const head=el('div','lp-wb-account-page'),intro=el('div','lp-wb-account-intro');
+  intro.append(avatar(account.avatar,account.name));
+  const detail=el('div','lp-wb-account-details');
+  detail.append(el('strong','',account.name),el('small','',account.handle||'尚未设置群星 ID'));
+  if(savedProfession(account))detail.append(el('small','',savedProfession(account)));
+  intro.append(detail);head.append(intro);
+  if(account.bio)head.append(el('p','lp-wb-account-bio',account.bio));
+  const followed=q.following.includes(account.id),buttons=el('div','lp-wb-profile-buttons');
+  if(account.id!=='self')buttons.append(control(followed?'已关注':'＋关注',
+   followed?'unfollowAccount':'followAccount',account.id));
+  head.append(buttons);
+  const knownLikes=history.reduce((n,item)=>n+Math.max(0,Number(item.likes)||0),0);
+  const knownComments=history.reduce((n,item)=>n+(item.comments?.length||0),0);
+  const stats=el('div','lp-wb-account-stats');
+  const display=[
+   ['粉丝',account.followers==null?'未设置':formatFollowers(account.followers)],
+   ['关注',Number.isFinite(+account.followingCount)&&account.followingCount!==''?String(account.followingCount):'未设置'],
+   ['获赞',Number.isFinite(+account.likesTotal)&&account.likesTotal!==''?String(account.likesTotal):knownLikes+'（已记录）'],
+   ['获评',Number.isFinite(+account.commentsTotal)&&account.commentsTotal!==''?String(account.commentsTotal):knownComments+'（已记录）']
+  ];
+  for(const [label,value] of display){const tile=el('div');tile.append(el('strong','',value),el('small','',label));stats.append(tile);}
+  head.append(stats);container.append(head);
+  container.append(heading('公开动态','按已保存的故事时间排序'));
+  for(const item of history.slice(0,80))container.append(card(item,false));
+  if(!history.length)container.append(el('p','lp-wb-empty','还没有记录该账号的公开动态。'));
+  if(account.source==='manual'&&history.length<80)
+   container.append(control('生成过往公开动态（会调用一次模型）','generateAccountHistory',account.id));
+ }
  function card(p,detailed=false){
   const box=el('article','lp-wb-card');
   const acct=actor(p),top=el('div','lp-wb-head'),author=el('div','lp-wb-author');
-  author.append(el('strong','',p.author),el('small','',((acct?.handle||p.handle)||'@群星用户')+' · '+(p.category||'日常')));
-  top.append(avatar(acct?.avatar||p.avatar,p.author),author);
+  author.append(authorButton(acct,p),el('small','',((acct?.handle||p.handle)||'@群星用户')+' · '+(p.category||'日常')));
+  const avatarLink=control('',acct?'openAccount':'openPostAuthor',acct?.id||p.id);avatarLink.classList.add('lp-wb-avatar-button');avatarLink.append(avatar(acct?.avatar||p.avatar,p.author));
+  top.append(avatarLink,author);
   const q=data(),stableId=acct?.id||p.authorId;
   if(!p.actions?.owned&&!q.following.includes(stableId)){
    const follow=control('＋ 关注','follow',p.id);follow.classList.add('lp-wb-follow');top.append(follow);
