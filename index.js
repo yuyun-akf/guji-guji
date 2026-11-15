@@ -5297,6 +5297,33 @@ function installWandEntry() {
     return true;
 }
 
+
+function restoreDefaultThemeFromHost(){
+ const ctx=context();
+ if(!ctx?.extensionSettings||typeof ctx.saveSettingsDebounced!=='function')
+  return window.alert('当前酒馆无法保存扩展设置');
+ if(!window.confirm('恢复咕叽咕机的默认主题？当前选择会变回瑞士纸韵，已保存的其他主题资料及聊天数据不会删除。'))return;
+ const settings=ctx.extensionSettings[SETTINGS_KEY]||={};
+ settings.theme={...(settings.theme||{}),palette:'swiss',font:'system',desktopEffect:'slide',
+  wallpaper:'',bindWallpaper:false,customCss:'',customCssEnabled:false};
+ try{window.localStorage.removeItem(WALLPAPER_STORAGE_KEY);}catch{}
+ ctx.saveSettingsDebounced();
+ applyTheme();if(nodes)renderDesktop();setStatus('已恢复默认主题');
+ const info=document.getElementById('gujiguji-host-recovery-status');
+ if(info)info.textContent='主题已恢复默认。其他已保存主题未删除。';
+}
+function resetPhonePasswordFromHost(){
+ const ctx=context();
+ if(!ctx?.extensionSettings||typeof ctx.saveSettingsDebounced!=='function')
+  return window.alert('当前酒馆无法保存扩展设置');
+ if(!window.confirm('重置咕叽咕机锁屏密码？聊天、订单、角色与其他数据不会删除。下次打开需重新设置新密码。'))return;
+ const settings=ctx.extensionSettings[SETTINGS_KEY]||={};
+ delete settings.lock;lockSetupStep=0;lockVerifyAttempt++;securityUnlocked=false;
+ ctx.saveSettingsDebounced();
+ if(root?.classList.contains('lp-open'))setScreen('lock');
+ const info=document.getElementById('gujiguji-host-recovery-status');
+ if(info)info.textContent='密码已重置。下次打开请创建新密码。';
+}
 function installExtensionSettingsEntry() {
     const host=document.getElementById?.('extensions_settings')||document.getElementById?.('extensions_settings2');
     if(!host)return false;
@@ -5321,7 +5348,18 @@ function installExtensionSettingsEntry() {
     label.append(checkbox,document.createTextNode(' 显示页面内悬浮按钮'));
     const note=document.createElement('small');note.id='gujiguji-host-floating-status';
     note.textContent=checkbox.checked?'悬浮按钮已开启：关闭小手机后，可在酒馆页面右下角找到小手机图标。':'悬浮按钮目前关闭；魔法棒入口仍可使用。';
-    controls.append(open,label,note);drawer.append(header,controls);panel.append(drawer);host.append(panel);
+    const recovery=document.createElement('div');recovery.className='gujiguji-host-recovery';
+    const heading=document.createElement('strong');heading.textContent='恢复与维护';
+    const themeReset=document.createElement('button');themeReset.type='button';
+    themeReset.className='menu_button menu_button_icon';themeReset.textContent='恢复默认主题';
+    themeReset.addEventListener('click',restoreDefaultThemeFromHost);
+    const passwordReset=document.createElement('button');passwordReset.type='button';
+    passwordReset.className='menu_button menu_button_icon';passwordReset.textContent='重置小手机密码';
+    passwordReset.addEventListener('click',resetPhonePasswordFromHost);
+    const help=document.createElement('small');help.id='gujiguji-host-recovery-status';
+    help.textContent='两个入口互不影响，不会清空故事存档。默认主题始终保留。';
+    recovery.append(heading,themeReset,passwordReset,help);
+    controls.append(open,label,note,recovery);drawer.append(header,controls);panel.append(drawer);host.append(panel);
     extensionSettingsPanel=panel;
     return true;
 }
