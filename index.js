@@ -3113,7 +3113,7 @@ function createInteractionController({getRoot,getNodes,getMode,onError}){
  }
  function pause(){release();stopPortal();dismiss();}
  function shutdown(){pause();statusObserver?.disconnect?.();statusObserver=null;boundRoot=null;}
- return {bind,sync,toast,fromStatus,capture,navigate,pause,shutdown,mode};
+ return {bind,sync,toast,fromStatus,capture,navigate,dismiss,pause,shutdown,mode};
 }
 
 let phoneInteraction=null;
@@ -3131,6 +3131,7 @@ function setScreen(screen, options={}) {
     if (!SCREENS.has(screen) || !nodes) return;
     if(root?.classList.contains('lp-open')&&phoneLockSettings().enabled&&!securityUnlocked&&screen!=='lock')screen='lock';
     const previous = activeScreen;
+    if(previous!==screen)phoneInteraction?.dismiss();
     const source=previous==='home'?phoneInteraction?.capture(options?.sourceTile):null;
     activeScreen = screen;
     root.dataset.screen = screen;
@@ -6579,7 +6580,7 @@ function mount() {
     phoneInteraction=createInteractionController({
      getRoot:()=>root,getNodes:()=>nodes,
      getMode:()=>context()?.extensionSettings?.[SETTINGS_KEY]?.interactionMotion,
-     onError:(label,error)=>recordError(label,error)
+     onError:(label,error)=>recordActivity('交互动画自动降级',label+'：'+String(error?.message||error),'info')
     });
     phoneInteraction.bind(root);
     nodes.lockAction.addEventListener('click',()=>void phoneUnlock());
