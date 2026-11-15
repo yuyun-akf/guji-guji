@@ -495,7 +495,6 @@ export function createWeiboModule(api) {
   return {min:0,max:Math.max(30,Math.floor(n*.5))};
  };
  function renderHistoryEditor(container,account,history){
-  if(account.source!=='manual')return;
   const record=history.find(x=>x.id===state.historyEditingId);
   const panel=el('details','lp-wb-history-editor');
   panel.open=Boolean(state.historyFormOpen||state.historyEditingId);
@@ -537,7 +536,7 @@ export function createWeiboModule(api) {
   panel.append(form);container.append(panel);
  }
  function renderAccountHistoryManager(container){
-  const account=data().accounts.find(a=>a.id===state.adminHistoryAccount&&a.source==='manual');
+  const account=data().accounts.find(a=>a.id===state.adminHistoryAccount);
   if(!account){container.append(el('p','lp-wb-empty','该角色账号无法管理'));return;}
   const history=accountHistory(account);
   container.append(heading(account.name+' · 历史帖管理','仅当前故事存档 · 可代发／修改／按要求生成'));
@@ -997,7 +996,7 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
    feedback(state.scanMessage);render();return;
   }
   if(type==='manageHistory'){
-   const account=data().accounts.find(a=>a.id===id&&a.source==='manual');
+   const account=data().accounts.find(a=>a.id===id);
    if(!account||state.subview!=='settings')return;
    state.adminHistoryAccount=id;state.profileAccount='';state.historyEditingId='';state.historyFormOpen=true;
    state.detail='';state.topic=null;render();
@@ -1020,7 +1019,7 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
   if(type==='editHistoryPost'){
    const found=byId(id);
    const owner=data().accounts.find(a=>a.id===state.adminHistoryAccount);
-   if(!found||!owner||!accountMatches(found,owner)||owner.source!=='manual')return;
+   if(!found||!owner||!accountMatches(found,owner))return;
    state.historyEditingId=id;state.historyFormOpen=true;render();return;
   }
   if(type==='cancelHistoryEdit'){
@@ -1028,7 +1027,7 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
   }
   if(type==='saveHistoryPost'){
    const owner=data().accounts.find(a=>a.id===id);
-   if(!owner||owner.source!=='manual'||state.adminHistoryAccount!==id)return;
+   if(!owner||state.adminHistoryAccount!==id)return;
    const form=nodes()?.weiboDetail;
    const get=name=>form?.querySelector('[data-wb-history-field="'+name+'"]')?.value||'';
    const text=clean(get('text'),1000),time=get('time').trim();
@@ -1065,7 +1064,7 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
   }
   if(type==='deleteHistoryPost'){
    const post=byId(id),owner=data().accounts.find(a=>a.id===state.adminHistoryAccount);
-   if(!post||!owner||!accountMatches(post,owner)||owner.source!=='manual')return;
+   if(!post||!owner||!accountMatches(post,owner))return;
    if(typeof window!=='undefined'&&typeof window.confirm==='function'&&!window.confirm('删除这条角色历史帖？此操作只影响当前剧情存档。'))return;
    await mutate(q=>{
     q.posts=q.posts.filter(p=>p.id!==id);
@@ -1079,7 +1078,7 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
   }
   if(type==='generateAccountHistory'){
    const account=data().accounts.find(a=>a.id===id);
-   if(!account||account.source!=='manual'||state.adminHistoryAccount!==id)return;
+   if(!account||state.adminHistoryAccount!==id)return;
    const details=nodes()?.weiboDetail;
    const extra=clean(details?.querySelector('[data-wb-history-field="instructions"]')?.value,1400);
    const count=Math.max(1,Math.min(5,Number(details?.querySelector('[data-wb-history-field="count"]')?.value)||3));
