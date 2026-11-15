@@ -3317,6 +3317,20 @@ async function loadWeiboController(){
      }
      return people;
     },
+    accountSubjectContext:subject=>{
+     const ctx=context();
+     if(subject?.type==='primary'){
+      const char=selectedCharacter(ctx),info=char?.data||char||{};
+      return [info.description,info.personality,info.scenario]
+       .filter(v=>typeof v==='string').join('\n').slice(0,1800);
+     }
+     if(subject?.type==='npc'){
+      const npc=readRootData(ctx).contacts.find(p=>p.name===subject.name);
+      return [npc?.description,npc?.relationship,npc?.personality]
+       .filter(v=>typeof v==='string').join('\n').slice(0,1200);
+     }
+     return '';
+    },
     sharePost:openQunxingShare,photosForAccount:name=>{const person=galleryPeople().find(p=>p.name===name);return person?photosForActor(person.id,'public'):[];}
   });return weiboController;
  }).catch(error=>{
