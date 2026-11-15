@@ -1345,7 +1345,7 @@ function savedApiSites(ctx=context(),secrets=savedSiteSecrets||{}){
  // Include the native SillyTavern current custom API site even if no model-specific profile exists.
  const current=ctx?.chatCompletionSettings||{},url=String(current.custom_url||'').trim();
  const active=customSecrets.find(x=>x?.active);
- if(/^https?:\/\//i.test(url)&&active?.id){
+ if(current.chat_completion_source==='custom'&&/^https?:\/\//i.test(url)&&active?.id){
   const key=JSON.stringify(['custom',url,String(active.id)]);
   if(!groups.has(key)){
    let hostname=url;try{hostname=new URL(url).hostname;}catch{}
