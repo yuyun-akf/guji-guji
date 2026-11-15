@@ -3596,3 +3596,14 @@
  #st-little-phone-root .lp-like-burst .lp-burst-symbol,
  #st-little-phone-root .lp-like-burst .lp-burst-count {animation:none!important;}
 }
+
+
+/* Gentle retains the same touch position, using softer opacity and shorter travel. */
+#st-little-phone-root[data-motion="gentle"] .lp-touch-ripple {
+ animation:lpTouchRippleGentle 360ms cubic-bezier(.18,.72,.2,1) forwards;
+}
+@keyframes lpTouchRippleGentle {
+ 0%{opacity:.14;transform:translate(-50%,-50%) scale(0);}
+ 72%{opacity:.07;}
+ 100%{opacity:0;transform:translate(-50%,-50%) scale(1);}
+}
