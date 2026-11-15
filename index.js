@@ -3605,8 +3605,11 @@ function createInteractionController({getRoot,getNodes,getMode,onError}){
   const root=getRoot(),el=getNodes()?.interactionFeedback;
   if(!el||!root?.classList?.contains('lp-open'))return;
   const text=String(message||'').trim().slice(0,115);if(!text)return;
+  // Only explicit outcomes warrant a toast. Ordinary toggles and loading states render in-place.
+  if(kind==='pending')return;
+  if(kind==='success'&&!/保存|失败|删除|清空|导入|导出|支付|付款|转账|领取|退款|重置|出错/.test(text))return;
   const now=Date.now();
-  if(text===lastToastText&&now-lastToastAt<180)return;
+  if(text===lastToastText&&now-lastToastAt<900)return;
   lastToastText=text;lastToastAt=now;
   if(toastTimer){clearTimeout(toastTimer);toastTimer=null;}
   el.hidden=false;el.textContent=text;
@@ -3618,15 +3621,51 @@ function createInteractionController({getRoot,getNodes,getMode,onError}){
  }
  function fromStatus(message,kind='info'){
   if(!message)return;
-  const flavor=kind==='error'?'error':/正在|加载中|保存中|生成中|请求中/.test(message)?'pending':
-   /成功|完成|已|保存|恢复/.test(message)?'success':'info';
-  toast(message,flavor);
+  if(kind==='error'||/失败|错误|无效|无法|不足|超时|未就绪/.test(message)){toast(message,'error');return;}
+  if(/保存|导入|导出|重置/.test(message)&&/成功|已保存|完成|已更新|已导入|已导出/.test(message))toast(message,'success');
  }
  const target=e=>{
-  const el=e.target?.closest?.('button,summary,[role="button"]');
+  const el=e.target?.closest?.('button,summary,[role="button"],a[href],label.lp-entry-option,label.lp-checkline,label.lp-group-choice,input[type="checkbox"],input[type="radio"]');
   return el&&getRoot()?.contains?.(el)&&!el.disabled&&
    el.getAttribute?.('aria-disabled')!=='true'?el:null;
  };
+ const primary=el=>el?.matches?.('button,[role="button"]')&&
+  /保存|发送|生成|发布|支付|收款|领取|确认|确定|提交|刷新|建立|结算/.test(el.textContent||el.getAttribute('aria-label')||'');
+ function ripple(el,e){
+  if(!el||mode()==='off')return;
+  const rect=el.getBoundingClientRect?.();
+  if(!rect?.width||!rect?.height)return;
+  el.classList.add('lp-ripple-host');
+  const dot=document.createElement('span');
+  dot.className='lp-touch-ripple';
+  const x=Number.isFinite(e.clientX)&&e.clientX>0?e.clientX-rect.left:rect.width/2;
+  const y=Number.isFinite(e.clientY)&&e.clientY>0?e.clientY-rect.top:rect.height/2;
+  const size=Math.max(rect.width,rect.height)*2.4;
+  dot.style.width=size+'px';dot.style.height=size+'px';
+  dot.style.left=x+'px';dot.style.top=y+'px';
+  el.append(dot);
+  dot.addEventListener('animationend',()=>dot.remove(),{once:true});
+  setTimeout(()=>dot.remove(),550);
+ }
+ function burst(el,small=false){
+  if(mode()==='off')return;
+  const panel=getRoot()?.querySelector?.('.lp-panel'),rect=el.getBoundingClientRect?.(),frame=panel?.getBoundingClientRect?.();
+  if(!panel||!rect||!frame)return;
+  const container=document.createElement('span');
+  container.className='lp-like-burst';
+  container.style.left=(rect.left+rect.width/2-frame.left)+'px';
+  container.style.top=(rect.top+rect.height/2-frame.top)+'px';
+  for(let i=0;i<(small?5:8);i++){
+   const particle=document.createElement('i');
+   const angle=i*Math.PI*2/(small?5:8);
+   particle.style.setProperty('--bx',Math.round(Math.cos(angle)*(small?19:31))+'px');
+   particle.style.setProperty('--by',Math.round(Math.sin(angle)*(small?19:31))+'px');
+   particle.style.background=i%2?'var(--lp-slate)':'var(--lp-rose)';
+   container.append(particle);
+  }
+  panel.append(container);
+  setTimeout(()=>container.remove(),500);
+ }
  function release(){pressed?.classList?.remove?.('lp-press-down');pressed=null;}
  function bind(root=getRoot()){
   if(!root||root===boundRoot)return;
@@ -3634,7 +3673,11 @@ function createInteractionController({getRoot,getNodes,getMode,onError}){
   root.addEventListener('pointerdown',e=>{
    if(e.button!==undefined&&e.button!==0)return;
    release();const el=target(e);
-   if(el&&mode()!=='off'){pressed=el;el.classList.add('lp-press-down');}
+   if(el&&mode()!=='off'){
+    pressed=el;
+    if(primary(el))el.classList.add('lp-press-down');
+    ripple(el,e);
+   }
   },true);
   for(const type of ['pointerup','pointercancel','pointerleave'])
    root.addEventListener(type,release,true);
@@ -3642,17 +3685,24 @@ function createInteractionController({getRoot,getNodes,getMode,onError}){
   root.addEventListener('keydown',e=>{
    if(e.key!=='Enter'&&e.key!==' ')return;
    const el=target(e);
-   if(el&&mode()!=='off'){release();pressed=el;el.classList.add('lp-press-down');}
+   if(el&&mode()!=='off'){release();pressed=el;if(primary(el))el.classList.add('lp-press-down');}
   },true);
   root.addEventListener('keyup',release,true);
   root.addEventListener('click',e=>{
    const el=target(e);release();
    if(!el||mode()==='off')return;
-   el.classList.remove('lp-press-bounce');
-   // Force the CSS keyframe to replay on repeated taps.
-   void el.offsetWidth;
-   el.classList.add('lp-press-bounce');
-   setTimeout(()=>el.classList?.remove?.('lp-press-bounce'),mode()==='gentle'?165:240);
+   if(!e.detail)ripple(el,{clientX:0,clientY:0});
+   const action=el.dataset?.wbAction;
+   const isMoment=/^♡\s*点赞/.test(el.textContent||'')&&el.closest?.('.lp-moment');
+   if((action==='like'||action==='favorite')&&!el.classList.contains('active'))
+    burst(el,action==='favorite');
+   else if(isMoment)burst(el);
+   if(primary(el)){
+    el.classList.remove('lp-press-bounce');
+    void el.offsetWidth;
+    el.classList.add('lp-press-bounce');
+    setTimeout(()=>el.classList?.remove?.('lp-press-bounce'),mode()==='gentle'?165:280);
+   }
   },true);
   const watch=['lockFeedback','lockChangeFeedback','themeFeedback','selectionSaveStatus',
    'stickerStatus','momentFeedback','autonomyFeedback','myAvatarStatus','npcScanState',
@@ -3675,7 +3725,7 @@ function createInteractionController({getRoot,getNodes,getMode,onError}){
      const flavor=/失败|报错|错误|不正确|无效|无法|不足/.test(text)?'error':
       /正在|加载中|保存中|生成中|处理中/.test(text)?'pending':
       /已|完成|成功|保存/.test(text)?'success':'info';
-     toast(text,flavor);
+     if(flavor==='error')toast(text,'error');
     }
    });
    for(const node of tracked.keys())statusObserver.observe(node,{
@@ -6206,7 +6256,7 @@ async function saveStoryTime() {
 async function runReply(ctx, char, data, session, existingJob = null) {
     const job = existingJob ?? startBusy('reply');
     if (sameSession(session)) renderMessages(data);
-    setStatus('正在生成角色回复，请稍候…');
+    setStatus('');
     recordActivity('开始生成', '已将当前手机对话交给酒馆生成接口，正在等待模型返回。');
     try {
         const catalog=stickerLibrary(ctx);
@@ -6243,7 +6293,7 @@ async function runReply(ctx, char, data, session, existingJob = null) {
         }
         await writeData(ctx, data);
         recordActivity('生成成功', '已保存 ' + phoneMessages.length + ' 条角色消息', 'success');
-        if (sameSession(session)) setStatus('已收到回复。');
+        if (sameSession(session)) setStatus('');
     } catch (error) {
         const message = recordError('生成角色回复', error);
         if (sameSession(session)) setStatus(message, 'error');
@@ -6775,7 +6825,6 @@ function makeUI() {
         </section>
         <section class="lp-screen lp-chatlist" data-lp-screen="chatList" aria-label="消息列表" hidden>
           <div class="lp-list-body">
-            <button type="button" class="lp-list-action" data-lp-open="groups">＋ 创建 / 查看群聊</button>
             <div data-lp="recentChats"></div>
           </div>
           <nav class="lp-tabbar" aria-label="咕叽聊导航">
@@ -6788,6 +6837,7 @@ function makeUI() {
         <section class="lp-screen lp-chatlist" data-lp-screen="contacts" aria-label="通讯录" hidden>
           <div class="lp-list-body">
             <button type="button" class="lp-list-action" data-lp-open="requests"><span>✉</span><span>新的朋友</span><span data-lp="requestBadge" class="lp-friend-request-badge" hidden></span></button>
+            <button type="button" class="lp-list-action" data-lp-open="groups"><span>＋</span><span>创建／查看群聊</span></button>
             <button type="button" class="lp-list-action" data-lp-open="addNpc"><span>＋</span><span>添加好友／故事人物</span></button>
             <div class="lp-list-heading">好友</div>
             <div data-lp="contactsList"></div>
