@@ -991,14 +991,36 @@ export function createWeiboModule(api) {
   });
  }
  async function persistAction(p,change){
+  const apply=post=>{
+   const patch={...change};delete patch.newComment;
+   post.actions={...(post.actions||{}),...patch};
+   if(change.newComment){
+    post.comments=[...(post.comments||[]),change.newComment];
+    post.commentCount=Math.max(post.comments.length,Number(post.commentCount||0)+1);
+   }
+  };
   await mutate(q=>{
-   let entry=q.posts.find(x=>x.id===p.id);
-   if(!entry){entry={...p,actions:{}};q.posts.push(entry);}
-   entry.actions={...(entry.actions||{}),...change};
-   if(change.newComment)entry.comments=[...(entry.comments||[]),change.newComment];
-   delete entry.actions.newComment;
-   q.posts=q.posts.slice(-180);
+   const permanent=isPermanentPost(p,q);
+   let stored=q.posts.find(x=>x.id===p.id);
+   if(permanent){
+    if(!stored){stored={...p,actions:{}};q.posts.push(stored);}
+    apply(stored);q.posts=q.posts.slice(-180);
+   }else if(stored&&!stored.actions?.owned){
+    // Migration cleanup for old versions which persisted every liked random user.
+    q.posts=q.posts.filter(x=>x.id!==p.id);
+   }
+   for(const feed of Object.values(q.generated?.feeds||{})){
+    if(Array.isArray(feed))for(const post of feed)if(post.id===p.id)apply(post);
+   }
+   for(const topic of Object.values(q.generated?.hotBundles||{})){
+    if(Array.isArray(topic?.posts))for(const post of topic.posts)if(post.id===p.id)apply(post);
+   }
   });
+  const observed=new Set();
+  for(const feed of [state.posts.home,state.posts.nearby,...Object.values(state.hotBundles).map(x=>x?.posts||[]),state.topic?.posts||[]]){
+   for(const post of feed||[])if(post.id===p.id&&!observed.has(post)){apply(post);observed.add(post);}
+  }
+  if(!observed.has(p))apply(p);
  }
  async function action(type,id){
   // Reading/profile/settings interactions remain available during feed generation.
@@ -1316,8 +1338,10 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
    const text=clean(input?.value,500);if(!text)return;
    const c={id:uid('comment'),name:data().profile.nickname||'我',text};
    await persistAction(p,{comments:[...(actionState(p).comments||[]),c],newComment:c});
-   const d=structuredClone(root());api.publishPhoneAppEvent(d,{app:'weibo',action:'commented',id:c.id,detail:'评论 '+p.author+'：'+text,reference:p.id});
-   await api.writeData(context(),{...d,__contactId:'primary'});
+   if(isPermanentPost(p)){
+    const d=structuredClone(root());api.publishPhoneAppEvent(d,{app:'weibo',action:'commented',id:c.id,detail:'评论 '+p.author+'：'+text,reference:p.id});
+    await api.writeData(context(),{...d,__contactId:'primary'});
+   }
   }else{
    const a=actionState(p);let change={};
    if(type==='like')change={liked:!a.liked};
