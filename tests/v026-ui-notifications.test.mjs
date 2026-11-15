@@ -52,19 +52,15 @@ test('account management uses exactly two rows; four buttons always stay in one 
  }
  assert.match(css,/grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/);
 });
-test('favorite is icon-only and both social icons have explicit effect triggers',()=>{
+test('favorite stays icon-only and pressed feedback is CSS-based',()=>{
  const {app}=story();
  const card=app.card({id:'p1',author:'林知远',handle:'@sample_account',text:'工作日常',likes:2900,comments:[],actions:{}});
  const bar=card.children.find(x=>x.className.includes('lp-wb-actions-inline'));
- const like=bar.children.find(x=>x.dataset.wbAction==='like');
  const favorite=bar.children.find(x=>x.dataset.wbAction==='favorite');
- assert.equal(like.dataset.touchEffect,'like');
- assert.equal(favorite.dataset.touchEffect,'favorite');
  assert.equal(favorite.textContent,'☆');
  assert.equal(favorite['aria-label'],'收藏');
- assert.match(index,/Date\.now\(\)-last>480/,'click fallback needs to work on Android');
- assert.match(css,/lpLikePressed/);
- assert.match(css,/lpLikeParticle/);
+ assert.ok(index.includes('lp-click-feedback'));
+ assert.ok(css.includes('filter:brightness(.84)!important'));
 });
 test('saved followed accounts have a functional history-management route from settings',async()=>{
  const {app}=story();
@@ -121,46 +117,29 @@ test('wand icon samples colorful enabled host peers rather than a disabled gray 
 });
 
 
-test('actual touch click creates ripple, click feedback, and a persistent particle overlay',()=>{
+test('actual touch click creates visible pressed-state feedback without overlays',()=>{
  const begin=index.indexOf('/* Shared interaction system for every GujiGuji app.');
  const end=index.indexOf('let phoneInteraction=null;',begin);
- assert.ok(begin>0&&end>begin);
- const classes=(...values)=>{
-  const set=new Set(values);
-  return {add:value=>set.add(value),remove:value=>set.delete(value),contains:value=>set.has(value)};
- };
+ const values=new Set(),classes={add(...keys){keys.forEach(k=>values.add(k));},
+  remove(...keys){keys.forEach(k=>values.delete(k));},contains:key=>values.has(key)};
  const listeners=new Map();
- const panel={children:[],classList:classes(),append(x){this.children.push(x);},
-  getBoundingClientRect(){return {left:0,top:0,width:360,height:700};}};
- const root={dataset:{},classList:classes('lp-open'),contains:()=>true,
-  addEventListener:(type,fn)=>listeners.set(type,fn),
-  querySelector:query=>query==='.lp-panel'?panel:null};
- const makeEl=tag=>({tag,children:[],dataset:{},classList:classes(),
-  style:{setProperty(){}},append(...items){this.children.push(...items);},
-  addEventListener(){},remove(){},animate(){return{};}});
- const button={dataset:{touchEffect:'like',wbAction:'like'},textContent:'♡ 200',
-  classList:classes(),style:{},offsetWidth:70,getAttribute:()=>null,
-  matches:query=>query.includes('button')&&!query.startsWith('input'),
-  closest:query=>query.includes('.lp-moment')?null:button,
-  getBoundingClientRect:()=>({left:30,top:400,width:65,height:30}),
-  append(item){this.ripple=item;}};
- const source=index.slice(begin,end);
- const controller=new Function('window','document',source+'return createInteractionController;')(
-  {matchMedia:()=>({matches:false}),getComputedStyle:()=>({position:'relative'})},
-  {createElement:makeEl})({
+ const root={dataset:{},classList:{contains:()=>true},contains:()=>true,
+  addEventListener:(type,fn)=>listeners.set(type,fn),querySelector:()=>null};
+ const button={textContent:'刷新更多',dataset:{},classList:classes,offsetWidth:70,
+  disabled:false,getAttribute:()=>null,matches:query=>query.includes('button'),
+  closest:()=>button};
+ const ctrl=new Function('window','document',index.slice(begin,end)+'return createInteractionController;')(
+  {matchMedia:()=>({matches:false})},{createElement:()=>element('span')})({
   getRoot:()=>root,getNodes:()=>({interactionFeedback:{hidden:true,textContent:'',dataset:{}},
-   interactionMotion:{value:''}}),getMode:()=> 'standard'
- });
- controller.bind(root);
- const e={button:0,clientX:40,clientY:410,detail:1,target:{closest:()=>button}};
- listeners.get('pointerdown')(e);
- listeners.get('pointerup')(e);
- listeners.get('click')(e);
- assert.equal(button.ripple?.className,'lp-touch-ripple');
- assert.equal(button.classList.contains('lp-tap-flash'),true);
- const burst=panel.children.find(x=>x.className==='lp-like-burst');
- assert.ok(burst,'ripple alone is not enough: like burst overlay must be created');
- assert.equal(burst.children[0].textContent,'♥');
- assert.equal(burst.children[1].textContent,'+1');
- controller.shutdown();
+   interactionMotion:{value:''}}),getMode:()=> 'standard'});
+ ctrl.bind(root);
+ const event={button:0,detail:1,target:{closest:()=>button}};
+ listeners.get('pointerdown')(event);
+ assert.ok(values.has('lp-press-down'));
+ assert.ok(values.has('lp-primary-press'));
+ listeners.get('pointerup')(event);
+ assert.equal(values.has('lp-press-down'),false);
+ listeners.get('click')(event);
+ assert.equal(values.has('lp-click-feedback'),true);
+ ctrl.shutdown();
 });
