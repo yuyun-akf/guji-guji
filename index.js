@@ -5551,9 +5551,10 @@ function installWandEntry() {
     // Adopt computed theme color from a real SillyTavern magic-wand sibling.
     // Many third-party themes style icons directly instead of the menu root.
     const adoptHostWandColor=()=>{
-      const peer=[...menu.querySelectorAll('.extensionsMenuExtensionButton')]
-        .find(item=>!container.contains(item));
-      if(!peer)return;
+      const peer=typeof menu.querySelectorAll==='function'
+        ? [...menu.querySelectorAll('.extensionsMenuExtensionButton')].find(item=>!container.contains?.(item))
+        : null;
+      if(!peer||typeof window.getComputedStyle!=='function')return;
       const color=window.getComputedStyle(peer).color;
       if(color&&color!=='transparent'){
        button.style.setProperty('color',color,'important');
