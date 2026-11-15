@@ -46,10 +46,10 @@ function harness(selectedMode='standard',reducedMotion=false){
  const instance=factory({getRoot:()=>root,getNodes:()=>nodes,getMode:()=>selectedMode});
  return {instance,root,nodes,listeners,panel,screen,tile};
 }
-test('all nine open apps use the shared event and page transition system',()=>{
+test('all ten open apps use the shared event and page transition system',()=>{
  const start=index.indexOf('const APP_CATALOG=['),end=index.indexOf('const APP_ICONS=',start);
  assert.ok(start>=0&&end>start);
- assert.equal((index.slice(start,end).match(/ready:true/g)||[]).length,9);
+ assert.equal((index.slice(start,end).match(/ready:true/g)||[]).length,10);
  assert.match(index,/phoneInteraction\.bind\(root\)/);
  assert.match(index,/phoneInteraction\?\.navigate\(\{previous,screen,origin:source\}\)/);
  assert.match(index,/sourceTile:activeScreen==='home'\?button:null/);
