@@ -1,5 +1,5 @@
 /**
- * GujiGuji v0.23.0: a modular phone shell with isolated per-chat context.
+ * GujiGuji v0.24.0: a modular phone shell with isolated per-chat context.
  * No direct host-module imports; uses only the documented context surface.
  */
 
@@ -1181,7 +1181,7 @@ async function albumPostWeibo(photo){
 async function loadAlbumController(){
  if(albumController)return albumController;
  if(albumLoadPromise)return albumLoadPromise;
- albumLoadPromise=import('./album.js?v=0.23.0').then(mod=>{
+ albumLoadPromise=import('./album.js?v=0.24.0').then(mod=>{
   albumController=mod.createAlbumModule({context,getNodes:()=>nodes,sharedPhotos:()=>characterPhotos(),saveSharedPhotos:saveCharacterPhotos,
     albumScope:()=>qunxingAccountCardKey(context()),galleryPeople,notifyInteraction,albumSendToChat,albumPostMoment,albumPostWeibo});
   return albumController;
@@ -1191,7 +1191,7 @@ async function loadAlbumController(){
 async function loadGroupsController(){
  if(groupsController)return groupsController;
  if(groupsLoadPromise)return groupsLoadPromise;
- groupsLoadPromise=import('./groups.js?v=0.23.0').then(mod=>{
+ groupsLoadPromise=import('./groups.js?v=0.24.0').then(mod=>{
   groupsController=mod.createGroupsModule({context,getNodes:()=>nodes,readRootData,writeData,galleryPeople,
    isPhoneFriend,contactCharacter,phoneGenerate,stripModelReasoning,notifyInteraction,openSharedPost,encodeAvatarPhoto,
    galleryPhotosForMember:id=>photosForActor(id,'chat')});
@@ -1288,6 +1288,78 @@ function availableConnectionProfiles(ctx=context()){
   return {profiles,error:profiles.length?'':'当前没有可直接请求的已保存连接档案'};
  }catch(e){return {profiles:[],error:'无法读取连接档案：'+String(e.message||e)};}
 }
+
+let tavernHeadersPromise=null;
+async function getTavernRequestHeaders(omitContentType=false){
+ const c=context();
+ if(typeof c?.getRequestHeaders==='function')return c.getRequestHeaders(omitContentType?{omitContentType:true}:{});
+ // The official frontend helper is available as a public ST module even if
+ // getContext() does not expose it on a particular SillyTavern build.
+ if(!tavernHeadersPromise)tavernHeadersPromise=import('/script.js').then(m=>m.getRequestHeaders);
+ try{
+  const fn=await tavernHeadersPromise;
+  if(typeof fn==='function')return fn(omitContentType?{omitContentType:true}:{});
+ }catch{tavernHeadersPromise=null;}
+ throw Error('酒馆请求安全令牌接口不可用');
+}
+let savedSiteSecrets=null,savedSiteSecretsPromise=null;
+async function loadSavedSiteSecretMetadata(){
+ if(savedSiteSecrets)return savedSiteSecrets;
+ if(savedSiteSecretsPromise)return savedSiteSecretsPromise;
+ savedSiteSecretsPromise=(async()=>{
+  try{
+   const response=await fetch('/api/secrets/read',{
+    method:'POST',headers:await getTavernRequestHeaders(true),cache:'no-store'
+   });
+   if(!response.ok)throw Error('酒馆密钥目录暂不可读');
+   const data=await response.json();
+   savedSiteSecrets=data&&typeof data==='object'?data:{};
+   return savedSiteSecrets;
+  }catch{return {};}finally{savedSiteSecretsPromise=null;}
+ })();
+ return savedSiteSecretsPromise;
+}
+function savedApiSites(ctx=context(),secrets=savedSiteSecrets||{}){
+ const service=ctx?.ConnectionManagerRequestService;
+ const groups=new Map(),profiles=availableConnectionProfiles(ctx).profiles;
+ const customSecrets=Array.isArray(secrets.api_key_custom)?secrets.api_key_custom:[];
+ for(const item of profiles){
+  let profile;try{profile=service?.getProfile?.(item.id);}catch{}
+  if(!profile)continue;
+  const url=String(profile['api-url']||'').trim();
+  if(!/^https?:\/\//i.test(url))continue;
+  const keyId=String(profile['secret-id']||''),source=String(profile.api||'custom');
+  const key=JSON.stringify([source,url,keyId]),existing=groups.get(key);
+  if(existing){
+   existing.profileIds.push(item.id);
+   if(profile.model&&!existing.models.includes(profile.model))existing.models.push(profile.model);
+   continue;
+  }
+  let hostname=url;try{hostname=new URL(url).hostname;}catch{}
+  const secret=customSecrets.find(x=>x.id===keyId);
+  const title=String(secret?.label||'').trim();
+  groups.set(key,{id:'site:'+encodeURIComponent(key),label:title&&title!==hostname?title+' · '+hostname:hostname,
+   url,secretId:keyId,source,profileId:item.id,profileIds:[item.id],
+   models:profile.model?[profile.model]:[],defaultModel:String(profile.model||''),kind:'profile'});
+ }
+ // Include the native SillyTavern current custom API site even if no model-specific profile exists.
+ const current=ctx?.chatCompletionSettings||{},url=String(current.custom_url||'').trim();
+ const active=customSecrets.find(x=>x?.active);
+ if(current.chat_completion_source==='custom'&&/^https?:\/\//i.test(url)&&active?.id){
+  const key=JSON.stringify(['custom',url,String(active.id)]);
+  if(!groups.has(key)){
+   let hostname=url;try{hostname=new URL(url).hostname;}catch{}
+   groups.set(key,{id:'site:'+encodeURIComponent(key),label:(active.label?active.label+' · ':'')+hostname,
+    url,secretId:String(active.id),source:'custom',profileId:'',profileIds:[],
+    models:current.custom_model?[String(current.custom_model)]:[],
+    defaultModel:String(current.custom_model||''),kind:'active'});
+  }
+ }
+ return [...groups.values()];
+}
+function resolveSavedSite(value,ctx=context(),secrets=savedSiteSecrets||{}){
+ return savedApiSites(ctx,secrets).find(s=>s.id===value||s.profileIds.includes(value))||null;
+}
 function chooseApiTask(task){
  return API_TARGET_IDS.has(task)?task:'default';
 }
@@ -1330,14 +1402,34 @@ async function phoneGenerate(ctx,options={},data){
   ?Math.min(10000,Math.max(cfg.maxTokens,Math.floor(+options.maxTokens)))
   :cfg.maxTokens;
  if(cfg.mode==='profile'){
+  await loadSavedSiteSecretMetadata();
+  const site=resolveSavedSite(cfg.profileId,ctx);
+  if(!site){
+   // Previously saved provider profiles without a custom URL are still usable.
+   // They are deliberately NOT offered as separate URL/Key "sites" to new users.
+   const legacy=availableConnectionProfiles(ctx).profiles.find(p=>p.id===cfg.profileId);
+   if(legacy){
+    const service=ctx?.ConnectionManagerRequestService;
+    const result=await service.sendRequest(legacy.id,messages,budget,
+     {stream:false,extractData:true,includePreset:false,includeInstruct:false},
+     cfg.model?.trim()?{model:cfg.model.trim()}:{});
+    return typeof result==='string'?result:result?.content||'';
+   }
+   throw new Error('所选酒馆站点 URL/Key 已失效，请重新选择');
+  }
+  const model=cfg.model?.trim()||site.defaultModel;
+  if(!model)throw new Error('请选择站点模型或手动填写模型 ID');
+  if(site.kind==='active'){
+   const service=ctx?.ChatCompletionService;
+   if(typeof service?.sendRequest!=='function')throw new Error('酒馆未开放独立请求接口');
+   const result=await service.sendRequest({chat_completion_source:'custom',custom_url:normalizeApiUrl(site.url),
+    secret_id:site.secretId,model,messages,stream:false,max_tokens:budget});
+   return typeof result==='string'?result:result?.content||'';
+  }
   const service=ctx?.ConnectionManagerRequestService;
-  if(typeof service?.sendRequest!=='function')throw new Error('酒馆未开放独立连接档案请求接口');
-  const profiles=availableConnectionProfiles(ctx);
-  if(!profiles.profiles.some(p=>p.id===cfg.profileId))
-   throw new Error('所选酒馆连接档案不可用，请在 API 设置中重新选择');
-  const response=await service.sendRequest(cfg.profileId,messages,budget,
-   {stream:false,extractData:true,includePreset:false,includeInstruct:false},
-   cfg.model?.trim()?{model:cfg.model.trim()}:{});
+  if(typeof service?.sendRequest!=='function')throw new Error('酒馆未开放连接配置请求接口');
+  const response=await service.sendRequest(site.profileId,messages,budget,
+   {stream:false,extractData:true,includePreset:false,includeInstruct:false},{model});
   return typeof response==='string'?response:response?.content||'';
  }
  if(cfg.mode==='inherit'){
@@ -1389,91 +1481,87 @@ function showApiFields(){
 }
 function renderSavedApiProfiles(selected=''){
  const n=nodes;if(!n?.apiProfile)return;
- const profiles=availableConnectionProfiles(context());
+ const sites=savedApiSites(context());
  n.apiProfile.replaceChildren();
- const option=document.createElement('option');option.value='';
- option.textContent=profiles.error||'请选择酒馆已保存的连接档案';n.apiProfile.append(option);
- for(const profile of profiles.profiles){
-  const opt=document.createElement('option');opt.value=profile.id;
-  opt.textContent=profile.name+(profile.model?' · '+profile.model:'');n.apiProfile.append(opt);
+ const blank=document.createElement('option');blank.value='';
+ blank.textContent='请选择酒馆已保存的 API 站点';n.apiProfile.append(blank);
+ for(const site of sites){
+  const opt=document.createElement('option');opt.value=site.id;opt.textContent=site.label;n.apiProfile.append(opt);
  }
- n.apiProfile.value=selected;
- if(selected&&!profiles.profiles.some(p=>p.id===selected)){
-  option.textContent='已选档案暂不可用，请重新选择';
+ const resolved=resolveSavedSite(selected);
+ const legacy=!resolved&&selected?availableConnectionProfiles(context()).profiles.find(p=>p.id===selected):null;
+ if(legacy){
+  const opt=document.createElement('option');opt.value=legacy.id;
+  opt.textContent='旧配置（无独立站点 URL，继续可用）';n.apiProfile.append(opt);
  }
- n.apiProfileHint.textContent=profiles.error||
-  '使用酒馆已保存的 URL 与密钥，经由酒馆服务器发起请求；不会切换正文模型，也不会复制明文 Key。';
+ n.apiProfile.value=resolved?.id||(legacy?legacy.id:'');
+ n.apiProfileHint.textContent=sites.length
+  ?'按 URL 与密钥分组：同一站点的不同模型不再作为多个站点显示。密钥由酒馆服务器保管。'
+  :'没有发现带 URL 的已存站点。请在酒馆配置站点 URL，或选用当前自定义 API。';
 }
-
-/** Query models via SillyTavern's own authenticated server endpoint. Never read/export raw API keys. */
 async function loadSavedSiteModels(selectedModel=''){
  const n=nodes;if(!n?.apiProfileModel)return;
- const profileId=n.apiProfile?.value;
+ const original=n.apiProfile?.value||'';
+ await loadSavedSiteSecretMetadata();
+ // Apply labels from SillyTavern's secret metadata, including its active custom API.
+ renderSavedApiProfiles(original||readApiOptions(readRootData(context()),currentApiTarget()).profileId);
+ const site=resolveSavedSite(n.apiProfile?.value||original);
  const select=n.apiProfileModel,manual=n.apiProfileModelManual;
  select.replaceChildren();
  const put=(model,label=model)=>{
   if(!model||[...select.options].some(o=>o.value===model))return;
   const opt=document.createElement('option');opt.value=model;opt.textContent=label;select.append(opt);
  };
- if(!profileId){put('','请先选择酒馆保存的站点');select.disabled=true;return;}
- select.disabled=false;
- const service=context()?.ConnectionManagerRequestService;
- let profile;
- try{profile=service?.getProfile?.(profileId);}catch{}
- if(!profile){put('','无法读取所选连接配置');select.disabled=true;return;}
- const source=service?.validateProfile?.(profile);
- if(profile.model)put(profile.model);
- // Other saved profiles for the same API + site may refer to additional models.
- const all=availableConnectionProfiles(context()).profiles;
- for(const item of all){
-  try{
-   const p=service.getProfile(item.id);
-   if(p.api===profile.api&&p['api-url']===profile['api-url']&&p.model)put(p.model);
-  }catch{}
- }
- if(selectedModel)put(selectedModel);
- if(!select.options.length)put('','尚未发现已保存的模型');
- select.value=selectedModel||profile.model||select.options[0]?.value||'';
- if(manual)manual.value='';
- if(n.apiProfileHint)n.apiProfileHint.textContent='已载入保存的站点，正在通过酒馆尝试获取可用模型列表…';
- // The official /status endpoint reads its secret from SillyTavern's server-side
- // store using secret-id; the browser never receives the raw stored key.
- if(source?.selected!=='openai'||!source?.source||typeof context()?.getRequestHeaders!=='function'){
-  if(n.apiProfileHint)n.apiProfileHint.textContent='当前站点不支持酒馆聊天补全模型列表接口，可使用连接配置中的模型或手动填入模型 ID。';
-  return;
- }
- const fromId=profileId;
- try{
-  const body={chat_completion_source:source.source,secret_id:profile['secret-id']};
-  if(source.source==='custom'){
-   if(typeof profile['api-url']!=='string'||!profile['api-url'].trim())throw Error('此配置没有保存有效的站点 URL');
-   body.custom_url=profile['api-url'];
+ if(!site){
+  const old=availableConnectionProfiles(context()).profiles.find(p=>p.id===(n.apiProfile?.value||original));
+  if(old){
+   put(old.model);
+   select.disabled=false;select.value=selectedModel||old.model;
+   n.apiProfileHint.textContent='这是旧版仅按模型保存的档案，仍可使用；新的站点列表只展示有 URL 的配置。';
+   return;
   }
-  // Provider-specific alternate endpoint values, when present in an official profile.
-  else if(profile['api-url']){
-   if(source.source==='siliconflow')body.siliconflow_endpoint=profile['api-url'];
-   if(source.source==='zai')body.zai_endpoint=profile['api-url'];
-   if(source.source==='minimax')body.minimax_endpoint=profile['api-url'];
+  put('','请先选择酒馆已保存的站点');select.disabled=true;return;
+ }
+ select.disabled=false;
+ for(const model of site.models)put(model);
+ if(selectedModel)put(selectedModel);
+ select.value=selectedModel||site.defaultModel||select.options[0]?.value||'';
+ if(manual)manual.value='';
+ n.apiProfileHint.textContent='正在通过酒馆拉取 '+site.label+' 可用模型…';
+ const service=context()?.ConnectionManagerRequestService;
+ let source={selected:'openai',source:'custom'};
+ if(site.profileId){
+  try{source=service?.validateProfile?.(service.getProfile(site.profileId))||source;}catch{}
+ }
+ if(source?.selected!=='openai'||!source?.source){
+  n.apiProfileHint.textContent='站点不支持模型查询，可使用已保存模型或手动填写模型 ID。';return;
+ }
+ const requested=site.id;
+ try{
+  const body={chat_completion_source:source.source,secret_id:site.secretId};
+  if(source.source==='custom')body.custom_url=site.url;
+  else if(site.url){
+   if(source.source==='siliconflow')body.siliconflow_endpoint=site.url;
+   if(source.source==='zai')body.zai_endpoint=site.url;
+   if(source.source==='minimax')body.minimax_endpoint=site.url;
   }
   const response=await fetch('/api/backends/chat-completions/status',{
-   method:'POST',headers:context().getRequestHeaders(),body:JSON.stringify(body),cache:'no-store'
+   method:'POST',headers:await getTavernRequestHeaders(),body:JSON.stringify(body),cache:'no-store'
   });
   if(!response.ok)throw Error('模型列表接口返回 '+response.status);
   const json=await response.json();
-  if(n.apiProfile?.value!==fromId)return;
-  const remote=Array.isArray(json?.data)?json.data.map(v=>typeof v==='string'?v:v?.id).filter(v=>typeof v==='string'&&v):[];
-  for(const id of remote.slice(0,500))put(id);
-  select.value=selectedModel||profile.model||select.options[0]?.value||'';
-  if(n.apiProfileHint)n.apiProfileHint.textContent=remote.length
-   ?'通过酒馆安全读取到 '+remote.length+' 个模型；请求时沿用所选连接的已保存密钥。'
-   :'该站点未提供模型列表；可以使用保存的模型或手动填写 ID。';
+  if(n.apiProfile?.value!==requested)return;
+  const remote=Array.isArray(json?.data)?json.data.map(v=>typeof v==='string'?v:v?.id)
+   .filter(v=>typeof v==='string'&&v):[];
+  for(const model of remote.slice(0,500))put(model);
+  select.value=selectedModel||site.defaultModel||select.options[0]?.value||'';
+  n.apiProfileHint.textContent=remote.length?'此站点返回 '+remote.length+' 个模型；可独立选择。':
+   '此站点未返回模型列表；可使用已保存模型或手动填写 ID。';
  }catch(error){
-  if(n.apiProfile?.value!==fromId)return;
-  if(n.apiProfileHint)n.apiProfileHint.textContent='站点模型列表不可用：'+String(error.message||error)+
-   '。仍可选择连接配置中保存的模型，或手动输入模型 ID。';
+  if(n.apiProfile?.value!==requested)return;
+  n.apiProfileHint.textContent='站点模型列表不可用：'+String(error.message||error)+'；可以手动输入模型 ID。';
  }
 }
-
 async function savePhoneApi(){
  const c=context(),n=nodes;
  if(!c?.chatMetadata||!n)return false;
@@ -1494,8 +1582,9 @@ async function savePhoneApi(){
     return setStatus('请先填写此连接的 API 密钥','error');
  }
  if(mode==='profile'){
-  if(!availableConnectionProfiles(c).profiles.some(p=>p.id===entry.profileId))
-   return setStatus('该酒馆连接档案不可用，请重新选择','error');
+  await loadSavedSiteSecretMetadata();
+  if(!resolveSavedSite(entry.profileId,c)&&!availableConnectionProfiles(c).profiles.some(p=>p.id===entry.profileId))
+   return setStatus('所选站点的 URL/Key 不可用，请重新选择','error');
  }
  const data=structuredClone(readRootData(c));data.config||={};
  if(task==='default')data.config.api=entry;
@@ -3371,7 +3460,7 @@ async function scanQunxingAccounts(extraWorld=''){
 async function loadWeiboController(){
  if(weiboController)return weiboController;
  if(weiboLoadPromise)return weiboLoadPromise;
- weiboLoadPromise=import('./weibo.js?v=0.23.0').then(module=>{
+ weiboLoadPromise=import('./weibo.js?v=0.24.0').then(module=>{
   weiboController=module.createWeiboModule({
    context,getNodes:()=>nodes,readRootData,writeData,readData,
    phoneGenerate:(ctx,options,data)=>phoneGenerate(ctx,{...options,task:options?.task||'weibo'},data),
@@ -3394,13 +3483,19 @@ async function loadWeiboController(){
      const ctx=context();
      if(subject?.type==='primary'){
       const char=selectedCharacter(ctx),info=char?.data||char||{};
-      return [info.description,info.personality,info.scenario]
-       .filter(v=>typeof v==='string').join('\n').slice(0,1800);
+      return [
+       '人物背景：'+String(info.description||'').slice(0,1850),
+       '性格与行为：'+String(info.personality||'').slice(0,1350),
+       '故事场景：'+String(info.scenario||'').slice(0,600)
+      ].join('\n').slice(0,3800);
      }
      if(subject?.type==='npc'){
       const npc=readRootData(ctx).contacts.find(p=>p.name===subject.name);
-      return [npc?.description,npc?.relationship,npc?.personality]
-       .filter(v=>typeof v==='string').join('\n').slice(0,1200);
+      return [
+       '人物资料：'+String(npc?.description||'').slice(0,1250),
+       '性格：'+String(npc?.personality||'').slice(0,850),
+       '关系与公开身份：'+String(npc?.relationship||'').slice(0,350)
+      ].join('\n').slice(0,2450);
      }
      return '';
     },
@@ -3416,7 +3511,7 @@ async function loadWeiboController(){
 async function loadShoppingController(){
  if(shoppingController)return shoppingController;
  if(shoppingLoadPromise)return shoppingLoadPromise;
- shoppingLoadPromise=import('./shopping.js?v=0.23.0').then(module=>{
+ shoppingLoadPromise=import('./shopping.js?v=0.24.0').then(module=>{
   shoppingController=module.createShoppingModule({context,getNodes:()=>nodes});
   return shoppingController;
  }).catch(error=>{
@@ -3430,7 +3525,7 @@ async function loadShoppingController(){
 async function loadTakeoutController(){
  if(takeoutController)return takeoutController;
  if(takeoutLoadPromise)return takeoutLoadPromise;
- takeoutLoadPromise=import('./takeout.js?v=0.23.0').then(module=>{
+ takeoutLoadPromise=import('./takeout.js?v=0.24.0').then(module=>{
   takeoutController=module.createTakeoutModule({
    context,getNodes:()=>nodes,readRootData,writeData,readData,currentPersona,
    walletChargeOrder,walletRefundOrder,walletMoney,
@@ -3450,7 +3545,7 @@ async function loadTakeoutController(){
 async function loadPhoneMemoryController(){
  if(memoryController)return memoryController;
  if(memoryLoadPromise)return memoryLoadPromise;
- memoryLoadPromise=import('./memory.js?v=0.23.0').then(module=>{
+ memoryLoadPromise=import('./memory.js?v=0.24.0').then(module=>{
   memoryController=module.createPhoneMemoryModule({
    context,getNodes:()=>nodes,readRootData,writeData,recordError,recordActivity,
    stripModelReasoning,notifyInteraction,
@@ -7005,14 +7100,14 @@ function makeUI() {
           <label class="lp-field">连接方式<select data-lp="apiMode">
             <option value="follow">跟随小手机全局默认连接</option>
             <option value="inherit">直接使用酒馆当前连接</option>
-            <option value="profile">使用酒馆已保存的连接档案</option>
+            <option value="profile">使用酒馆已保存的 API 站点（URL / Key）</option>
             <option value="custom">独立 OpenAI 兼容 API</option>
           </select></label>
           <div class="lp-api-custom" data-lp="apiProfileFields" hidden>
-            <label class="lp-field">选择酒馆已保存的站点／连接<select data-lp="apiProfile"></select></label>
+            <label class="lp-field">选择酒馆已保存的站点（按 URL / Key 归类）<select data-lp="apiProfile"></select></label>
             <label class="lp-field">该站点可选模型<select data-lp="apiProfileModel"></select></label>
             <label class="lp-field">模型 ID（无法拉取时可选填）<input data-lp="apiProfileModelManual" type="text" autocomplete="off" placeholder="不填写则使用上方选中的模型"/></label>
-            <button type="button" class="lp-settings-link" data-lp="apiReloadModels">从酒馆拉取该站点模型</button>
+            <button type="button" class="lp-settings-link" data-lp="apiReloadModels">重新读取酒馆站点及模型</button>
             <p class="lp-settings-hint" data-lp="apiProfileHint">正在读取可用连接…</p>
           </div>
           <div class="lp-api-custom" data-lp="customApiFields" hidden>
@@ -7079,7 +7174,7 @@ function makeUI() {
           <p class="lp-settings-hint">需要查看报错或请求记录时，请返回桌面打开独立的「运行日志」App。聊天导入导出在咕叽聊的聊天设置中操作。</p>
           </div>
           <div class="lp-settings-status" data-lp="settingsStatus" role="status" aria-live="polite"></div>
-          <p class="lp-settings-hint">咕叽咕机 · v0.23.0</p>
+          <p class="lp-settings-hint">咕叽咕机 · v0.24.0</p>
         </section>
         <section class="lp-screen lp-picker" data-lp-screen="presetPicker" hidden>
           <div class="lp-picker-head" data-lp="presetPickerTitle">预设</div>
@@ -7483,7 +7578,7 @@ function mount() {
     nodes.apiTask.addEventListener('change',loadPhoneApiUI);
     nodes.apiMode.addEventListener('change',()=>{showApiFields();if(nodes.apiMode.value==='profile')void loadSavedSiteModels(readApiOptions(readRootData(context()),currentApiTarget()).model);});
     nodes.apiProfile.addEventListener('change',()=>void loadSavedSiteModels());
-    nodes.apiReloadModels.addEventListener('click',()=>void loadSavedSiteModels(nodes.apiProfileModelManual.value.trim()||nodes.apiProfileModel.value));
+    nodes.apiReloadModels.addEventListener('click',()=>{savedSiteSecrets=null;void loadSavedSiteModels(nodes.apiProfileModelManual.value.trim()||nodes.apiProfileModel.value);});
     nodes.saveApi.addEventListener('click',()=>void savePhoneApi());
     nodes.apiTest.addEventListener('click',()=>void testPhoneApi());
     nodes.saveMessageStyle.addEventListener('click', () => void savePhoneMessageStyle());
