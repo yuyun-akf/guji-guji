@@ -2940,7 +2940,8 @@ async function loadTakeoutController(){
 const MOTION_OPTIONS=new Set(['off','gentle','standard']);
 
 function createInteractionController({getRoot,getNodes,getMode,onError}){
- let boundRoot=null,pressed=null,toastTimer=null,portal=null;
+ let boundRoot=null,pressed=null,toastTimer=null,portal=null,statusObserver=null;
+ let lastToastText='',lastToastAt=0;
  const configured=()=>MOTION_OPTIONS.has(getMode?.())?getMode():'standard';
  const mode=()=>{
   try{if(typeof window!=='undefined'&&window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)return 'off';}
@@ -2960,6 +2961,9 @@ function createInteractionController({getRoot,getNodes,getMode,onError}){
   const root=getRoot(),el=getNodes()?.interactionFeedback;
   if(!el||!root?.classList?.contains('lp-open'))return;
   const text=String(message||'').trim().slice(0,115);if(!text)return;
+  const now=Date.now();
+  if(text===lastToastText&&now-lastToastAt<180)return;
+  lastToastText=text;lastToastAt=now;
   if(toastTimer){clearTimeout(toastTimer);toastTimer=null;}
   el.hidden=false;el.textContent=text;
   el.dataset.kind=['success','pending','error'].includes(kind)?kind:'info';
@@ -3006,6 +3010,34 @@ function createInteractionController({getRoot,getNodes,getMode,onError}){
    el.classList.add('lp-press-bounce');
    setTimeout(()=>el.classList?.remove?.('lp-press-bounce'),mode()==='gentle'?165:240);
   },true);
+  const watch=['lockFeedback','lockChangeFeedback','themeFeedback','selectionSaveStatus',
+   'stickerStatus','momentFeedback','autonomyFeedback','myAvatarStatus','npcScanState',
+   'walletStatus','profileStatus','settingsStatus','weiboFeedback','npcStatus'];
+  if(typeof MutationObserver!=='undefined'){
+   const prior=new Map(),tracked=new Map();
+   for(const name of watch){
+    const node=getNodes()?.[name];
+    if(node){tracked.set(node,name);prior.set(name,String(node.textContent||''));}
+   }
+   statusObserver=new MutationObserver(records=>{
+    for(const record of records){
+     const node=record.target?.nodeType===3?record.target.parentElement:record.target;
+     const host=node?.closest?.('[data-lp]')||node;
+     const name=host?.dataset?.lp;
+     if(!watch.includes(name))continue;
+     const text=String(host.textContent||'').trim();
+     if(!text||text===prior.get(name))continue;
+     prior.set(name,text);
+     const flavor=/失败|报错|错误|不正确|无效|无法|不足/.test(text)?'error':
+      /正在|加载中|保存中|生成中|处理中/.test(text)?'pending':
+      /已|完成|成功|保存/.test(text)?'success':'info';
+     toast(text,flavor);
+    }
+   });
+   for(const node of tracked.keys())statusObserver.observe(node,{
+    childList:true,characterData:true,subtree:true
+   });
+  }
   sync();
  }
  function capture(tile){
@@ -3079,8 +3111,9 @@ function createInteractionController({getRoot,getNodes,getMode,onError}){
   }
   subScreen(screen);
  }
- function shutdown(){release();stopPortal();dismiss();boundRoot=null;}
- return {bind,sync,toast,fromStatus,capture,navigate,shutdown,mode};
+ function pause(){release();stopPortal();dismiss();}
+ function shutdown(){pause();statusObserver?.disconnect?.();statusObserver=null;boundRoot=null;}
+ return {bind,sync,toast,fromStatus,capture,navigate,pause,shutdown,mode};
 }
 
 let phoneInteraction=null;
@@ -5728,7 +5761,7 @@ function openPhone() {
 
 function closePhone() {
     if (!mounted || !root) return;
-    phoneInteraction?.shutdown();
+    phoneInteraction?.pause();
     root.classList.remove('lp-open');
     securityUnlocked=false;lockVerifyAttempt++;
     void tickStoryClock({onClose:true});
@@ -6938,6 +6971,7 @@ function unmount() {
     extensionSettingsPanel=null;
     nodes?.launcher?.remove();
     root?.remove();
+    phoneInteraction?.shutdown();
     root = null;
     nodes = null;
     phoneInteraction=null;
