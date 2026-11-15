@@ -2190,6 +2190,54 @@ function friendshipState(data) {
     return FRIEND_STATES.has(data?.friendship?.state) ? data.friendship.state : 'stranger';
 }
 
+
+/**
+ * Preserve newer generated Qunxing lists when another app saves an older copy
+ * of the same story metadata. Only the three generated feed sections are
+ * reconciled; authored posts, interactions and other app state remain owned
+ * by their original writers.
+ */
+function preserveLatestQunxingFeeds(previous,payload){
+ const source=previous?.qunxing;
+ if(!source)return;
+ if(!payload.qunxing){
+  payload.qunxing=structuredClone(source);
+  return;
+ }
+ const newer=source.generated;
+ if(!newer||typeof newer!=='object')return;
+ const incoming=payload.qunxing.generated;
+ if(!incoming||typeof incoming!=='object'){
+  payload.qunxing.generated=structuredClone(newer);
+  if(source.hotHeadline)payload.qunxing.hotHeadline=source.hotHeadline;
+  return;
+ }
+ const result={...incoming,feeds:{...(incoming.feeds||{})},
+  revisions:{...(incoming.revisions||{})}};
+ for(const part of ['home','nearby','hot']){
+  const currentRev=Number(newer.revisions?.[part])||0;
+  const payloadRev=Number(incoming.revisions?.[part])||0;
+  if(currentRev<=payloadRev)continue;
+  result.revisions[part]=currentRev;
+  if(part==='hot'){
+   result.trends=structuredClone(newer.trends||[]);
+   result.hotBundles=structuredClone(newer.hotBundles||{});
+  }else{
+   result.feeds[part]=structuredClone(newer.feeds?.[part]||[]);
+  }
+  result.attempted={...(result.attempted||{}),
+   [part==='home'?'world':part]:newer.attempted?.[part==='home'?'world':part]===true};
+ }
+ const lastHeadline=Number(newer.headlineRevision)||0;
+ const staleHeadline=Number(incoming.headlineRevision)||0;
+ if(lastHeadline>staleHeadline){
+  result.headline=newer.headline||'';
+  result.headlineRevision=lastHeadline;
+  payload.qunxing.hotHeadline=source.hotHeadline||'';
+ }
+ payload.qunxing.generated=result;
+}
+
 async function writeData(ctx,data) {
     if (!ctx?.chatMetadata||typeof ctx.saveMetadata!=='function')
         throw new Error('当前酒馆未提供可用的聊天存档接口。');
@@ -2224,6 +2272,7 @@ async function writeData(ctx,data) {
         if (data.avatars?.user) payload.avatars.user=data.avatars.user;
         else delete payload.avatars.user;
     }
+    preserveLatestQunxingFeeds(previous,payload);
     ctx.chatMetadata[DATA_KEY]=payload;
     try {await ctx.saveMetadata();}
     catch(error){
