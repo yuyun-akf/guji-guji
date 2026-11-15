@@ -691,7 +691,11 @@ function savedThemeProfile(raw=themeData()){
 }
 function themeView(){
  const raw=themeData(),saved=savedThemeProfile(raw);
- return saved?{...raw,...saved,palette:raw.palette}:raw;
+ const base={font:'system',fontData:'',desktopEffect:'slide',icons:{},customCss:'',floatingIcon:'',
+  desktopIconSize:34,desktopGap:25,chatBubbleRadius:15,colors:{...SWISS_THEME}};
+ if(saved)return {...raw,...base,...saved,palette:raw.palette};
+ if(raw.palette==='swiss'||!raw.palette)return {...raw,...base,palette:'swiss'};
+ return raw;
 }
 const THEME_FONT_STYLE_ID='gujiguji-user-font';
 const THEME_CSS_STYLE_ID='gujiguji-user-css';
