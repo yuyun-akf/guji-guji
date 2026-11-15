@@ -1,10 +1,17 @@
 # 🍡 咕叽咕机 · GujiGuji
 
-SillyTavern **1.18 / 1.19** 虚拟手机扩展，当前 **v0.26.0 测试版**。入口：酒馆魔法棒或扩展设置 →「咕叽咕机」。悬浮按钮可选、默认关闭。
+SillyTavern **1.18 / 1.19** 虚拟手机扩展，当前 **v0.26.1 测试版**。入口：酒馆魔法棒或扩展设置 →「咕叽咕机」。悬浮按钮可选、默认关闭。
 
 安装与更新：https://github.com/yuyun-akf/guji-guji
 
 
+
+## v0.26.1 — 紧急启动修复
+
+- 修复 v0.26.0 的消息通知开关被加到 UI 后未加入统一 data-lp 节点映射，导致启动时 `nodes.messageBannerToggle.addEventListener` 读取 undefined 报错。
+- 同时注册 `messageBannerStatus`，并补充启动回归检查，确保新增绑定控件在挂载前存在。
+- 主模块、bootstrap 和 manifest 同步升为 v0.26.1，使用新缓存版本重新加载，不改动已有存档及 API 数据。
+- 此修复针对启动崩溃；魔法棒主题色及安卓动画视觉效果仍需实机复核。
 
 ## v0.26.0 — 触控可见性、通知横幅与排版修正
 
