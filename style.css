@@ -3654,8 +3654,8 @@
 }
 /* Match API station reload to the full-width model ID field. */
 #st-little-phone-root [data-settings-category="api"] [data-lp="apiReloadModels"]{
- display:block;width:100%;max-width:none;box-sizing:border-box;
- min-height:46px;margin:11px 0 4px;padding:11px 12px;
+ display:block!important;width:100%!important;max-width:none!important;box-sizing:border-box;
+ align-self:stretch;min-height:46px;margin:11px 0 4px;padding:11px 12px;
 }
 /* Provide a visible short click response even when pointer events are unavailable. */
 #st-little-phone-root .lp-panel .lp-tap-flash:not(:disabled) {
