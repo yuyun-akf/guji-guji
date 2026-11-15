@@ -1,5 +1,5 @@
 /**
- * GujiGuji v0.21.1: a modular phone shell with isolated per-chat context.
+ * GujiGuji v0.22.0: a modular phone shell with isolated per-chat context.
  * No direct host-module imports; uses only the documented context surface.
  */
 
@@ -1181,7 +1181,7 @@ async function albumPostWeibo(photo){
 async function loadAlbumController(){
  if(albumController)return albumController;
  if(albumLoadPromise)return albumLoadPromise;
- albumLoadPromise=import('./album.js?v=0.21.1').then(mod=>{
+ albumLoadPromise=import('./album.js?v=0.22.0').then(mod=>{
   albumController=mod.createAlbumModule({context,getNodes:()=>nodes,sharedPhotos:()=>characterPhotos(),saveSharedPhotos:saveCharacterPhotos,
     albumScope:()=>qunxingAccountCardKey(context()),galleryPeople,notifyInteraction,albumSendToChat,albumPostMoment,albumPostWeibo});
   return albumController;
@@ -1191,7 +1191,7 @@ async function loadAlbumController(){
 async function loadGroupsController(){
  if(groupsController)return groupsController;
  if(groupsLoadPromise)return groupsLoadPromise;
- groupsLoadPromise=import('./groups.js?v=0.21.1').then(mod=>{
+ groupsLoadPromise=import('./groups.js?v=0.22.0').then(mod=>{
   groupsController=mod.createGroupsModule({context,getNodes:()=>nodes,readRootData,writeData,galleryPeople,
    isPhoneFriend,contactCharacter,phoneGenerate,stripModelReasoning,notifyInteraction,openSharedPost,encodeAvatarPhoto,
    galleryPhotosForMember:id=>photosForActor(id,'chat')});
@@ -3298,7 +3298,7 @@ async function scanQunxingAccounts(extraWorld=''){
 async function loadWeiboController(){
  if(weiboController)return weiboController;
  if(weiboLoadPromise)return weiboLoadPromise;
- weiboLoadPromise=import('./weibo.js?v=0.21.1').then(module=>{
+ weiboLoadPromise=import('./weibo.js?v=0.22.0').then(module=>{
   weiboController=module.createWeiboModule({
    context,getNodes:()=>nodes,readRootData,writeData,readData,
    phoneGenerate:(ctx,options,data)=>phoneGenerate(ctx,{...options,task:options?.task||'weibo'},data),
@@ -3308,6 +3308,29 @@ async function loadWeiboController(){
    saveSharedAccounts:(accounts,originalCtx)=>saveSharedQunxingAccounts(accounts,originalCtx||context()),
    ensureSharedAccounts:()=>ensureSharedQunxingAccounts(context()),
    storyContext:weiboStoryContext,scanAccounts:scanQunxingAccounts,
+    accountSubjects:()=>{
+     const ctx=context(),main=selectedCharacter(ctx);
+     if(!main)return [];
+     const people=[{id:'primary',name:getCharacterName(main)}];
+     for(const person of readRootData(ctx).contacts||[]){
+      if(person?.id?.startsWith('npc:')&&person?.name)people.push({id:person.id,name:person.name});
+     }
+     return people;
+    },
+    accountSubjectContext:subject=>{
+     const ctx=context();
+     if(subject?.type==='primary'){
+      const char=selectedCharacter(ctx),info=char?.data||char||{};
+      return [info.description,info.personality,info.scenario]
+       .filter(v=>typeof v==='string').join('\n').slice(0,1800);
+     }
+     if(subject?.type==='npc'){
+      const npc=readRootData(ctx).contacts.find(p=>p.name===subject.name);
+      return [npc?.description,npc?.relationship,npc?.personality]
+       .filter(v=>typeof v==='string').join('\n').slice(0,1200);
+     }
+     return '';
+    },
     sharePost:openQunxingShare,photosForAccount:name=>{const person=galleryPeople().find(p=>p.name===name);return person?photosForActor(person.id,'public'):[];}
   });return weiboController;
  }).catch(error=>{
@@ -3320,7 +3343,7 @@ async function loadWeiboController(){
 async function loadShoppingController(){
  if(shoppingController)return shoppingController;
  if(shoppingLoadPromise)return shoppingLoadPromise;
- shoppingLoadPromise=import('./shopping.js?v=0.21.1').then(module=>{
+ shoppingLoadPromise=import('./shopping.js?v=0.22.0').then(module=>{
   shoppingController=module.createShoppingModule({context,getNodes:()=>nodes});
   return shoppingController;
  }).catch(error=>{
@@ -3334,7 +3357,7 @@ async function loadShoppingController(){
 async function loadTakeoutController(){
  if(takeoutController)return takeoutController;
  if(takeoutLoadPromise)return takeoutLoadPromise;
- takeoutLoadPromise=import('./takeout.js?v=0.21.1').then(module=>{
+ takeoutLoadPromise=import('./takeout.js?v=0.22.0').then(module=>{
   takeoutController=module.createTakeoutModule({
    context,getNodes:()=>nodes,readRootData,writeData,readData,currentPersona,
    walletChargeOrder,walletRefundOrder,walletMoney,
@@ -3354,7 +3377,7 @@ async function loadTakeoutController(){
 async function loadPhoneMemoryController(){
  if(memoryController)return memoryController;
  if(memoryLoadPromise)return memoryLoadPromise;
- memoryLoadPromise=import('./memory.js?v=0.21.1').then(module=>{
+ memoryLoadPromise=import('./memory.js?v=0.22.0').then(module=>{
   memoryController=module.createPhoneMemoryModule({
    context,getNodes:()=>nodes,readRootData,writeData,recordError,recordActivity,
    stripModelReasoning,notifyInteraction,
@@ -6987,7 +7010,7 @@ function makeUI() {
           <p class="lp-settings-hint">记忆记录可在「记忆管理」中查看、修改、删除。删除操作只影响当前故事存档。</p>
           </div>
           <div class="lp-settings-status" data-lp="settingsStatus" role="status" aria-live="polite"></div>
-          <p class="lp-settings-hint">咕叽咕机 · v0.21.1</p>
+          <p class="lp-settings-hint">咕叽咕机 · v0.22.0</p>
         </section>
         <section class="lp-screen lp-picker" data-lp-screen="presetPicker" hidden>
           <div class="lp-picker-head" data-lp="presetPickerTitle">预设</div>
