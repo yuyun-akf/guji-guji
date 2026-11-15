@@ -216,7 +216,7 @@ export function createWeiboModule(api) {
  }
  function prompt(count,zone,topic='',withTrend=false){
   const q=data(),r=root(),char=api.selectedCharacter(context()),nearby=zone==='nearby';
-  const accounts=q.accounts.slice(0,25).map(a=>a.name+'（@'+(a.handle||a.id)+'；'+(a.kind||'人物')+'；'+clean(a.bio,80)+'）').join('、');
+  const accounts=q.accounts.slice(0,25).map(a=>a.name+'（@'+(a.handle||a.id)+'；'+publicAccountDescription(a)+'）').join('、');
   const followed=q.accounts.filter(a=>q.following.includes(a.id)).map(a=>a.name).join('、');
   const known=(r.contacts||[]).slice(0,18).map(a=>a.name+'：'+clean(a.description,80)).join('；');
   const contextText=clean(api.storyContext?.()||'',2100);
@@ -760,8 +760,15 @@ if(type==='subview'){state.subview=id;state.editing='';render();nodes().weiboMe.
     let followers;
     try{followers=readFollowerField(row,'candidate-'+row.dataset.wbCandidate+'-followers');}
     catch(error){feedback(name+'：'+error.message);return;}
-    chosen.push({name,handle:value('handle'),kind:value('kind')||'角色',
-      bio:value('bio'),publicFigure:value('publicFigure'),followers});
+    let subject;
+    try{
+     const raw=row.querySelector('[data-wb-field="candidate-'+row.dataset.wbCandidate+'-subject"]')?.value;
+     const scanned=state.candidates[Number(row.dataset.wbCandidate)]?.name||name;
+     subject=readSubject(raw,subjectChoices([scanned,name]));
+    }catch(error){feedback(name+'：'+error.message);return;}
+    chosen.push({name,handle:value('handle'),subject,
+     kind:subject.type==='primary'?'角色':subject.type==='organization'?'组织':'NPC',
+     profession:value('profession'),bio:value('bio'),publicFigure:value('publicFigure'),followers});
    }
    if(!chosen.length){feedback('请先勾选要保存的候选账号');return;}
    await mutate(q=>{
@@ -807,12 +814,18 @@ if(type==='subview'){state.subview=id;state.editing='';render();nodes().weiboMe.
    const wrap=nodes().weiboMe,v=n=>wrap.querySelector('[data-wb-field="'+n+'"]');
    const name=clean(v('accountName')?.value,42);if(!name){feedback('请填写账号名称');return;}
    const edit=state.editing;const avatarDraft=state.avatarDraft;
-   let followers;
-   try{followers=readFollowerField(wrap,'accountFollowers');}catch(error){feedback(error.message);return;}
+   const previous=data().accounts.find(a=>a.id===edit);
+   let followers,subject;
+   try{
+    followers=readFollowerField(wrap,'accountFollowers');
+    subject=readSubject(v('accountSubject')?.value,
+     subjectChoices(previous?.subject?.name?[previous.subject.name]:previous?.name?[previous.name]:[]));
+   }catch(error){feedback(error.message);return;}
    await mutate(q=>{
     const old=q.accounts.find(x=>x.id===edit)||{};
     const next={...old,id:old.id||uid('account'),name,handle:clean(v('accountHandle')?.value,45),bio:clean(v('accountBio')?.value,450),
-     kind:clean(v('accountKind')?.value,25)||'角色',publicFigure:!!v('accountPublic')?.checked,
+     subject,kind:subject.type==='primary'?'角色':subject.type==='organization'?'组织':'NPC',
+     profession:clean(v('accountProfession')?.value,80),publicFigure:!!v('accountPublic')?.checked,
      followers,avatar:avatarDraft||old.avatar||'',source:'manual'};
     q.accounts=old.id?q.accounts.map(a=>a.id===old.id?next:a):[...q.accounts,next];
    });
@@ -956,7 +969,7 @@ if(type==='subview'){state.subview=id;state.editing='';render();nodes().weiboMe.
    const photos=api.photosForAccount?.(account.name)||[];
    const albumGuide=photos.slice(0,12).map(p=>p.id+'：'+(p.description||p.title||'照片')).join('；');
    const raw=await api.phoneGenerate(context(),{task:'autonomy',systemPrompt:'扮演指定角色在故事世界的公开社交账号上自主发帖；只输出正文或 [SKIP]。如有适合的本角色公开相册照片，可以在文末加 [[photo:照片ID]]；不能编造照片ID。',prompt:[{role:'user',
-    content:'故事时间：'+scene+'。群星账号：'+account.name+'，身份 '+account.kind+'，'+account.bio+'，公众人物：'+(account.publicFigure?'是':'否')+
+    content:'故事时间：'+scene+'。群星账号：'+account.name+'，职业／公开资料 '+publicAccountDescription(account)+'，账号主体 '+(subjectOfAccount(account).type==='organization'?'组织账号':'故事人物')+'，公众人物：'+(account.publicFigure?'是':'否')+
      '。可用公开相册照片：'+albumGuide+'。近期剧情：'+clean(api.storyContext?.()||'',1400)+'。结合职业、性格、公共活动和时间线决定此时是否发布一条公开动态。不得公开私聊秘密，不得杜撰用户行为、未发生事件或已确定恋情。可以不发，输出 [SKIP]。否则只输出一条 20～180 字的社交动态，不要额外解释。'}]},api.readData(context()));
    if(scope()!==state.scope)return;
    const reply=clean(api.stripModelReasoning(raw),450);
