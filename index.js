@@ -5598,8 +5598,8 @@ function installWandEntry() {
     // Host menu labels and icons may have different computed theme colors.
     const adoptHostWandColor=()=>{
       if(typeof window.getComputedStyle!=='function')return;
-      const peer=[...menu.querySelectorAll('.extension_container')]
-       .filter(e=>e!==container&&!container.contains(e))
+      const peer=[...(typeof menu.querySelectorAll==='function'?menu.querySelectorAll('.extension_container'):[])]
+       .filter(e=>e!==container&&!container.contains?.(e))
        .map(e=>{
         const peerIcon=e.querySelector('.extensionsMenuExtensionButton');
         const peerButton=peerIcon?.closest('button,.list-group-item')||e.querySelector('button,.list-group-item');
