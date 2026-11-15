@@ -8,7 +8,7 @@ const sharedSource=index.slice(
  index.indexOf('function phoneSelectionKey('),index.indexOf('function savedPhoneSelections(')
 );
 const roleFactory=new Function('selectedCharacter','getCharacterName','SETTINGS_KEY','DATA_KEY','recordError',
- sharedSource+'return {phoneSelectionKey,sharedQunxingAccounts,saveSharedQunxingAccounts,ensureSharedQunxingAccounts,explicitAccountFollowers};');
+ sharedSource+'return {phoneSelectionKey,qunxingAccountCardKey,sharedQunxingAccounts,saveSharedQunxingAccounts,ensureSharedQunxingAccounts,explicitAccountFollowers};');
 const ROLE_KEY='test-phone-config';
 const role=roleFactory(c=>c.characters?.[c.characterId],c=>c.name,ROLE_KEY,'db',()=>{});
 const make=new Function('document','structuredClone',
@@ -171,4 +171,66 @@ test('follower counts are read only from explicit numbers, with Chinese large-nu
  assert.equal(role.explicitAccountFollowers('粉丝数：5000000'),5000000);
  assert.equal(role.explicitAccountFollowers('曾经很受欢迎，很多粉丝'),null);
  assert.match(script,/followers:Math\.max\(0,Math\.floor\(Number\(value\('followers'\)\)\|\|0\)\)/);
+});
+
+test('same default avatar is not sufficient to merge unrelated character account directories',()=>{
+ const shared={};
+ const ctx={extensionSettings:{[ROLE_KEY]:shared},saveSettingsDebounced(){},
+  characterId:0,characters:[{name:'甲',avatar:'none'},{name:'乙',avatar:'none'}],
+  chatMetadata:{db:{version:1,messages:[],qunxing:{accounts:[]}}}};
+ assert.notEqual(role.qunxingAccountCardKey(ctx),
+  role.qunxingAccountCardKey({...ctx,characterId:1}));
+ role.saveSharedQunxingAccounts([{id:'one',name:'甲',source:'manual'}],ctx);
+ assert.equal(role.sharedQunxingAccounts(ctx).length,1);
+ assert.equal(role.sharedQunxingAccounts({...ctx,characterId:1}),null);
+});
+test('concurrent writes from other apps cannot restore an older generated feed',()=>{
+ const start=index.indexOf('function preserveLatestQunxingFeeds(');
+ const end=index.indexOf('async function writeData(',start);
+ assert.ok(start>=0&&end>start);
+ const preserve=new Function('structuredClone',
+  index.slice(start,end)+'return preserveLatestQunxingFeeds;')(copy);
+ const current={qunxing:{hotHeadline:'最新话题',generated:{
+  feeds:{home:[],nearby:[{id:'near-2'}]},
+  trends:[{title:'更新后的榜单'}],hotBundles:{},
+  revisions:{home:15,nearby:12,hot:10},
+  headline:'最新话题',headlineRevision:15,attempted:{world:true,nearby:true,hot:true}
+ }}};
+ const older={qunxing:{hotHeadline:'过期话题',generated:{
+  feeds:{home:[{id:'deleted-post'}],nearby:[{id:'old-near'}]},
+  trends:[{title:'旧榜单'}],hotBundles:{old:true},
+  revisions:{home:9,nearby:8,hot:2},
+  headline:'过期话题',headlineRevision:9,attempted:{world:true,nearby:true,hot:true}
+ }}};
+ preserve(current,older);
+ assert.deepEqual(older.qunxing.generated.feeds.home,[]);
+ assert.deepEqual(older.qunxing.generated.feeds.nearby,[{id:'near-2'}]);
+ assert.equal(older.qunxing.generated.trends[0].title,'更新后的榜单');
+ assert.equal(older.qunxing.hotHeadline,'最新话题');
+ const newest={qunxing:{generated:{
+  feeds:{home:[{id:'newer'}]},revisions:{home:16},
+  headline:'新生成的世界话题',headlineRevision:16
+ }}};
+ preserve(current,newest);
+ assert.equal(newest.qunxing.generated.feeds.home[0].id,'newer');
+});
+test('scanner picks explicitly configured main-character follower count from character data',async()=>{
+ const start=index.indexOf('async function scanQunxingAccounts(');
+ const end=index.indexOf('async function loadWeiboController(',start);
+ assert.ok(start>=0&&end>start);
+ const scan=new Function('context','selectedCharacter','scanNpcSources','getCharacterName',
+  'explicitAccountFollowers',index.slice(start,end)+'return scanQunxingAccounts;')(
+  ()=>({characterId:0}),()=>({name:'林知远',data:{
+   description:'演员，微博粉丝数量：3500万',
+   personality:'会开玩笑，跟好友相处时嘴欠',
+   scenario:'目前在剧组拍戏'
+  }}),
+  async()=>({candidates:[],scanned:1,worlds:0}),
+  char=>char.name,role.explicitAccountFollowers
+ );
+ const result=await scan();
+ assert.equal(result.candidates.length,1);
+ assert.equal(result.candidates[0].name,'林知远');
+ assert.equal(result.candidates[0].followers,35000000);
+ assert.match(result.candidates[0].reference,/3500万/);
 });
