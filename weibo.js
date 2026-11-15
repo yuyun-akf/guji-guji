@@ -1,6 +1,6 @@
 /* 群星 · character-card accounts + per-story persistent generated feeds and interactions. */
 export function createWeiboModule(api) {
- const state={scope:'',tab:'home',detail:'',topic:null,subview:'',posts:{home:[],nearby:[]},trends:[],nearbyTrends:[],loading:false,hotLoading:false,attempted:{},token:0,sessionId:0,headline:'',hotBundles:{},queuedNearby:false,confirming:false,editing:'',avatarDraft:'',avatarOwnerDraft:'',candidates:[],scanLoading:false,scanMessage:''};
+ const state={scope:'',tab:'home',detail:'',topic:null,profileAccount:'',searchQuery:'',sharingId:'',subview:'',posts:{home:[],nearby:[]},trends:[],nearbyTrends:[],loading:false,hotLoading:false,attempted:{},token:0,sessionId:0,headline:'',hotBundles:{},queuedNearby:false,confirming:false,editing:'',avatarDraft:'',avatarOwnerDraft:'',candidates:[],scanLoading:false,scanMessage:''};
  let writes=Promise.resolve(), autoBusy=false,closeHotConfirmation=null;
  const context=()=>api.context(), nodes=()=>api.getNodes(), root=()=>api.readRootData(context());
  const uid=(prefix='qx')=>prefix+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
@@ -18,9 +18,9 @@ export function createWeiboModule(api) {
  };
  const formatFollowers=count=>{
   const total=Math.max(0,Math.floor(Number(count)||0));
-  if(total>=100000000)return (total/100000000).toLocaleString('zh-CN',{maximumFractionDigits:2})+'亿';
-  if(total>=10000)return (total/10000).toLocaleString('zh-CN',{maximumFractionDigits:2})+'万';
-  return total.toLocaleString('zh-CN');
+  if(total>=100000000)return (total/100000000).toLocaleString('zh-CN',{maximumFractionDigits:2})+'亿粉丝';
+  if(total>=10000)return (total/10000).toLocaleString('zh-CN',{maximumFractionDigits:2})+'万粉丝';
+  return total.toLocaleString('zh-CN')+'粉丝';
  };
  const parseFollowerValue=(amount,unit='person')=>{
   const input=String(amount??'').trim();
@@ -124,7 +124,7 @@ export function createWeiboModule(api) {
   // An explicitly saved empty role directory means previously deleted accounts
   // must not be resurrected by an older story chat.
   api.ensureSharedAccounts?.();
-  state.scope=next;state.tab='home';state.detail='';state.topic=null;state.subview='';
+  state.scope=next;state.tab='home';state.detail='';state.topic=null;state.profileAccount='';state.searchQuery='';state.sharingId='';state.subview='';
   state.candidates=[];state.scanMessage='';state.scanLoading=false;
   const stored=data().generated;
   const feeds=stored?.feeds||{};
@@ -148,7 +148,7 @@ export function createWeiboModule(api) {
   // Closing the virtual phone must NEVER erase generated posts or hot topics.
   // In-flight requests are allowed to finish and save to the same story chat.
   closeHotConfirmation?.(false);
-  state.detail='';state.topic=null;state.subview='';state.tab='home';
+  state.detail='';state.topic=null;state.profileAccount='';state.sharingId='';state.subview='';state.tab='home';
  }
  async function persistGenerated(kind,extra={}){
   const session=scope();
@@ -162,7 +162,16 @@ export function createWeiboModule(api) {
    if(scope()!==session)throw Error('故事存档已切换，取消保存旧动态');
    const previous=q.generated&&typeof q.generated==='object'?q.generated:{};
    const feeds={...(previous.feeds||{})};
-   if(posts!==null)feeds[kind]=posts;
+   if(posts!==null){
+     feeds[kind]=posts;
+     // Keep the public history of known/followed authors when their feed refreshes.
+     for(const post of posts){
+      const author=q.accounts.find(a=>a.id===post.authorId||(post.handle&&a.handle===post.handle)||a.name===post.author);
+      if(author&&(author.source==='manual'||q.following.includes(author.id))&&!q.posts.some(old=>old.id===post.id))
+       q.posts.push({...post,authorId:author.id});
+     }
+     q.posts=q.posts.slice(-300);
+    }
    const revisions={...(previous.revisions||{})};
    revisions[kind]=Math.max(Date.now(),...Object.values(revisions).map(x=>(Number(x)||0)+1));
    q.generated={
@@ -222,14 +231,14 @@ export function createWeiboModule(api) {
   const contextText=clean(api.storyContext?.()||'',2100);
   return [
    '你正在生成完全虚构的剧情世界社交平台「群星」内容。故事日期：'+(r.storyTime||'未设定')+'。',
-   '范围：'+(nearby?'周边：学校、公司、剧组、社团、邻里与其他身边人的公开动态':'世界：新闻、社会、影视、生活、时尚、体育、游戏、科技、音乐等公共动态')+'。',
+   '范围：'+(nearby?'周边与关注：同时包含身边人的动态和 user 关注的账号公开帖子；被关注者不要求位于附近。校园、公司、剧组、社团、邻里与朋友等':'世界：新闻、社会、影视、生活、时尚、体育、游戏、科技、音乐等公共动态')+'。',
    '主角：'+(char?.name||'未选择')+'；角色简介：'+clean(char?.description,750)+'；已知人物：'+known+'。',
    '已建立的公众/普通账号：'+(accounts||'暂无')+'；用户关注：'+(followed||'暂无')+'；周边补充设定：'+clean(q.settings.nearbyHint,210)+'。',
    '近期剧情：'+contextText+'。必须区分已公开事实与私聊秘密；绝不杜撰用户言行、心理、地下恋情、未发生事件。',
    '允许陌生网友完全讨论无关主题，勿全围绕角色。公众人物可以合理上热搜，但不要每条都写成公共事件。',
    '营造真实复杂的互联网：多数网友正常且观点各异，偶尔可以有0至1个理直气壮、反常识到令人怀疑的“神人”发言，让其他网友有自然吐槽或反驳；题材随机覆盖职场、学习、生活、饭圈、科技、性别刻板印象等，不要总围绕男女关系，也不要把偏激观点当事实。',
    '每条帖子配2至5条不同语气的评论，允许争论与冷幽默、网络流行语，但不要每条都是段子。',
-   nearby?'周边内容应体现身边普通人的真实生活；没有明确地点不要编造具体城市、校园或住址。':'全球动态有大小事之分，不要人人都在热榜。',
+   nearby?'若角色或 user 仍在校（从资料判断，不能直接假设已毕业），校园日常占多数：表白墙、选课考试、老师答疑、寝室、社团活动、求助和吐槽；其他帖子可来自已关注账号以及工作、剧组、生活圈。不得把远方已关注者说成就在附近；不凭空编造真实城市、学校名或隐私。':'全球动态有大小事之分，不要人人都在热榜。',
    topic?'帖子主题：'+topic:'',
    '只输出合法紧凑 JSON：{"posts":[{"author":"作者昵称","handle":"@账号","category":"类别","text":"正文","likes":32,"comments":[{"name":"评论昵称","text":"内容"}]}],"headline":"本轮公开热议话题"}。',
    '生成'+count+'条相互独立、有作者、正文和评论的帖子。headline仅是一个简短话题标题，用于小手机桌面入口，不要返回整张热榜。不要markdown、不要思维过程。'
@@ -463,7 +472,7 @@ export function createWeiboModule(api) {
     el('small','',q.profile.handle||'尚未设置群星 ID'),
     el('small','',q.profile.bio||'点击个人资料修改账号信息'));
    profile.append(txt);wrap.append(profile);
-   wrap.append(el('div','lp-wb-stats','粉丝 '+formatFollowers(q.profile.followers)+'　·　关注 '+q.following.length+
+   wrap.append(el('div','lp-wb-stats',formatFollowers(q.profile.followers)+'　·　关注 '+q.following.length+
     '　·　动态 '+q.posts.filter(p=>p.actions?.owned).length));
    const menu=el('div','lp-wb-me-menu');
    for(const [key,label] of Object.entries(names)){
@@ -521,7 +530,7 @@ export function createWeiboModule(api) {
    input.setAttribute('aria-label',label);
    const unit=document.createElement('select');
    unit.dataset.wbField=name+'Unit';unit.setAttribute('aria-label','粉丝数单位');
-   for(const [value,display] of [['person','人'],['wan','万'],['yi','亿']]){
+   for(const [value,display] of [['person','粉丝'],['wan','万'],['yi','亿']]){
     const option=document.createElement('option');option.value=value;option.textContent=display;
     unit.append(option);
    }
@@ -566,7 +575,7 @@ export function createWeiboModule(api) {
   parent.append(heading('管理群星账号','账号绑定具体故事人物；媒体、表白墙和后援会等可建立独立组织账号'));
   for(const a of q.accounts){
    const line=el('div','lp-wb-account-line');line.append(avatar(a.avatar,a.name));
-   line.append(el('span','',a.name+' · '+(a.handle||'未设ID')+' · '+(savedProfession(a)||(subjectOfAccount(a).type==='organization'?'组织账号':'故事人物'))+' · 粉丝 '+formatFollowers(a.followers)));
+   line.append(el('span','',a.name+' · '+(a.handle||'未设ID')+' · '+(savedProfession(a)||(subjectOfAccount(a).type==='organization'?'组织账号':'故事人物'))+' · '+formatFollowers(a.followers)));
    line.append(control('编辑','editAccount',a.id));line.append(control('删除','deleteAccount',a.id));
    parent.append(line);
   }
@@ -675,10 +684,14 @@ export function createWeiboModule(api) {
    if(state.hotLoading)n.weiboHot.append(el('p','lp-wb-empty','正在一次生成15条热搜、帖子及评论…'));
    trendList(n.weiboHot,state.trends,'home');
   }else if(state.tab==='nearby'){
-   n.weiboNearby.append(heading('周边','校园、公司、剧组与身边的人'));
    if(state.loading&&state.attempted.nearby)n.weiboNearby.append(el('p','lp-wb-empty','正在生成周边动态及评论…'));
+   const q=data(),followed=p=>q.following.some(id=>{
+    const a=q.accounts.find(x=>x.id===id);
+    return a&&(p.authorId===id||(a.handle&&p.handle===a.handle)||p.author===a.name);
+   });
    const list=[...state.posts.nearby,
-    ...data().posts.filter(p=>p.zone==='nearby'&&(p.actions?.owned||p.autoPublished)).slice(-12).reverse()];
+    ...q.posts.filter(p=>followed(p)||p.zone==='nearby'&&(p.actions?.owned||p.autoPublished)).slice(-35).reverse(),
+    ...state.posts.home.filter(followed)];
    const seen=new Set();for(const p of list)if(!seen.has(p.id)){seen.add(p.id);n.weiboNearby.append(card(p,false));}
    if(!list.length&&!state.loading)n.weiboNearby.append(el('p','lp-wb-empty','点击刷新周边，生成身边人的帖子和评论'));
   }else if(state.tab==='me')renderMine(n);
