@@ -1,5 +1,5 @@
 /**
- * GujiGuji v0.22.0: a modular phone shell with isolated per-chat context.
+ * GujiGuji v0.23.0: a modular phone shell with isolated per-chat context.
  * No direct host-module imports; uses only the documented context surface.
  */
 
@@ -1181,7 +1181,7 @@ async function albumPostWeibo(photo){
 async function loadAlbumController(){
  if(albumController)return albumController;
  if(albumLoadPromise)return albumLoadPromise;
- albumLoadPromise=import('./album.js?v=0.22.0').then(mod=>{
+ albumLoadPromise=import('./album.js?v=0.23.0').then(mod=>{
   albumController=mod.createAlbumModule({context,getNodes:()=>nodes,sharedPhotos:()=>characterPhotos(),saveSharedPhotos:saveCharacterPhotos,
     albumScope:()=>qunxingAccountCardKey(context()),galleryPeople,notifyInteraction,albumSendToChat,albumPostMoment,albumPostWeibo});
   return albumController;
@@ -1191,7 +1191,7 @@ async function loadAlbumController(){
 async function loadGroupsController(){
  if(groupsController)return groupsController;
  if(groupsLoadPromise)return groupsLoadPromise;
- groupsLoadPromise=import('./groups.js?v=0.22.0').then(mod=>{
+ groupsLoadPromise=import('./groups.js?v=0.23.0').then(mod=>{
   groupsController=mod.createGroupsModule({context,getNodes:()=>nodes,readRootData,writeData,galleryPeople,
    isPhoneFriend,contactCharacter,phoneGenerate,stripModelReasoning,notifyInteraction,openSharedPost,encodeAvatarPhoto,
    galleryPhotosForMember:id=>photosForActor(id,'chat')});
@@ -1336,7 +1336,8 @@ async function phoneGenerate(ctx,options={},data){
   if(!profiles.profiles.some(p=>p.id===cfg.profileId))
    throw new Error('所选酒馆连接档案不可用，请在 API 设置中重新选择');
   const response=await service.sendRequest(cfg.profileId,messages,budget,
-   {stream:false,extractData:true,includePreset:false,includeInstruct:false});
+   {stream:false,extractData:true,includePreset:false,includeInstruct:false},
+   cfg.model?.trim()?{model:cfg.model.trim()}:{});
   return typeof response==='string'?response:response?.content||'';
  }
  if(cfg.mode==='inherit'){
@@ -1401,15 +1402,86 @@ function renderSavedApiProfiles(selected=''){
   option.textContent='已选档案暂不可用，请重新选择';
  }
  n.apiProfileHint.textContent=profiles.error||
-  '使用酒馆保存的连接配置直接请求；不会切换正文当前连接。';
+  '使用酒馆已保存的 URL 与密钥，经由酒馆服务器发起请求；不会切换正文模型，也不会复制明文 Key。';
 }
+
+/** Query models via SillyTavern's own authenticated server endpoint. Never read/export raw API keys. */
+async function loadSavedSiteModels(selectedModel=''){
+ const n=nodes;if(!n?.apiProfileModel)return;
+ const profileId=n.apiProfile?.value;
+ const select=n.apiProfileModel,manual=n.apiProfileModelManual;
+ select.replaceChildren();
+ const put=(model,label=model)=>{
+  if(!model||[...select.options].some(o=>o.value===model))return;
+  const opt=document.createElement('option');opt.value=model;opt.textContent=label;select.append(opt);
+ };
+ if(!profileId){put('','请先选择酒馆保存的站点');select.disabled=true;return;}
+ select.disabled=false;
+ const service=context()?.ConnectionManagerRequestService;
+ let profile;
+ try{profile=service?.getProfile?.(profileId);}catch{}
+ if(!profile){put('','无法读取所选连接配置');select.disabled=true;return;}
+ const source=service?.validateProfile?.(profile);
+ if(profile.model)put(profile.model);
+ // Other saved profiles for the same API + site may refer to additional models.
+ const all=availableConnectionProfiles(context()).profiles;
+ for(const item of all){
+  try{
+   const p=service.getProfile(item.id);
+   if(p.api===profile.api&&p['api-url']===profile['api-url']&&p.model)put(p.model);
+  }catch{}
+ }
+ if(selectedModel)put(selectedModel);
+ if(!select.options.length)put('','尚未发现已保存的模型');
+ select.value=selectedModel||profile.model||select.options[0]?.value||'';
+ if(manual)manual.value='';
+ if(n.apiProfileHint)n.apiProfileHint.textContent='已载入保存的站点，正在通过酒馆尝试获取可用模型列表…';
+ // The official /status endpoint reads its secret from SillyTavern's server-side
+ // store using secret-id; the browser never receives the raw stored key.
+ if(source?.selected!=='openai'||!source?.source||typeof context()?.getRequestHeaders!=='function'){
+  if(n.apiProfileHint)n.apiProfileHint.textContent='当前站点不支持酒馆聊天补全模型列表接口，可使用连接配置中的模型或手动填入模型 ID。';
+  return;
+ }
+ const fromId=profileId;
+ try{
+  const body={chat_completion_source:source.source,secret_id:profile['secret-id']};
+  if(source.source==='custom'){
+   if(typeof profile['api-url']!=='string'||!profile['api-url'].trim())throw Error('此配置没有保存有效的站点 URL');
+   body.custom_url=profile['api-url'];
+  }
+  // Provider-specific alternate endpoint values, when present in an official profile.
+  else if(profile['api-url']){
+   if(source.source==='siliconflow')body.siliconflow_endpoint=profile['api-url'];
+   if(source.source==='zai')body.zai_endpoint=profile['api-url'];
+   if(source.source==='minimax')body.minimax_endpoint=profile['api-url'];
+  }
+  const response=await fetch('/api/backends/chat-completions/status',{
+   method:'POST',headers:context().getRequestHeaders(),body:JSON.stringify(body),cache:'no-store'
+  });
+  if(!response.ok)throw Error('模型列表接口返回 '+response.status);
+  const json=await response.json();
+  if(n.apiProfile?.value!==fromId)return;
+  const remote=Array.isArray(json?.data)?json.data.map(v=>typeof v==='string'?v:v?.id).filter(v=>typeof v==='string'&&v):[];
+  for(const id of remote.slice(0,500))put(id);
+  select.value=selectedModel||profile.model||select.options[0]?.value||'';
+  if(n.apiProfileHint)n.apiProfileHint.textContent=remote.length
+   ?'通过酒馆安全读取到 '+remote.length+' 个模型；请求时沿用所选连接的已保存密钥。'
+   :'该站点未提供模型列表；可以使用保存的模型或手动填写 ID。';
+ }catch(error){
+  if(n.apiProfile?.value!==fromId)return;
+  if(n.apiProfileHint)n.apiProfileHint.textContent='站点模型列表不可用：'+String(error.message||error)+
+   '。仍可选择连接配置中保存的模型，或手动输入模型 ID。';
+ }
+}
+
 async function savePhoneApi(){
  const c=context(),n=nodes;
  if(!c?.chatMetadata||!n)return false;
  const task=currentApiTarget(),mode=n.apiMode.value;
  if(!['follow','inherit','custom','profile'].includes(mode)||
    (task==='default'&&mode==='follow'))return setStatus('连接方式无效','error');
- const entry={mode,url:n.apiUrl.value.trim(),model:n.apiModel.value.trim(),
+ const entry={mode,url:n.apiUrl.value.trim(),
+  model:mode==='profile'?(n.apiProfileModelManual?.value.trim()||n.apiProfileModel?.value||''):n.apiModel.value.trim(),
   profileId:n.apiProfile.value,maxTokens:320};
  if(mode==='custom'){
   try{normalizeApiUrl(entry.url);}catch(e){setStatus(e.message,'error');return false;}
@@ -1450,6 +1522,7 @@ function loadPhoneApiUI(){
  n.apiMode.value=cfg.routeMode;
  n.apiUrl.value=cfg.url;n.apiModel.value=cfg.model;n.apiKey.value='';
  renderSavedApiProfiles(cfg.profileId);showApiFields();updateApiInfo();
+ if(cfg.mode==='profile')void loadSavedSiteModels(cfg.model);
 }
 async function testPhoneApi(){
  if(!await savePhoneApi())return;
@@ -3298,7 +3371,7 @@ async function scanQunxingAccounts(extraWorld=''){
 async function loadWeiboController(){
  if(weiboController)return weiboController;
  if(weiboLoadPromise)return weiboLoadPromise;
- weiboLoadPromise=import('./weibo.js?v=0.22.0').then(module=>{
+ weiboLoadPromise=import('./weibo.js?v=0.23.0').then(module=>{
   weiboController=module.createWeiboModule({
    context,getNodes:()=>nodes,readRootData,writeData,readData,
    phoneGenerate:(ctx,options,data)=>phoneGenerate(ctx,{...options,task:options?.task||'weibo'},data),
@@ -3343,7 +3416,7 @@ async function loadWeiboController(){
 async function loadShoppingController(){
  if(shoppingController)return shoppingController;
  if(shoppingLoadPromise)return shoppingLoadPromise;
- shoppingLoadPromise=import('./shopping.js?v=0.22.0').then(module=>{
+ shoppingLoadPromise=import('./shopping.js?v=0.23.0').then(module=>{
   shoppingController=module.createShoppingModule({context,getNodes:()=>nodes});
   return shoppingController;
  }).catch(error=>{
@@ -3357,7 +3430,7 @@ async function loadShoppingController(){
 async function loadTakeoutController(){
  if(takeoutController)return takeoutController;
  if(takeoutLoadPromise)return takeoutLoadPromise;
- takeoutLoadPromise=import('./takeout.js?v=0.22.0').then(module=>{
+ takeoutLoadPromise=import('./takeout.js?v=0.23.0').then(module=>{
   takeoutController=module.createTakeoutModule({
    context,getNodes:()=>nodes,readRootData,writeData,readData,currentPersona,
    walletChargeOrder,walletRefundOrder,walletMoney,
@@ -3377,7 +3450,7 @@ async function loadTakeoutController(){
 async function loadPhoneMemoryController(){
  if(memoryController)return memoryController;
  if(memoryLoadPromise)return memoryLoadPromise;
- memoryLoadPromise=import('./memory.js?v=0.22.0').then(module=>{
+ memoryLoadPromise=import('./memory.js?v=0.23.0').then(module=>{
   memoryController=module.createPhoneMemoryModule({
    context,getNodes:()=>nodes,readRootData,writeData,recordError,recordActivity,
    stripModelReasoning,notifyInteraction,
@@ -6883,7 +6956,7 @@ function makeUI() {
               <button type="button" class="lp-settings-nav" data-settings-nav="presets"><span>预设与世界书<small>预设选择、世界书条目与触发</small></span><b>›</b></button>
               <button type="button" class="lp-settings-nav" data-settings-nav="chat"><span>聊天方式<small>消息显示与分条行为</small></span><b>›</b></button>
               <button type="button" class="lp-settings-nav" data-settings-nav="memory"><span>记忆管理<small>剧情日自动总结、独立 API、正文互通</small></span><b>›</b></button>
-              <button type="button" class="lp-settings-nav" data-settings-nav="data"><span>数据与诊断<small>运行日志与现有存档管理入口</small></span><b>›</b></button>
+              <button type="button" class="lp-settings-nav" data-settings-nav="data"><span>数据说明<small>存档与资料保存范围</small></span><b>›</b></button>
             </div>
           </div>
           <div class="lp-settings-category" data-settings-category="system" hidden>
@@ -6923,17 +6996,11 @@ function makeUI() {
               <option value="chat">咕叽聊</option>
               <option value="weibo">群星</option>
               <option value="takeout">外卖</option>
-              <option value="shopping">购物</option>
-              <option value="wallet">吱付宝</option>
-              <option value="calendar">日历</option>
-              <option value="theme">主题</option>
-              <option value="settings">设置</option>
-              <option value="diagnostics">运行日志</option>
               <option value="autonomy">角色自主活动</option>
               <option value="memory">手机记忆</option>
             </select>
           </label>
-          <p class="lp-settings-hint">纯界面应用目前没有模型生成操作，配置会保留供将来的功能使用。</p>
+          <p class="lp-settings-hint">仅显示需要调用模型的应用；其他本地功能不需要单独 API。</p>
           <div class="lp-settings-card" data-lp="apiInfo">当前酒馆连接</div>
           <label class="lp-field">连接方式<select data-lp="apiMode">
             <option value="follow">跟随小手机全局默认连接</option>
@@ -6942,7 +7009,10 @@ function makeUI() {
             <option value="custom">独立 OpenAI 兼容 API</option>
           </select></label>
           <div class="lp-api-custom" data-lp="apiProfileFields" hidden>
-            <label class="lp-field">酒馆已保存连接<select data-lp="apiProfile"></select></label>
+            <label class="lp-field">选择酒馆已保存的站点／连接<select data-lp="apiProfile"></select></label>
+            <label class="lp-field">该站点可选模型<select data-lp="apiProfileModel"></select></label>
+            <label class="lp-field">模型 ID（无法拉取时可选填）<input data-lp="apiProfileModelManual" type="text" autocomplete="off" placeholder="不填写则使用上方选中的模型"/></label>
+            <button type="button" class="lp-settings-link" data-lp="apiReloadModels">从酒馆拉取该站点模型</button>
             <p class="lp-settings-hint" data-lp="apiProfileHint">正在读取可用连接…</p>
           </div>
           <div class="lp-api-custom" data-lp="customApiFields" hidden>
@@ -7004,13 +7074,12 @@ function makeUI() {
           <button type="button" class="lp-settings-link" data-lp="saveContextSettings">保存记忆与互通设置</button>
           </div>
           <div class="lp-settings-category" data-settings-category="data" hidden>
-          <h2>数据与诊断</h2>
-          <p class="lp-settings-hint">查看运行日志、API 错误及各应用的持久化记录。聊天导入导出请从咕叽聊的「聊天设置」进入。</p>
-          <button type="button" class="lp-settings-link" data-lp="settingsOpenDiagnostics">打开运行日志</button>
-          <p class="lp-settings-hint">记忆记录可在「记忆管理」中查看、修改、删除。删除操作只影响当前故事存档。</p>
+          <h2>数据说明</h2>
+          <p class="lp-settings-hint">群星账号与相册按角色卡共享，聊天、群聊及互动记录按当前故事存档保存。</p>
+          <p class="lp-settings-hint">需要查看报错或请求记录时，请返回桌面打开独立的「运行日志」App。聊天导入导出在咕叽聊的聊天设置中操作。</p>
           </div>
           <div class="lp-settings-status" data-lp="settingsStatus" role="status" aria-live="polite"></div>
-          <p class="lp-settings-hint">咕叽咕机 · v0.22.0</p>
+          <p class="lp-settings-hint">咕叽咕机 · v0.23.0</p>
         </section>
         <section class="lp-screen lp-picker" data-lp-screen="presetPicker" hidden>
           <div class="lp-picker-head" data-lp="presetPickerTitle">预设</div>
@@ -7224,7 +7293,7 @@ function mount() {
         'friendLabel', 'friendActions','profileAvatar','profileName','profileDescription','contactEvidence','contactExchange','contactLinks','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcScanState','npcCandidates','npcSaveCandidates','storyPeopleList','viewPrimaryContact','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','avatarUserFile','resetCharAvatar','resetUserAvatar',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
-        'settingsMenu','settingsOpenDiagnostics','apiTask','apiProfile','apiProfileFields','apiProfileHint','apiTest',
+        'settingsMenu','apiTask','apiProfile','apiProfileModel','apiProfileModelManual','apiReloadModels','apiProfileFields','apiProfileHint','apiTest',
         'phoneMemoryEnabled','phoneMemoryInterval','phoneMemoryInjectMainline','phoneMemorySchedule','phoneMemoryStatus','phoneMemorySave','phoneMemoryRun','phoneMemoryList',
         'shoppingContent','shoppingTabs','takeoutContent','takeoutTabs','walletBalance','walletPending','walletBills','walletAdjustInput','walletSaveBalance','walletToChat','walletStatus',
         'presetSource','presetInfo','presetEntries','worldBookList','worldSelectionSummary','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','saveSelections','savePresetPicker','saveWorldPicker','selectionSaveStatus','readMainlineMemory','memorySource','phoneToMainline','eventBridge','saveContextSettings','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themePreset','themeCustomColors','themeSaveColors','themeWallpaperPreview','themeDesktopEffect','interactionMotion','interactionFeedback','themeBindWallpaper','themeName','themeSaveNamed','themeRename','themeDelete','themeExport','themeImport','themeFeedback','themeCssFile','themeCssReset','themeCssStatus','themeFontFile','themeDesktopIconSize','themeDesktopGap','themeBubbleRadius','themeIconTarget','themeIconFile','themeIconReset','themeFloatingIconFile','themeFloatingIconReset','themeCopySelectors',
@@ -7275,6 +7344,7 @@ function mount() {
     }));
     nodes.messages.addEventListener('click',event=>{const button=event.target.closest('[data-share-message-id]');if(!button)return;const message=readData(context()).messages.find(m=>m.id===button.dataset.shareMessageId);if(message?.sharePost)openSharedPost(message.sharePost,'chat');});
     nodes.albumContent.addEventListener('click',event=>{void albumController?.handleClick(event);});
+    nodes.albumContent.addEventListener('change',event=>{albumController?.handleChange(event);});
     nodes.groupsContent.addEventListener('click',event=>{void groupsController?.handleClick(event);});
     nodes.groupsContent.addEventListener('change',event=>{if(event.target.closest('input[data-group-avatar]'))void groupsController?.handleFile(event);});
     nodes.shareTargets.addEventListener('click',event=>{const b=event.target.closest('[data-share-target]');if(b)void completeQunxingShare(b.dataset.shareType,b.dataset.shareTarget);});
@@ -7298,6 +7368,8 @@ function mount() {
         const b=e.target.closest('[data-weibo-tab]');if(b)weiboController?.selectTab(b.dataset.weiboTab);
     });
     root.addEventListener('click',e=>{if(e.target.closest('[data-wb-action],[data-wb-topic]'))weiboController?.handleClick(e);});
+    root.addEventListener('input',e=>{if(e.target.matches?.('[data-wb-account-search]'))weiboController?.handleInput(e);});
+    root.addEventListener('keydown',e=>{if(e.target.matches?.('[data-wb-comment-for]'))weiboController?.handleKeydown(e);});
     root.addEventListener('change',e=>{if(e.target.closest('[data-wb-field="accountAvatar"],[data-wb-field="ownerAvatar"]'))weiboController?.handleFile(e);});
     nodes.launcher.addEventListener('click', event => {
         if(draggedClick(event)){event.preventDefault?.();return;}
@@ -7409,7 +7481,9 @@ function mount() {
     nodes.saveWorldPicker.addEventListener('click',()=>void saveSelectionSettings(true));
 
     nodes.apiTask.addEventListener('change',loadPhoneApiUI);
-    nodes.apiMode.addEventListener('change',showApiFields);
+    nodes.apiMode.addEventListener('change',()=>{showApiFields();if(nodes.apiMode.value==='profile')void loadSavedSiteModels(readApiOptions(readRootData(context()),currentApiTarget()).model);});
+    nodes.apiProfile.addEventListener('change',()=>void loadSavedSiteModels());
+    nodes.apiReloadModels.addEventListener('click',()=>void loadSavedSiteModels(nodes.apiProfileModelManual.value.trim()||nodes.apiProfileModel.value));
     nodes.saveApi.addEventListener('click',()=>void savePhoneApi());
     nodes.apiTest.addEventListener('click',()=>void testPhoneApi());
     nodes.saveMessageStyle.addEventListener('click', () => void savePhoneMessageStyle());
@@ -7418,7 +7492,6 @@ function mount() {
      const target=e.target.closest('[data-settings-nav]');
      if(target)showSettingsCategory(target.dataset.settingsNav);
     });
-    nodes.settingsOpenDiagnostics.addEventListener('click',()=>setScreen('diagnostics'));
     nodes.phoneMemorySave.addEventListener('click',()=>void loadPhoneMemoryController().then(m=>m?.saveSettings()));
     nodes.phoneMemoryRun.addEventListener('click',()=>void loadPhoneMemoryController().then(m=>m?.summarize(true)));
     nodes.phoneMemoryList.addEventListener('click',e=>void memoryController?.handleClick(e));
