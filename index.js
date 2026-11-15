@@ -3308,6 +3308,15 @@ async function loadWeiboController(){
    saveSharedAccounts:(accounts,originalCtx)=>saveSharedQunxingAccounts(accounts,originalCtx||context()),
    ensureSharedAccounts:()=>ensureSharedQunxingAccounts(context()),
    storyContext:weiboStoryContext,scanAccounts:scanQunxingAccounts,
+    accountSubjects:()=>{
+     const ctx=context(),main=selectedCharacter(ctx);
+     if(!main)return [];
+     const people=[{id:'primary',name:getCharacterName(main)}];
+     for(const person of readRootData(ctx).contacts||[]){
+      if(person?.id?.startsWith('npc:')&&person?.name)people.push({id:person.id,name:person.name});
+     }
+     return people;
+    },
     sharePost:openQunxingShare,photosForAccount:name=>{const person=galleryPeople().find(p=>p.name===name);return person?photosForActor(person.id,'public'):[];}
   });return weiboController;
  }).catch(error=>{
