@@ -2734,3 +2734,71 @@
 
 /* Existing lock codes unlock immediately; setup/confirmation retains its action button. */
 #st-little-phone-root .lp-lock-submit[hidden]{display:none!important;}
+
+
+/* v0.14.0: Fictional takeout storefront; follows the phone's six-color theme. */
+#st-little-phone-root .lp-takeout-screen{min-height:0;display:flex;flex-direction:column;background:var(--lp-ice,#e0e8f2);color:var(--lp-navy,#35568a);}
+#st-little-phone-root .lp-takeout-content{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:12px 13px 24px;}
+#st-little-phone-root .lp-takeout-body{display:flex;flex-direction:column;gap:11px;padding-bottom:12px;}
+#st-little-phone-root .lp-takeout-heading{display:flex;flex-direction:column;gap:4px;padding:9px 4px 5px;}
+#st-little-phone-root .lp-takeout-heading strong{font-size:18px;color:var(--lp-navy,#35568a);}
+#st-little-phone-root .lp-takeout-heading small{font-size:11px;color:var(--lp-slate,#8b9bc1);line-height:1.4;}
+#st-little-phone-root .lp-takeout-search{width:100%;padding:13px 15px;background:var(--lp-white,#fff);border:1px solid var(--lp-slate,#8b9bc1);border-radius:15px;color:var(--lp-navy,#35568a);font:inherit;font-size:13px;}
+#st-little-phone-root .lp-takeout-shop,
+#st-little-phone-root .lp-takeout-cart-group,
+#st-little-phone-root .lp-takeout-order,
+#st-little-phone-root .lp-takeout-address{
+ background:var(--lp-white,#fff);border:1px solid color-mix(in srgb,var(--lp-slate,#8b9bc1) 30%,transparent);
+ border-radius:16px;padding:14px;box-shadow:0 2px 8px #35568a09;
+}
+#st-little-phone-root .lp-takeout-shop{display:flex;align-items:center;gap:11px;}
+#st-little-phone-root .lp-takeout-shop-badge{display:grid;place-items:center;width:54px;height:54px;flex:0 0 54px;border-radius:14px;background:var(--lp-blush,#f1d6d6);font-size:25px;}
+#st-little-phone-root .lp-takeout-shop-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;}
+#st-little-phone-root .lp-takeout-shop-info strong{font-size:14px;line-height:1.4;}
+#st-little-phone-root .lp-takeout-shop-info small{font-size:10px;line-height:1.5;color:var(--lp-slate,#8b9bc1);}
+#st-little-phone-root .lp-takeout-btn{font:inherit;font-size:12px;border-radius:11px;border:1px solid var(--lp-slate,#8b9bc1);background:var(--lp-white,#fff);color:var(--lp-navy,#35568a);padding:10px 12px;cursor:pointer;max-width:100%;}
+#st-little-phone-root .lp-takeout-btn:disabled{opacity:.52;cursor:not-allowed;}
+#st-little-phone-root .lp-takeout-shop .lp-takeout-btn{flex:0 0 auto;padding:8px 9px;background:var(--lp-ice,#e0e8f2);}
+#st-little-phone-root .lp-takeout-dish{display:flex;align-items:center;justify-content:space-between;gap:9px;padding:13px 11px;border-bottom:1px solid var(--lp-slate,#8b9bc1);background:var(--lp-white,#fff);border-radius:9px;}
+#st-little-phone-root .lp-takeout-dish>div:first-child{flex:1;display:flex;flex-direction:column;gap:8px;}
+#st-little-phone-root .lp-takeout-dish strong{font-size:13px;}
+#st-little-phone-root .lp-takeout-dish small{font-size:13px;color:var(--lp-rose,#e39f9f);}
+#st-little-phone-root .lp-takeout-qty{display:flex;align-items:center;gap:7px;flex:0 0 auto;}
+#st-little-phone-root .lp-takeout-qty .lp-takeout-btn{padding:4px 8px;min-width:31px;font-size:17px;}
+#st-little-phone-root .lp-takeout-cart-group,
+#st-little-phone-root .lp-takeout-order,
+#st-little-phone-root .lp-takeout-address{display:flex;flex-direction:column;gap:11px;}
+#st-little-phone-root .lp-takeout-cart-group strong,
+#st-little-phone-root .lp-takeout-order strong,
+#st-little-phone-root .lp-takeout-address strong{font-size:13px;}
+#st-little-phone-root .lp-takeout-cart-group small,
+#st-little-phone-root .lp-takeout-order small,
+#st-little-phone-root .lp-takeout-address small{font-size:11px;color:var(--lp-slate,#8b9bc1);line-height:1.5;overflow-wrap:anywhere;}
+#st-little-phone-root .lp-takeout-cart-line{display:flex;align-items:center;gap:7px;font-size:12px;line-height:1.4;flex-wrap:wrap;}
+#st-little-phone-root .lp-takeout-cart-line span:first-child{flex:1;min-width:94px;}
+#st-little-phone-root .lp-takeout-cart-line .lp-takeout-btn{padding:4px 7px;min-width:26px;}
+#st-little-phone-root .lp-takeout-total{font-size:16px!important;color:var(--lp-navy,#35568a);align-self:flex-end;}
+#st-little-phone-root .lp-takeout-subtotal{padding:12px;border-radius:12px;background:var(--lp-white,#fff);font-size:12px;}
+#st-little-phone-root .lp-takeout-me-menu{display:flex;flex-direction:column;border-radius:13px;overflow:hidden;background:var(--lp-white,#fff);}
+#st-little-phone-root .lp-takeout-me-menu .lp-takeout-btn{width:100%;text-align:left;border:0;border-bottom:1px solid var(--lp-ice,#e0e8f2);border-radius:0;padding:16px;font-size:14px;}
+#st-little-phone-root .lp-takeout-form{padding:13px;border-radius:14px;background:var(--lp-white,#fff);display:flex;flex-direction:column;gap:13px;}
+#st-little-phone-root .lp-takeout-field{display:flex;flex-direction:column;gap:7px;font-size:12px;}
+#st-little-phone-root .lp-takeout-field input{width:100%;border:1px solid var(--lp-slate,#8b9bc1);border-radius:9px;padding:10px;background:#fff;color:var(--lp-navy,#35568a);font:inherit;font-size:13px;}
+#st-little-phone-root .lp-takeout-note,
+#st-little-phone-root .lp-takeout-error,
+#st-little-phone-root .lp-takeout-empty{font-size:12px;line-height:1.65;padding:9px 11px;margin:0;border-radius:9px;overflow-wrap:anywhere;}
+#st-little-phone-root .lp-takeout-note{color:var(--lp-navy,#35568a);background:var(--lp-white,#fff);}
+#st-little-phone-root .lp-takeout-error{color:var(--lp-navy,#35568a);background:var(--lp-blush,#f1d6d6);}
+#st-little-phone-root .lp-takeout-empty{color:var(--lp-slate,#8b9bc1);}
+#st-little-phone-root .lp-takeout-tabs{
+ flex:0 0 auto;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
+ border-top:1px solid var(--lp-slate,#8b9bc1);background:var(--lp-white,#fff);padding:5px 2px max(7px,env(safe-area-inset-bottom,0px));
+}
+#st-little-phone-root .lp-takeout-tabs button{
+ display:flex;flex-direction:column;align-items:center;gap:2px;min-height:53px;justify-content:center;
+ border:0;border-radius:0;background:transparent;color:var(--lp-slate,#8b9bc1);font:inherit;cursor:pointer;
+}
+#st-little-phone-root .lp-takeout-tabs button.active{color:var(--lp-navy,#35568a);background:var(--lp-ice,#e0e8f2);box-shadow:inset 0 -3px 0 var(--lp-navy,#35568a);}
+#st-little-phone-root .lp-takeout-tabs span{font-size:23px;line-height:1;}
+#st-little-phone-root .lp-takeout-tabs small{font-size:12px;}
+#st-little-phone-root .lp-takeout-shop[hidden]{display:none!important;}
