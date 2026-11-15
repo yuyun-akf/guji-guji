@@ -148,7 +148,7 @@ test('manual refresh discards generated posts before sending a new API request',
  const h=setup({phoneGenerate:(options,calls)=>{
   if(block&&calls===3){started();return deferred;}
   return JSON.stringify({headline:'当前话题',posts:Array.from({length:5},(_,i)=>({
-   author:'网友',text:'初始'+calls+'-'+i,comments:[{name:'甲',text:'评论'}]
+   author:'网友',text:'初始'+calls+'-'+i,comments:[{name:'甲',text:'评论'},{name:'另一人',text:'也来评论'}]
   }))});
  }});
  await h.app.generate('home');assert.equal(h.app.state.posts.home.length,10);
@@ -159,7 +159,7 @@ test('manual refresh discards generated posts before sending a new API request',
  assert.equal(h.c.chatMetadata.db.qunxing.generated.feeds.home.length,0);
  assert.equal(h.c.chatMetadata.db.qunxing.posts.length,0);
  unblock(JSON.stringify({headline:'刷新结果',posts:Array.from({length:5},(_,i)=>({
-  author:'新网友',text:'刷新后'+i,comments:[{name:'乙',text:'新评论'}]
+  author:'新网友',text:'刷新后'+i,comments:[{name:'乙',text:'新评论'},{name:'甲',text:'有趣'}]
  }))}));
  await refresh;
  assert.equal(h.app.state.posts.home.length,10);
