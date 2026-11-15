@@ -2828,3 +2828,61 @@
 @media(prefers-reduced-motion:reduce){
  #st-little-phone-root .lp-desktop-pages>.lp-desktop-page{transition:none!important;}
 }
+
+
+/* v0.15 theme editor: controls are opt-in and scoped to the phone. */
+#st-little-phone-root .lp-desktop-app-icon svg,
+#st-little-phone-root .lp-desktop-app-icon img{
+ width:var(--lp-desktop-icon-size,34px)!important;
+ height:var(--lp-desktop-icon-size,34px)!important;
+ max-width:100%;max-height:100%;
+ object-fit:contain;
+}
+#st-little-phone-root .lp-desktop-app-icon img{display:block;border:0;border-radius:0;}
+#st-little-phone-root .lp-desktop-page .lp-desktop-grid{
+ row-gap:var(--lp-desktop-gap,25px)!important;
+}
+#st-little-phone-root .lp-theirs .lp-bubble:not(.lp-payment-shell):not(.lp-location-shell){
+ border-radius:5px var(--lp-bubble-radius,15px) var(--lp-bubble-radius,15px) var(--lp-bubble-radius,15px)!important;
+}
+#st-little-phone-root .lp-mine .lp-bubble:not(.lp-payment-shell):not(.lp-location-shell){
+ border-radius:var(--lp-bubble-radius,15px) 5px var(--lp-bubble-radius,15px) var(--lp-bubble-radius,15px)!important;
+}
+#gujiguji-floating-launcher .lp-launcher-art img{
+ display:block;width:48px;height:48px;object-fit:contain;pointer-events:none;
+}
+#st-little-phone-root .lp-theme-library-tools,
+#st-little-phone-root .lp-theme-guide{
+ padding:12px;border:1px solid var(--lp-border);
+ border-radius:13px;background:var(--lp-white,#fff);
+ margin:9px 0 14px;color:var(--lp-navy);
+}
+#st-little-phone-root .lp-theme-library-tools{display:flex;flex-direction:column;gap:10px;}
+#st-little-phone-root .lp-theme-library-tools>label,
+#st-little-phone-root .lp-theme-field{
+ display:flex;flex-direction:column;gap:7px;font-size:12px;color:var(--lp-navy);
+}
+#st-little-phone-root .lp-theme-library-tools input[type="text"]{
+ width:100%;min-height:37px;border-radius:9px;padding:8px 10px;
+ border:1px solid var(--lp-slate);background:var(--lp-white);color:var(--lp-navy);
+}
+#st-little-phone-root .lp-theme-button-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+#st-little-phone-root .lp-theme-button-grid button,
+#st-little-phone-root .lp-theme-guide button{
+ min-width:0;border:1px solid var(--lp-slate);
+ padding:10px 5px;border-radius:9px;background:var(--lp-ice);color:var(--lp-navy);
+ font-size:12px;font-family:inherit;
+}
+#st-little-phone-root .lp-theme-button-grid button:disabled{opacity:.38;}
+#st-little-phone-root .lp-theme-guide summary{font-size:13px;font-weight:600;cursor:pointer;padding:5px;}
+#st-little-phone-root .lp-theme-guide code{
+ display:block;font-size:10px;overflow-wrap:anywhere;
+ padding:7px 5px;border-bottom:1px solid var(--lp-ice);color:var(--lp-navy);
+}
+#st-little-phone-root .lp-theme-guide p{font-size:11px;line-height:1.6;}
+#st-little-phone-root .lp-theme-field{margin:12px 0;}
+#st-little-phone-root .lp-theme-field input[type="range"]{width:100%;accent-color:var(--lp-navy);}
+#st-little-phone-root .lp-theme-library-tools input[type="file"],
+#st-little-phone-root .lp-settings[data-lp-screen="theme"] input[type="file"]{
+ width:100%;font-size:11px;max-width:100%;
+}
