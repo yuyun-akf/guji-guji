@@ -1358,10 +1358,10 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
    else if(type==='favorite')change={favorited:!a.favorited};
    else if(type==='repost'){
     const next=!a.reposted;
+    await persistAction(p,{reposted:next});
+    // The repost belongs to the user; its random original author does not
+    // become a permanent account just because it was shared once.
     await mutate(q=>{
-     let original=q.posts.find(x=>x.id===p.id);
-     if(!original){original={...p,actions:{}};q.posts.push(original);}
-     original.actions={...(original.actions||{}),reposted:next};
      q.posts=q.posts.filter(x=>!(x.repostOf===p.id&&x.actions?.owned));
      if(next){
       const me=q.profile;
@@ -1373,10 +1373,10 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
      q.posts=q.posts.slice(-180);
     });
     if(next){
-     const rootData=structuredClone(root());
-     api.publishPhoneAppEvent(rootData,{app:'weibo',action:'reposted',id:p.id,
+     const story=structuredClone(root());
+     api.publishPhoneAppEvent(story,{app:'weibo',action:'reposted',id:p.id,
       detail:'转发 '+p.author+'：'+clean(p.text,110)});
-     await api.writeData(context(),{...rootData,__contactId:'primary'});
+     await api.writeData(context(),{...story,__contactId:'primary'});
     }
     feedback(next?'已转发到我的动态':'已取消转发并移除我的动态');
     render();return;
