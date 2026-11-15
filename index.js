@@ -4347,19 +4347,21 @@ async function tickAutonomousActivity(manualChannel='') {
         if(!same())return;
         const contact=contactCharacter(ctx,id),data=structuredClone(readData(ctx,id));
         const system=await composePhonePrompt(ctx,contact,data);
+        const stickerCatalog=stickerLibrary(ctx),suggestedStickers=chooseStickerCandidates(stickerCatalog,data);
+        const rolePhotos=photosForActor(id,'chat',ctx),publicPhotos=photosForActor(id,'public',ctx);
         const plannedPost={authorId:id,author:contactDisplayName(ctx,id),text:''};
         const batchActors=channel==='moments'&&cfg.momentInteractions?momentBatchActors(ctx,plannedPost):[];
         let answer;
         if(channel==='messages'){
             answer=await generateWithTimeout(ctx,{
-                task:'autonomy',systemPrompt:[system,messageStylePrompt(data),paymentReplyInstructions(data,id),
+                task:'autonomy',systemPrompt:[system,messageStylePrompt(data),stickerPrompt(suggestedStickers),albumCatalogPrompt(id),paymentReplyInstructions(data,id),
                     '【主动发消息】请你作为当前联系人，结合关系、角色性格、现有私聊和最近生活，自然地给 user 发一条主动消息。不是回复正在等待的提问。可以决定不打扰，此时只输出 [SKIP]。不得替 user 说话，也不要虚构已经发生的事件。'].join('\n\n'),
                 prompt:[...buildPrompt(data,ctx,contact).slice(-10),{role:'user',content:'【系统触发：主动发消息时机】可以自主决定是否联系 user。'}]
             },data);
         }else{
             const writePostWithReactions=batchActors.length>0;
             answer=await generateWithTimeout(ctx,{
-                task:'autonomy',systemPrompt:system+'\n\n【角色朋友圈】写一条此角色愿意公开的朋友圈动态，不代替 user 发言，不虚构重大事件；不想发布只输出 [SKIP]。'+
+                task:'autonomy',systemPrompt:system+'\n\n【角色朋友圈】写一条此角色愿意公开的朋友圈动态，不代替 user 发言，不虚构重大事件；不想发布只输出 [SKIP]。如有合适的本角色公开相册图片，可在朋友圈正文末尾添加 [[photo:照片ID]]，只能使用以下ID：'+publicPhotos.map(p=>p.id+'（'+(p.description||p.title||'照片')+'）').join('；')+'。'+
                     (writePostWithReactions?'\n\n'+momentBatchTask(ctx,plannedPost,batchActors,{writePost:true}):'不超过120字。'),
                 prompt:[{role:'user',content:'【系统触发：朋友圈发布时机】请按角色性格自行决定。'}]
             },data);
@@ -4374,8 +4376,8 @@ async function tickAutonomousActivity(manualChannel='') {
         if(channel==='messages'){
             const afterReceipt=applyPaymentModelTags(data,String(answer),id);
             const paymentResult=applyCharacterPaymentSendTag(data,afterReceipt,id);
-            const messages=paymentResult.text?splitPhoneReply(paymentResult.text,data).slice(0,4):[];
-            for(const message of messages)appendPhoneMessage(data,'character',resolvePhonePlaceholders(message,ctx,contact));
+            const messages=paymentResult.text?parseStickerReply(paymentResult.text,data,stickerCatalog,rolePhotos).slice(0,4):[];
+            for(const message of messages)appendPhoneMessage(data,'character',resolvePhonePlaceholders(message.text,ctx,contact),message);
             if(paymentResult.created){
                 const card=appendPhoneMessage(data,'character',
                     paymentResult.created.kind==='redpacket'?'[红包]':'[转账]');
@@ -4392,12 +4394,15 @@ async function tickAutonomousActivity(manualChannel='') {
         }else{
             const parsed=batchActors.length?parseMomentBatch(answer):null;
             const postText=batchActors.length?parsed?.post:String(answer).slice(0,450);
-            if(!postText){recordActivity('角色朋友圈','未解析出有效动态；不会再次请求模型以避免额外费用','info');return;}
+            const photoTag=String(postText||'').match(/\[\[photo:([^\]\r\n]+)\]\]/);
+            const selectedPhoto=photoTag?publicPhotos.find(p=>p.id===photoTag[1]):null;
+            const publishedText=String(postText||'').replace(/\[\[photo:[^\]\r\n]+\]\]/g,'').trim();
+            if(!publishedText){recordActivity('角色朋友圈','未解析出有效动态；不会再次请求模型以避免额外费用','info');return;}
             const fresh=structuredClone(readRootData(ctx));
             fresh.moments=Array.isArray(fresh.moments)?fresh.moments:[];
             const created={id:'moment-'+Date.now()+'-'+Math.random().toString(36).slice(2,8),
                 authorId:id,author:contactDisplayName(ctx,id),
-                contactId:id,text:postText,storyTime:fresh.storyTime,createdAt:new Date().toISOString()};
+                contactId:id,text:publishedText,...(selectedPhoto?{image:selectedPhoto.image}:{}),storyTime:fresh.storyTime,createdAt:new Date().toISOString()};
             fresh.moments.push(created);
             const reactions=parsed?applyMomentBatch(ctx,fresh,created,batchActors,parsed.actions):0;
             if(batchActors.length)fresh.momentInteractionSeen=[...new Set([...(fresh.momentInteractionSeen||[]),created.id])].slice(-150);
@@ -5203,8 +5208,8 @@ async function resetAvatar(side) {
 }
 function exportChatPayload(ctx,data) {
     return {format:'gujiguji-chat',version:1,character:getCharacterName(selectedCharacter(ctx)),exportedAt:new Date().toISOString(),
-        messages:data.messages.map(({id,from,text,storyTime,createdAt,image,sticker,stickerName,replyTo,replyQuote})=>({
-            id,from,text,storyTime,createdAt,...(image?{image}:{}),...(sticker?{sticker:true,stickerName}:{}),
+        messages:data.messages.map(({id,from,text,storyTime,createdAt,image,images,sharePost,sticker,stickerName,replyTo,replyQuote})=>({
+            id,from,text,storyTime,createdAt,...(image?{image}:{}),...(Array.isArray(images)?{images}:{}),...(sharePost?{sharePost}:{}),...(sticker?{sticker:true,stickerName}:{}),
             ...(replyTo?{replyTo}:{}),...(replyQuote?{replyQuote}:{})
         }))};
 }
@@ -5216,10 +5221,12 @@ function parseChatImport(raw) {
         if (!m || !['user','character','system'].includes(m.from) || typeof m.text!=='string'||m.text.length>50000)
             throw new Error('第'+(i+1)+'条消息格式不合法');
         const image=typeof m.image==='string' && /^data:image\/(?:jpeg|png|webp|gif);base64,/.test(m.image) && m.image.length<950000?m.image:'';
+        const images=Array.isArray(m.images)?m.images.filter(src=>typeof src==='string'&&/^data:image\/(?:jpeg|png|webp);base64,/.test(src)&&src.length<1600000).slice(0,9):[];
+        const sharePost=m.sharePost&&typeof m.sharePost==='object'?makeShareSnapshot(m.sharePost):null;
         return {id: typeof m.id==='string'&&m.id.length<100?m.id:'import-'+i+'-'+Date.now(),
             from:m.from,text:m.text,storyTime:typeof m.storyTime==='string'?m.storyTime.slice(0,30):'',
             createdAt:typeof m.createdAt==='string'?m.createdAt.slice(0,40):new Date().toISOString(),
-            ...(image?{image}:{}),...(image&&m.sticker===true?{sticker:true,stickerName:String(m.stickerName||'').slice(0,60)}:{}),
+            ...(image?{image}:{}),...(images.length?{images}:{}),...(sharePost?.text?{sharePost}:{}),...(image&&m.sticker===true?{sticker:true,stickerName:String(m.stickerName||'').slice(0,60)}:{}),
             ...(typeof m.replyQuote==='string'?{replyQuote:m.replyQuote.slice(0,180)}:{}),
             ...(typeof m.replyTo==='string'?{replyTo:m.replyTo.slice(0,100)}:{})
         };
@@ -5833,7 +5840,7 @@ function renderMessages(data){
  let lastSeparator='';
  const currentStoryDate=String(data.storyTime||localDateTime());
  for(const message of list){
-  if(typeof message?.text!=='string'||(message.from==='character'&&!message.text.trim()&&!message.image))continue;
+  if(typeof message?.text!=='string'||(message.from==='character'&&!message.text.trim()&&!message.image&&!message.images?.length))continue;
   const stamp=String(message.storyTime||'');
   if(stamp&&isChatTimeBreak(lastSeparator,stamp)){
    const separator=document.createElement('div');separator.className='lp-chat-time-divider';
