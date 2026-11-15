@@ -576,7 +576,8 @@ export function createWeiboModule(api) {
   const fallback=Number.isFinite(Date.parse(base))?new Date(Date.parse(base)-86400000).toISOString().slice(0,16):'';
   field('time','发布时间（故事时间）',(record?.time&&record.time!=='历史动态'?record.time:fallback).slice(0,16),'datetime-local');
   field('text','帖子正文（以该角色账号发布）',record?.text||'','textarea');
-  field('likes','点赞数（可以手动指定）',record?.likes??'','number');
+  field('likes','点赞数（留空自动估算）',record?.likes??'','number');
+  field('commentCount','评论总数（留空自动估算）',record?.commentCount??'','number');
   field('comments','评论（每行一条，例如 粉丝甲：内容）',commentsToLines(record?.comments),'textarea');
   const row=el('div','lp-wb-history-actions');
   row.append(control(record?'保存历史帖修改':'以该角色身份添加历史帖',
@@ -1160,14 +1161,22 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
    }
    const rawLikes=get('likes').trim();
    if(rawLikes&&!/^\d+$/.test(rawLikes)){feedback('点赞数必须为非负整数');return;}
-   const likes=rawLikes?Number(rawLikes):0;
+   const range=historicalLikeRange(owner.followers);
+   const likes=rawLikes?Number(rawLikes):
+    Math.min(range.max,Math.max(range.min,Math.round((Number(owner.followers)||0)*
+      (.003+stableSeed(owner.id+text)*.012))));
    if(!Number.isSafeInteger(likes)||likes>9999999999){feedback('点赞数超出允许范围');return;}
    const comments=parseCommentLines(get('comments'));
+   const rawCommentCount=get('commentCount').trim();
+   if(rawCommentCount&&!/^\d+$/.test(rawCommentCount)){feedback('评论总数必须为非负整数');return;}
+   const commentCount=rawCommentCount?Number(rawCommentCount):
+    Math.max(comments.length,Math.round(likes*(.01+stableSeed(text)*.035)));
+   if(!Number.isSafeInteger(commentCount)||commentCount>9999999999){feedback('评论总数超出允许范围');return;}
    const selected=state.historyEditingId,original=selected?byId(selected):null;
    if(selected&&(!original||!accountMatches(original,owner)))return;
    const post={...(original||{}),id:original?.id||uid('post'),
     author:owner.name,authorId:owner.id,handle:owner.handle,avatar:owner.avatar,
-    category:original?.category||'历史公开动态',text,likes,comments,
+    category:original?.category||'历史公开动态',text,likes,comments,commentCount,
     time:time||original?.time||'历史动态',zone:'world',actions:original?.actions||{},
     manuallyCurated:true,backfilled:original?.backfilled??true};
    await mutate(q=>{
