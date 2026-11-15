@@ -6663,13 +6663,24 @@ function installWandEntry() {
     // Host menu labels and icons may have different computed theme colors.
     const adoptHostWandColor=()=>{
       if(typeof window.getComputedStyle!=='function')return;
-      const peer=[...(typeof menu.querySelectorAll==='function'?menu.querySelectorAll('.extension_container'):[])]
+      // Do not copy colors from the last item blindly: it may be muted/disabled.
+      // Select the most vividly themed enabled icon so the entry matches the actual ST skin.
+      const saturation=color=>{
+        const values=String(color||'').match(/[\d.]+/g)?.slice(0,3).map(Number)||[];
+        return values.length===3?Math.max(...values)-Math.min(...values):0;
+      };
+      const peers=[...(typeof menu.querySelectorAll==='function'?menu.querySelectorAll('.extension_container'):[])]
        .filter(e=>e!==container&&!container.contains?.(e))
        .map(e=>{
         const peerIcon=e.querySelector('.extensionsMenuExtensionButton');
         const peerButton=peerIcon?.closest('button,.list-group-item')||e.querySelector('button,.list-group-item');
-        return peerButton?{peerIcon,peerButton}:null;
-       }).filter(Boolean).at(-1);
+        if(!peerButton||peerButton.disabled||peerButton.getAttribute('aria-disabled')==='true')return null;
+        const style=window.getComputedStyle(peerIcon||peerButton);
+        const buttonStyle=window.getComputedStyle(peerButton);
+        if(style.display==='none'||buttonStyle.display==='none'||Number(style.opacity)<.65)return null;
+        return {peerIcon,peerButton,score:saturation(style.color)+saturation(buttonStyle.color)*.15};
+       }).filter(Boolean).sort((x,y)=>y.score-x.score);
+      const peer=peers[0];
       if(!peer)return;
       const label=[...peer.peerButton.children].find(e=>e!==peer.peerIcon&&!e.contains?.(peer.peerIcon))||peer.peerButton;
       const peerButtonStyle=window.getComputedStyle(peer.peerButton);
@@ -6684,8 +6695,9 @@ function installWandEntry() {
       paint(icon,'color',iconStyle.color);
       for(const k of ['font-size','font-family','font-weight','line-height','letter-spacing'])
        paint(button,k,peerButtonStyle.getPropertyValue(k));
-      paint(title,'opacity',labelStyle.opacity);
-      paint(icon,'opacity',iconStyle.opacity);
+      // Full opacity prevents gray disabled-neighbor styling from leaking in.
+      paint(title,'opacity','1');
+      paint(icon,'opacity','1');
     };
     container.append(button);
     menu.append(container);
@@ -6693,6 +6705,9 @@ function installWandEntry() {
     if(typeof requestAnimationFrame==='function')requestAnimationFrame(adoptHostWandColor);
     button.addEventListener('pointerenter',adoptHostWandColor);
     button.addEventListener('focus',adoptHostWandColor);
+    menu.addEventListener('pointerenter',adoptHostWandColor);
+    // Also sample once after SillyTavern's theme styles finish applying.
+    setTimeout(adoptHostWandColor,350);
     button.addEventListener('click', openPhone);
     wandEntry = container;
     recordActivity('启动入口', '魔法棒菜单已注册「咕叽咕机」。', 'success');
