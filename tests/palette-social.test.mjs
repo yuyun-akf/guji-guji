@@ -58,7 +58,9 @@ test('Qunxing repost is mirrored to user feed; undo and clear preserve original 
  assert.equal(events.length,1);
 });
 test('Qunxing new feed keeps historical interactions outside recommendation view',()=>{
- assert.ok(weibo.includes('state.posts={home:[],nearby:[]};state.trends=[]'));
+ assert.ok(weibo.includes("async function persistGenerated(kind,extra={})"));
+ assert.ok(weibo.includes("data().generated"));
+ assert.ok(!weibo.includes('Only closing the entire phone clears transient generated content.'));
  assert.ok(weibo.includes("p.actions?.owned||p.autoPublished"));
  assert.ok(weibo.includes("clearInteractions"));
 });
