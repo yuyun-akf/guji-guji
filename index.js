@@ -3593,7 +3593,7 @@ async function maybeAutoFriendRequest(ctx=context()) {
         const person=contactCharacter(ctx,eligible);
         const system=await composePhonePrompt(ctx,person,data);
         const answer=await generateWithTimeout(ctx,{
-            systemPrompt:system+'\n\n【是否主动申请好友】主线里这两个人已经交换联系方式，但尚未互加好友。请按当前角色的自主意愿决定是否向 user 发起好友申请。可以不申请。只输出 APPLY 或 SKIP。',
+            task:'autonomy',systemPrompt:system+'\n\n【是否主动申请好友】主线里这两个人已经交换联系方式，但尚未互加好友。请按当前角色的自主意愿决定是否向 user 发起好友申请。可以不申请。只输出 APPLY 或 SKIP。',
             prompt:[...buildPrompt(data,ctx,person).slice(-8),{role:'user',content:'【主线已发生】'+evidence+'\n是否由你主动发起好友申请？'}]
         },data);
         if(!same()||!/^APPLY$/i.test(stripModelReasoning(answer)))return;
@@ -4044,14 +4044,14 @@ async function tickAutonomousActivity(manualChannel='') {
         let answer;
         if(channel==='messages'){
             answer=await generateWithTimeout(ctx,{
-                systemPrompt:[system,messageStylePrompt(data),paymentReplyInstructions(data,id),
+                task:'autonomy',systemPrompt:[system,messageStylePrompt(data),paymentReplyInstructions(data,id),
                     '【主动发消息】请你作为当前联系人，结合关系、角色性格、现有私聊和最近生活，自然地给 user 发一条主动消息。不是回复正在等待的提问。可以决定不打扰，此时只输出 [SKIP]。不得替 user 说话，也不要虚构已经发生的事件。'].join('\n\n'),
                 prompt:[...buildPrompt(data,ctx,contact).slice(-10),{role:'user',content:'【系统触发：主动发消息时机】可以自主决定是否联系 user。'}]
             },data);
         }else{
             const writePostWithReactions=batchActors.length>0;
             answer=await generateWithTimeout(ctx,{
-                systemPrompt:system+'\n\n【角色朋友圈】写一条此角色愿意公开的朋友圈动态，不代替 user 发言，不虚构重大事件；不想发布只输出 [SKIP]。'+
+                task:'autonomy',systemPrompt:system+'\n\n【角色朋友圈】写一条此角色愿意公开的朋友圈动态，不代替 user 发言，不虚构重大事件；不想发布只输出 [SKIP]。'+
                     (writePostWithReactions?'\n\n'+momentBatchTask(ctx,plannedPost,batchActors,{writePost:true}):'不超过120字。'),
                 prompt:[{role:'user',content:'【系统触发：朋友圈发布时机】请按角色性格自行决定。'}]
             },data);
@@ -4353,7 +4353,7 @@ async function runMomentBatch(postId,manual=false,commentIds=[]) {
         if(!sameSession(session))return;
         const system=await composePhonePrompt(ctx,char,thread);
         const task=momentBatchTask(ctx,post,actors,{replyComments:newComments});
-        const answer=await generateWithTimeout(ctx,{systemPrompt:system+'\n\n'+task,
+        const answer=await generateWithTimeout(ctx,{task:'autonomy',systemPrompt:system+'\n\n'+task,
             prompt:[{role:'user',content:'【系统触发：一次生成本条朋友圈允许的全部角色反应】'}]},thread);
         if(!sameSession(session))return;
         const decision=parseMomentBatch(answer),fresh=structuredClone(readRootData(ctx));
@@ -5648,7 +5648,7 @@ async function runReply(ctx, char, data, session, existingJob = null) {
         const imageRecords=(data.messages||[]).filter(msg=>msg?.image&&!msg?.sticker).length;
         recordActivity('图片上下文',`当前手机记录有 ${imageRecords} 张普通照片；最近 ${CONTEXT_MESSAGE_LIMIT} 条消息内已纳入 ${count} 张；${count?'将使用多模态图片通道':'本轮仅文本，未向模型传图片'}。`);
         const result = await generateWithTimeout(ctx, {
-            systemPrompt,
+            task:'chat',systemPrompt,
             prompt: phoneHistory,
         }, data);
         if (!sameSession(session)) return;
