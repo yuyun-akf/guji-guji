@@ -1,5 +1,5 @@
 /**
- * GujiGuji v0.15.0: a modular phone shell with isolated per-chat context.
+ * GujiGuji v0.15.1: a modular phone shell with isolated per-chat context.
  * No direct host-module imports; uses only the documented context surface.
  */
 
@@ -85,7 +85,7 @@ const APP_CATALOG=[
  {key:'calendar',screen:'calendar',name:'日历',ready:true},
  {key:'settings',screen:'settings',name:'设置',ready:true},
  {key:'diagnostics',screen:'diagnostics',name:'运行日志',ready:true},
- {key:'shopping',screen:'shopping',name:'购物',ready:false},
+ {key:'shopping',screen:'shopping',name:'购物',ready:true},
  {key:'takeout',screen:'takeout',name:'外卖',ready:true},
  {key:'theme',screen:'theme',name:'主题',ready:true}
 ];
@@ -124,10 +124,12 @@ let weiboController=null;
 let weiboLoadPromise=null;
 let takeoutController=null;
 let takeoutLoadPromise=null;
+let shoppingController=null;
+let shoppingLoadPromise=null;
 let clockTicker=null;
 let clockTickBusy=false;
 const weiboState={scope:'',posts:[],trending:[],tab:'feed',loading:false,selectedId:'',generationId:0};
-const SCREENS = new Set(['lock', 'home', 'weibo', 'wallet', 'takeout', 'chat', 'chatList', 'contacts', 'requests', 'profile', 'addNpc', 'discoverNpc', 'discover', 'me', 'chatOptions', 'settings', 'diagnostics', 'calendar', 'theme', 'presetPicker', 'worldPicker']);
+const SCREENS = new Set(['lock', 'home', 'weibo', 'wallet', 'shopping', 'takeout', 'chat', 'chatList', 'contacts', 'requests', 'profile', 'addNpc', 'discoverNpc', 'discover', 'me', 'chatOptions', 'settings', 'diagnostics', 'calendar', 'theme', 'presetPicker', 'worldPicker']);
 
 function context() {
     try {
@@ -2859,7 +2861,7 @@ async function scanQunxingAccounts(extraWorld=''){
 async function loadWeiboController(){
  if(weiboController)return weiboController;
  if(weiboLoadPromise)return weiboLoadPromise;
- weiboLoadPromise=import('./weibo.js?v=0.15.0').then(module=>{
+ weiboLoadPromise=import('./weibo.js?v=0.15.1').then(module=>{
   weiboController=module.createWeiboModule({
    context,getNodes:()=>nodes,readRootData,writeData,readData,phoneGenerate,
    selectedCharacter,currentPersona,stripModelReasoning,publishPhoneAppEvent,
@@ -2872,10 +2874,24 @@ async function loadWeiboController(){
  return weiboLoadPromise;
 }
 
+async function loadShoppingController(){
+ if(shoppingController)return shoppingController;
+ if(shoppingLoadPromise)return shoppingLoadPromise;
+ shoppingLoadPromise=import('./shopping.js?v=0.15.1').then(module=>{
+  shoppingController=module.createShoppingModule({context,getNodes:()=>nodes});
+  return shoppingController;
+ }).catch(error=>{
+  recordError('加载购物',error);
+  shoppingLoadPromise=null;
+  if(nodes?.shoppingContent)nodes.shoppingContent.textContent='购物加载失败：'+String(error.message||error);
+  return null;
+ });
+ return shoppingLoadPromise;
+}
 async function loadTakeoutController(){
  if(takeoutController)return takeoutController;
  if(takeoutLoadPromise)return takeoutLoadPromise;
- takeoutLoadPromise=import('./takeout.js?v=0.15.0').then(module=>{
+ takeoutLoadPromise=import('./takeout.js?v=0.15.1').then(module=>{
   takeoutController=module.createTakeoutModule({
    context,getNodes:()=>nodes,readRootData,writeData,readData,currentPersona,
    walletChargeOrder,walletRefundOrder,walletMoney,phoneGenerate,stripModelReasoning,
@@ -2901,7 +2917,7 @@ function setScreen(screen) {
     }
     nodes.back.hidden = screen === 'home'||screen==='lock';
     if(nodes.close)nodes.close.hidden=true;
-    const titles = {lock:'锁屏',home:'咕叽咕机',weibo:'群星',wallet:'吱付宝',takeout:'外卖',chat:'',chatList:'咕叽聊',contacts:'咕叽聊',discover:'咕叽聊',me:'咕叽聊',requests:'新的朋友',profile:'联系人资料',addNpc:'添加 NPC',discoverNpc:'发现故事人物',chatOptions:'聊天设置',settings:'设置',diagnostics:'运行日志',calendar:'日历',theme:'主题',presetPicker:'选择预设条目',worldPicker:'选择世界书条目' };
+    const titles = {lock:'锁屏',home:'咕叽咕机',weibo:'群星',wallet:'吱付宝',shopping:'购物',takeout:'外卖',chat:'',chatList:'咕叽聊',contacts:'咕叽聊',discover:'咕叽聊',me:'咕叽聊',requests:'新的朋友',profile:'联系人资料',addNpc:'添加 NPC',discoverNpc:'发现故事人物',chatOptions:'聊天设置',settings:'设置',diagnostics:'运行日志',calendar:'日历',theme:'主题',presetPicker:'选择预设条目',worldPicker:'选择世界书条目' };
     nodes.title.textContent = screen === 'chat' ? contactDisplayName(context()) : titles[screen];
     nodes.chatMenu.hidden = screen !== 'chat';
     if(nodes.homeExit)nodes.homeExit.hidden=screen!=='home';
@@ -2914,6 +2930,10 @@ function setScreen(screen) {
     }
     if (screen === 'diagnostics') renderDiagnostics();
     if (screen === 'wallet')renderWallet(context());
+    if(screen==='shopping'){
+      if(shoppingController)shoppingController.open();
+      else void loadShoppingController().then(mod=>{if(mod&&activeScreen==='shopping')mod.open();});
+    }
     if(screen==='takeout'){
       if(takeoutController)takeoutController.open();
       else void loadTakeoutController().then(mod=>{if(mod&&activeScreen==='takeout')mod.open();});
@@ -5747,6 +5767,14 @@ function makeUI() {
             <div data-lp="walletStatus" class="lp-wallet-inline-status" role="status"></div>
           </div>
         </section>
+        <section class="lp-screen lp-shopping-screen" data-lp-screen="shopping" aria-label="故事购物" hidden>
+          <div class="lp-shopping-content" data-lp="shoppingContent" role="region" aria-label="购物内容"></div>
+          <nav class="lp-shopping-tabs" data-lp="shoppingTabs" aria-label="购物导航">
+            <button type="button" data-shopping-tab="browse" class="active"><span aria-hidden="true">⌂</span><small>浏览</small></button>
+            <button type="button" data-shopping-tab="cart"><span aria-hidden="true">▣</span><small>购物车</small></button>
+            <button type="button" data-shopping-tab="me"><span aria-hidden="true">♙</span><small>我</small></button>
+          </nav>
+        </section>
         <section class="lp-screen lp-takeout-screen" data-lp-screen="takeout" aria-label="故事外卖" hidden>
           <div class="lp-takeout-content" data-lp="takeoutContent" role="region" aria-label="外卖内容"></div>
           <nav class="lp-takeout-tabs" data-lp="takeoutTabs" aria-label="外卖导航">
@@ -6293,7 +6321,7 @@ function mount() {
         'friendLabel', 'friendActions','profileAvatar','profileName','profileDescription','contactEvidence','contactExchange','contactLinks','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcScanState','npcCandidates','npcSaveCandidates','storyPeopleList','viewPrimaryContact','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','avatarUserFile','resetCharAvatar','resetUserAvatar',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
-        'takeoutContent','takeoutTabs','walletBalance','walletPending','walletBills','walletAdjustInput','walletSaveBalance','walletToChat','walletStatus',
+        'shoppingContent','shoppingTabs','takeoutContent','takeoutTabs','walletBalance','walletPending','walletBills','walletAdjustInput','walletSaveBalance','walletToChat','walletStatus',
         'presetSource','presetInfo','presetEntries','worldBookList','worldSelectionSummary','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','saveSelections','savePresetPicker','saveWorldPicker','selectionSaveStatus','readMainlineMemory','memorySource','phoneToMainline','eventBridge','saveContextSettings','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themePreset','themeCustomColors','themeSaveColors','themeWallpaperPreview','themeDesktopEffect','themeBindWallpaper','themeName','themeSaveNamed','themeRename','themeDelete','themeExport','themeImport','themeFeedback','themeCssFile','themeCssReset','themeCssStatus','themeFontFile','themeDesktopIconSize','themeDesktopGap','themeBubbleRadius','themeIconTarget','themeIconFile','themeIconReset','themeFloatingIconFile','themeFloatingIconReset','themeCopySelectors',
         'diagnostics', 'diagnosticState', 'copyDiagnostics', 'clearDiagnostics',
         'messages','messageActions','quotedPreview','quotedText','cancelQuote','emojiPanel','morePanel','chatImageInput','timeJumpPanel','timeJumpHint','timeJumpCurrent','timeJumpAmount','timeJumpUnit','timeJumpApply','timeJumpClose','paymentPanel','paymentTitle','paymentKind','paymentAmount','paymentNote','paymentBalance','paymentClose','paymentSend','input', 'generate', 'send', 'launcher']
@@ -6326,6 +6354,13 @@ function mount() {
     nodes.weiboGenerate.addEventListener('click',()=>void loadWeiboController().then(w=>w?.generate(weiboController?.state.tab==='nearby'?'nearby':'home')));
     nodes.weiboPublish.addEventListener('click',()=>void loadWeiboController().then(w=>w?.publish()));
     nodes.weiboDetailBack.addEventListener('click',()=>weiboController?.back());
+    nodes.shoppingTabs.addEventListener('click',event=>{
+      const b=event.target.closest('[data-shopping-tab]');
+      if(b)shoppingController?.selectTab(b.dataset.shoppingTab);
+    });
+    nodes.shoppingContent.addEventListener('click',event=>{
+      if(event.target.closest('[data-shopping-action]'))shoppingController?.handleClick(event);
+    });
     nodes.takeoutTabs.addEventListener('click',event=>{
       const b=event.target.closest('[data-takeout-tab]');
       if(b)takeoutController?.selectTab(b.dataset.takeoutTab);
@@ -6396,9 +6431,10 @@ function mount() {
         // The phone's fixed header is the universal "one level back" control.
         // App-specific detail pages must not turn a tap into an app exit.
         if(activeScreen==='weibo'&&weiboController?.back())return;
+        if(activeScreen==='shopping'&&shoppingController?.back())return;
         if(activeScreen==='takeout'&&takeoutController?.back())return;
         setScreen({
-          wallet:'home',takeout:'home',weibo:'home',chat:'chatList',
+          wallet:'home',shopping:'home',takeout:'home',weibo:'home',chat:'chatList',
           contacts:'chatList',discover:'chatList',me:'chatList',
           profile:'contacts',requests:'contacts',addNpc:'contacts',
           discoverNpc:'addNpc',chatOptions:'chat',
