@@ -101,3 +101,40 @@ test('home hot-search button displays the generated topic and has a confirmation
  assert.match(code,/closeHotConfirmation\?\.\(false\)/);
  assert.match(shell,/weiboController\?\.endPhoneSession\?\.\(\)/);
 });
+
+test('the hot-search confirmation is a real dismissible dialog and closing the phone cancels it',async()=>{
+ const makeElement=tag=>({
+  tagName:tag.toUpperCase(),className:'',textContent:'',children:[],handlers:{},
+  append(...children){this.children.push(...children);},
+  setAttribute(){},addEventListener(type,fn){this.handlers[type]=fn;},
+  remove(){this.removed=true;},focus(){}
+ });
+ const panel=makeElement('div');
+ const document={createElement:makeElement,visibilityState:'visible'};
+ const build=new Function('document','structuredClone',
+  code.replace('export function createWeiboModule','function createWeiboModule')+
+  '\nreturn createWeiboModule;');
+ const app=build(document,structuredClone)({
+  getNodes:()=>({weiboHot:{closest:()=>panel}}),
+  context:()=>({characterId:0,chatId:'modals'}),
+  readRootData:()=>({qunxing:{posts:[]},storyTime:'2026-11-15T11:00'}),
+  currentPersona:()=>({name:'我'})
+ });
+ const first=app.confirmHotSearch();
+ let mask=panel.children.at(-1),dialog=mask.children[0];
+ let buttons=dialog.children.at(-1).children;
+ assert.equal(buttons[1].textContent,'查看热搜');
+ buttons[0].handlers.click();
+ assert.equal(await first,false);
+ assert.equal(mask.removed,true);
+ const second=app.confirmHotSearch();
+ mask=panel.children.at(-1);dialog=mask.children[0];
+ buttons=dialog.children.at(-1).children;
+ buttons[1].handlers.click();
+ assert.equal(await second,true);
+ const third=app.confirmHotSearch();
+ mask=panel.children.at(-1);
+ app.endPhoneSession();
+ assert.equal(await third,false,'closing phone must cancel an unresolved confirmation');
+ assert.equal(mask.removed,true);
+});
