@@ -9,10 +9,10 @@ const css=readFileSync(new URL('../style.css',import.meta.url),'utf8');
 const manifest=JSON.parse(readFileSync(new URL('../manifest.json',import.meta.url),'utf8'));
 const clone=x=>JSON.parse(JSON.stringify(x));
 
-test('v0.25.0 sources parse and all module import URLs use the updated cache key',()=>{
- assert.equal(manifest.version,'0.25.0');
+test('v0.26.0 sources parse and all module import URLs use the updated cache key',()=>{
+ assert.equal(manifest.version,'0.26.0');
  for(const source of [index,weibo,album])assert.doesNotThrow(()=>new Function(source.replace(/^export /gm,'')));
- for(const src of ['weibo.js','album.js','groups.js'])assert.ok(index.includes(src+'?v=0.25.0'));
+ for(const src of ['weibo.js','album.js','groups.js'])assert.ok(index.includes(src+'?v=0.26.0'));
 });
 
 test('followers are a social count, not 人, with compact 万/亿 labels',()=>{
