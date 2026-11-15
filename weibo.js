@@ -563,10 +563,10 @@ export function createWeiboModule(api) {
   parent.append(controls);
   parent.append(heading('互动记录管理','清理当前存档里的测试互动，不影响原创动态或账号'));
   parent.append(control('清空测试互动记录','clearInteractions'));
-  parent.append(heading('管理角色账号','手动绑定角色、NPC、媒体和粉丝账号；不依赖角色卡预设'));
+  parent.append(heading('管理群星账号','账号绑定具体故事人物；媒体、表白墙和后援会等可建立独立组织账号'));
   for(const a of q.accounts){
    const line=el('div','lp-wb-account-line');line.append(avatar(a.avatar,a.name));
-   line.append(el('span','',a.name+' · '+(a.handle||'未设ID')+' · '+(a.kind||'人物')+' · 粉丝 '+formatFollowers(a.followers)));
+   line.append(el('span','',a.name+' · '+(a.handle||'未设ID')+' · '+(savedProfession(a)||(subjectOfAccount(a).type==='organization'?'组织账号':'故事人物'))+' · 粉丝 '+formatFollowers(a.followers)));
    line.append(control('编辑','editAccount',a.id));line.append(control('删除','deleteAccount',a.id));
    parent.append(line);
   }
@@ -577,7 +577,7 @@ export function createWeiboModule(api) {
    scanner.append(control(state.scanLoading?'正在检测…':'检测角色与世界书','scanAccounts'));
    if(state.scanMessage)scanner.append(el('p','lp-wb-scan-message',state.scanMessage));
    if(state.candidates.length){
-    scanner.append(heading('待确认账号（'+state.candidates.length+'）','编辑身份信息后勾选，未勾选的不会创建账号'));
+    scanner.append(heading('待确认账号（'+state.candidates.length+'）','确认人物绑定、职业和个性签名后勾选；未勾选的不会保存'));
     state.candidates.forEach((candidate,index)=>{
      const existing=q.accounts.find(a=>a.name===candidate.name);
      const row=el('div','lp-wb-candidate');row.dataset.wbCandidate=String(index);
@@ -588,11 +588,13 @@ export function createWeiboModule(api) {
      const detail=el('details','lp-wb-candidate-reference');
      detail.append(el('summary','','查看检测到的角色资料'),el('p','',candidate.reference||'暂无进一步资料'));
      row.append(detail);
+     const draft=existing||{...candidate,subject:{type:candidate.kind==='角色'?'primary':'npc',name:candidate.name}};
+     subjectField(row,'绑定故事人物／账号主体','candidate-'+index+'-subject',draft,[candidate.name]);
      for(const [key,label,value,type] of [
       ['name','账号名称',existing?.name||candidate.name,'text'],
       ['handle','群星 ID',existing?.handle||candidate.handle||'','text'],
-      ['kind','身份类型',existing?.kind||candidate.kind||'角色','text'],
-      ['bio','公开简介（请自行审阅）',existing?.bio||candidate.bio||'','text'],
+      ['profession','职业／公开身份',savedProfession(existing||candidate),'text'],
+      ['bio','个性签名（公开展示）',existing?.bio||candidate.bio||'','text'],
       ['followers','粉丝数量（角色卡明确写出时才预填）',existing?.followers??candidate.followers??0,'followers'],
       ['publicFigure','公众人物',existing?.publicFigure||candidate.publicFigure||false,'checkbox']]){
        const item=type==='followers'?followerField(row,label,'candidate-'+index+'-'+key,value):field(row,label,'candidate-'+index+'-'+key,value,type);
@@ -605,10 +607,11 @@ export function createWeiboModule(api) {
   const active=q.accounts.find(a=>a.id===state.editing)||{};
   if(state.editing==='new'||active.id){
    const form=el('div','lp-wb-editor');form.append(heading(active.id?'编辑账号':'新增账号'));
-   field(form,'角色／账号名称','accountName',active.name||'');
+   subjectField(form,'绑定故事人物／账号主体','accountSubject',active);
+   field(form,'账号昵称','accountName',active.name||'');
    field(form,'群星 ID（例如 @example）','accountHandle',active.handle||'');
-   field(form,'职业、性格与公开身份','accountBio',active.bio||'');
-   field(form,'身份类型（角色／NPC／媒体／粉丝）','accountKind',active.kind||'角色');
+   field(form,'职业／公开身份','accountProfession',savedProfession(active));
+   field(form,'个性签名','accountBio',active.bio||'');
    field(form,'是否为公众人物','accountPublic',active.publicFigure||false,'checkbox');
    followerField(form,'粉丝数量','accountFollowers',active.followers||0);
    avatarPicker(form,'更换角色账号头像','accountAvatar',state.avatarDraft||active.avatar||'',active.name||'角色');
