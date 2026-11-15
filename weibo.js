@@ -1234,7 +1234,7 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
      account.publicFigure&&Number(account.followers)>=1000000?
        '已知账号为公众人物，互动量必须与 '+formatFollowers(account.followers)+' 相符。普通公开帖子点赞一般在 '+
         range.min+'～'+range.max+' 之间，可按话题热度浮动；不要生成几百赞零评论的量级。':'点赞数根据账号类型和受众规模合理变化，不要一律几百或几万。',
-     '必须只返回合法 JSON：{"posts":[{"text":"帖子正文","likes":10000,"daysAgo":1,"comments":[{"name":"评论者","text":"评论内容"},{"name":"另一位评论者","text":"另一条评论"}]}]}。',
+     '必须只返回合法 JSON：{"posts":[{"text":"帖子正文","likes":10000,"commentCount":320,"daysAgo":1,"comments":[{"name":"评论者","text":"评论内容"},{"name":"另一位评论者","text":"另一条评论"}]}]}。',
      'daysAgo 是距当前剧情日 1～60 天的整数；所有内容必须先于故事当前时间，不得输出 Markdown 或额外解释。'
     ].join('\n');
     const raw=await api.phoneGenerate(context(),{
@@ -1261,9 +1261,10 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
      const ago=Number.isSafeInteger(Number(p.daysAgo))?
       Math.max(1,Math.min(60,Number(p.daysAgo))):i+1;
      const time=Number.isFinite(stamp)?new Date(stamp-ago*86400000).toISOString().slice(0,16):'历史动态';
+     const commentCount=Math.max(comments.length,countValue(p.commentCount)??Math.round(likes*(.015+stableSeed(text)*.026)));
      valid.push({id:uid('post'),author:account.name,authorId:account.id,
       handle:account.handle,avatar:account.avatar,category:'历史公开动态',
-      text,likes,comments,time,zone:'world',actions:{},backfilled:true});
+      text,likes,comments,commentCount,time,zone:'world',actions:{},backfilled:true});
     }
     if(!valid.length)throw Error('模型没有返回至少两条评论的有效历史帖；未写入任何帖子。可补充要求后重新生成');
     await mutate(q=>{
@@ -1518,8 +1519,12 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
    const chosen=requested?photos.find(p=>p.id===requested[1]):null;
    const body=reply.replace(/\[\[photo:[^\]\r\n]+\]\]/g,'').trim();
    if(!body){if(force)feedback(account.name+' 本轮没有可发送内容');return;}
+   const fans=Number(account.followers)||0;
+   const likes=fans?Math.max(1,Math.round(fans*(.0015+stableSeed(account.id+scene)*.009))):0;
+   const commentCount=likes?Math.round(likes*(.01+stableSeed(body)*.025)):0;
    const post={id:uid('post'),author:account.name,handle:account.handle,authorId:account.id,avatar:account.avatar||'',
-    category:account.kind,text:body,...(chosen?{image:chosen.image}:{}),comments:[],likes:0,time:scene,zone:'world',autoPublished:true,actions:{}};
+    category:account.kind,text:body,...(chosen?{image:chosen.image}:{}),comments:[],likes,commentCount,
+    time:scene,zone:'world',autoPublished:true,actions:{}};
    await mutate(s=>{s.posts.push(post);s.posts=s.posts.slice(-180);});
    feedback(account.name+' 已发布新动态');api.recordActivity('群星主动发帖',account.name+' 发布动态','success');render();
   }catch(e){feedback('主动发布失败：'+String(e.message||e));api.recordError('群星主动发帖',e);}
