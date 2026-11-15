@@ -2731,3 +2731,6 @@
  background:rgba(139,155,193,.42)!important;
  background:color-mix(in srgb,var(--lp-slate) 48%,transparent)!important;
 }
+
+/* Existing lock codes unlock immediately; setup/confirmation retains its action button. */
+#st-little-phone-root .lp-lock-submit[hidden]{display:none!important;}
