@@ -2935,11 +2935,11 @@
 #st-little-phone-root .lp-payment-card,
 #st-little-phone-root .lp-payment-card.lp-payment-transfer,
 #st-little-phone-root .lp-payment-card.lp-payment-redpacket{
- background:var(--lp-blush);border-color:var(--lp-rose);color:var(--lp-ink);
+ background:var(--lp-rose);border-color:var(--lp-rose);color:var(--lp-ink);
 }
 #st-little-phone-root .lp-payment-card.lp-payment-pending,
 #st-little-phone-root .lp-payment-pending{
- background:var(--lp-blush)!important;color:var(--lp-ink)!important;border-color:var(--lp-rose)!important;
+ background:var(--lp-rose)!important;color:var(--lp-ink)!important;border-color:var(--lp-rose)!important;
 }
 #st-little-phone-root .lp-payment-card.lp-payment-finished,
 #st-little-phone-root .lp-payment-finished{
