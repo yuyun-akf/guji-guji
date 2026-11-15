@@ -5552,7 +5552,7 @@ function installWandEntry() {
     // Many third-party themes style icons directly instead of the menu root.
     const adoptHostWandColor=()=>{
       const peer=[...menu.querySelectorAll('.extensionsMenuExtensionButton')]
-        .find(item=>!container.contains(item)&&item.getClientRects().length);
+        .find(item=>!container.contains(item));
       if(!peer)return;
       const color=window.getComputedStyle(peer).color;
       if(color&&color!=='transparent'){
