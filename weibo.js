@@ -229,7 +229,7 @@ export function createWeiboModule(api) {
  function markRefreshDone(tab,text){
   const result={text,until:Date.now()+1700};
   state.refreshResult[tab]=result;
-  setTimeout(()=>{
+  if(typeof setTimeout==='function')setTimeout(()=>{
    if(state.refreshResult[tab]!==result)return;
    delete state.refreshResult[tab];
    if(state.tab===tab&&!state.loading&&!state.hotLoading&&nodes()?.weiboGenerate)
