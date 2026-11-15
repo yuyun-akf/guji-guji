@@ -2721,3 +2721,13 @@
 }
 #st-little-phone-root .lp-composer textarea::-webkit-scrollbar,
 #st-little-phone-root .lp-wb-editor textarea::-webkit-scrollbar{display:none!important;width:0!important;}
+
+/* Fallbacks for Android WebViews without color-mix() support. */
+#st-little-phone-root,#st-little-phone-root * {
+ scrollbar-color:#aab9d0 transparent!important;
+ scrollbar-color:color-mix(in srgb,var(--lp-slate) 42%,transparent) transparent!important;
+}
+#st-little-phone-root ::-webkit-scrollbar-thumb {
+ background:rgba(139,155,193,.42)!important;
+ background:color-mix(in srgb,var(--lp-slate) 48%,transparent)!important;
+}
