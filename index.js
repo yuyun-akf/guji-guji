@@ -3584,7 +3584,7 @@ function goSettingsBack(){
 const MOTION_OPTIONS=new Set(['off','gentle','standard']);
 
 function createInteractionController({getRoot,getNodes,getMode,onError}){
- let boundRoot=null,pressed=null,toastTimer=null,portal=null,statusObserver=null;
+ let boundRoot=null,pressed=null,activeRipple=null,rippleStart=null,toastTimer=null,portal=null,statusObserver=null;
  let lastToastText='',lastToastAt=0;
  const configured=()=>MOTION_OPTIONS.has(getMode?.())?getMode():'standard';
  const mode=()=>{
@@ -3637,6 +3637,7 @@ function createInteractionController({getRoot,getNodes,getMode,onError}){
   const rect=el.getBoundingClientRect?.();
   if(!rect?.width||!rect?.height)return;
   el.classList.add('lp-ripple-host');
+  try{if(window.getComputedStyle?.(el)?.position==='static'&&el.style)el.style.position='relative';}catch{}
   const dot=document.createElement('span');
   dot.className='lp-touch-ripple';
   const x=Number.isFinite(e.clientX)&&e.clientX>0?e.clientX-rect.left:rect.width/2;
@@ -3644,9 +3645,9 @@ function createInteractionController({getRoot,getNodes,getMode,onError}){
   const size=Math.max(rect.width,rect.height)*2.4;
   dot.style.width=size+'px';dot.style.height=size+'px';
   dot.style.left=x+'px';dot.style.top=y+'px';
-  el.append(dot);
-  dot.addEventListener('animationend',()=>dot.remove(),{once:true});
-  setTimeout(()=>dot.remove(),550);
+  el.append(dot);activeRipple=dot;
+  dot.addEventListener('animationend',()=>{if(activeRipple===dot)activeRipple=null;dot.remove();},{once:true});
+  setTimeout(()=>{if(activeRipple===dot)activeRipple=null;dot.remove();},550);
  }
  function burst(el,small=false){
   if(mode()==='off')return;
@@ -3674,6 +3675,7 @@ function createInteractionController({getRoot,getNodes,getMode,onError}){
   root.addEventListener('pointerdown',e=>{
    if(e.button!==undefined&&e.button!==0)return;
    release();const el=target(e);
+   rippleStart=el&&Number.isFinite(e.clientX)?{x:e.clientX,y:e.clientY}:null;
    if(el&&mode()!=='off'){
     pressed=el;
     if(primary(el))el.classList.add('lp-press-down');
@@ -3681,8 +3683,17 @@ function createInteractionController({getRoot,getNodes,getMode,onError}){
    }
   },true);
   for(const type of ['pointerup','pointercancel','pointerleave'])
-   root.addEventListener(type,release,true);
-  root.addEventListener('pointermove',e=>{if(e.buttons===0)release();},true);
+   root.addEventListener(type,e=>{
+    if(type!=='pointerup'&&activeRipple){activeRipple.remove();activeRipple=null;}
+    rippleStart=null;release();
+   },true);
+  root.addEventListener('pointermove',e=>{
+   if(rippleStart&&Number.isFinite(e.clientX)&&
+      Math.hypot(e.clientX-rippleStart.x,e.clientY-rippleStart.y)>9){
+    activeRipple?.remove?.();activeRipple=null;rippleStart=null;release();
+   }
+   if(e.buttons===0)release();
+  },true);
   root.addEventListener('keydown',e=>{
    if(e.key!=='Enter'&&e.key!==' ')return;
    const el=target(e);
@@ -3806,7 +3817,7 @@ function createInteractionController({getRoot,getNodes,getMode,onError}){
   }
   subScreen(screen);
  }
- function pause(){release();stopPortal();dismiss();}
+ function pause(){activeRipple?.remove?.();activeRipple=null;rippleStart=null;release();stopPortal();dismiss();}
  function shutdown(){pause();statusObserver?.disconnect?.();statusObserver=null;boundRoot=null;}
  return {bind,sync,toast,fromStatus,capture,navigate,dismiss,pause,shutdown,mode};
 }
