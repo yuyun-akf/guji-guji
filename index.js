@@ -4093,19 +4093,57 @@ function showMomentAlert(message) {
     recordActivity('朋友圈提醒',message,'success');
     showPhoneAlert(message,'discover','');
 }
+function messageBannersEnabled(ctx=context()){
+    return ctx?.extensionSettings?.[SETTINGS_KEY]?.messageBanners!==false;
+}
+function dismissMessageBanner(){
+    if(notificationTimer){clearTimeout(notificationTimer);notificationTimer=null;}
+    if(nodes?.notification)nodes.notification.hidden=true;
+    if(nodes?.inlineNotification)nodes.inlineNotification.hidden=true;
+}
+function setMessageBannersEnabled(enabled){
+    const ctx=context();
+    if(!ctx?.extensionSettings||typeof ctx.saveSettingsDebounced!=='function'){
+        if(nodes?.messageBannerToggle)nodes.messageBannerToggle.checked=messageBannersEnabled(ctx);
+        if(nodes?.messageBannerStatus)nodes.messageBannerStatus.textContent='酒馆设置尚未就绪，消息通知选项未保存。';
+        return;
+    }
+    const config=ctx.extensionSettings[SETTINGS_KEY]||={};
+    const previous=config.messageBanners;
+    config.messageBanners=!!enabled;
+    try{ctx.saveSettingsDebounced();}
+    catch(error){
+       config.messageBanners=previous;
+       if(nodes?.messageBannerToggle)nodes.messageBannerToggle.checked=messageBannersEnabled(ctx);
+       if(nodes?.messageBannerStatus)nodes.messageBannerStatus.textContent='保存失败：'+String(error.message||error);
+       return;
+    }
+    if(!enabled)dismissMessageBanner();
+    if(nodes?.messageBannerStatus)nodes.messageBannerStatus.textContent=enabled
+     ?'已开启：新私聊及朋友圈动态会在手机顶部或酒馆正文页顶部提醒。'
+     :'已关闭：仍可到咕叽聊和朋友圈查看已有消息。';
+}
 function showPhoneAlert(message,screen,id) {
-    if(!nodes?.notification||!nodes?.inlineNotification)return;
+    if(!messageBannersEnabled()||!nodes?.notification||!nodes?.inlineNotification)return;
     const inside=Boolean(root?.classList.contains('lp-open'));
     const target=inside?nodes.inlineNotification:nodes.notification;
     const other=inside?nodes.notification:nodes.inlineNotification;
     other.hidden=true;
-    target.textContent='💬 '+message;
+    const badge=document.createElement('span');
+    badge.className='lp-message-banner-icon';
+    badge.textContent=screen==='discover'?'◉':'✉';
+    const text=document.createElement('span');
+    text.className='lp-message-banner-text';
+    const title=document.createElement('strong');
+    title.textContent=screen==='discover'?'朋友圈 · 新动态':'咕叽聊 · 新消息';
+    const detail=document.createElement('small');
+    detail.textContent=String(message||'').slice(0,130);
+    text.append(title,detail);target.replaceChildren(badge,text);
     target.hidden=false;
     target.dataset.contactId=id;
     target.dataset.alertScreen=screen;
     if(notificationTimer)clearTimeout(notificationTimer);
-    notificationTimer=setTimeout(()=>{if(nodes?.notification)nodes.notification.hidden=true;
-        if(nodes?.inlineNotification)nodes.inlineNotification.hidden=true;notificationTimer=null;},6500);
+    notificationTimer=setTimeout(()=>{dismissMessageBanner();},5600);
 }
 async function clearMomentsUnread(ctx=context()) {
     const old=readRootData(ctx);
@@ -4534,6 +4572,10 @@ function loadAutonomyUI(ctx=context()) {
     nodes.phoneInPast.checked=cfg.phoneInPast;
     nodes.characterRequests.checked=cfg.characterRequests;
     nodes.momentInteractions.checked=cfg.momentInteractions;
+    if(nodes.messageBannerToggle)nodes.messageBannerToggle.checked=messageBannersEnabled(ctx);
+    if(nodes.messageBannerStatus)nodes.messageBannerStatus.textContent=messageBannersEnabled(ctx)
+      ?'已开启：酒馆正文页和咕叽咕机内均可显示顶部新消息横幅。'
+      :'已关闭新消息横幅提醒。';
     const next=readRootData(ctx).socialSchedule||{};
     const due=key=>cfg[key].mode==='off'?'未启用':Number(next[key]?.nextDue)>0?new Date(next[key].nextDue).toLocaleString():'未设定';
     nodes.autonomyStatus.textContent='下次私聊：'+due('messages')+'；下次朋友圈：'+due('moments')+'。计时使用现实时间，只有酒馆页面运行并可见时才会触发。';
@@ -6736,7 +6778,7 @@ function makeUI() {
           <button type="button" class="lp-header-menu" data-lp="chatMenu" aria-label="聊天设置" hidden>···</button>
           <button type="button" class="lp-close" data-lp="close" aria-label="关闭咕叽咕机">×</button>
         </header>
-        <button type="button" class="lp-inline-notification" data-lp="inlineNotification" aria-label="打开新消息" hidden></button>
+        <button type="button" class="lp-inline-notification lp-message-banner" data-lp="inlineNotification" aria-label="查看新消息" hidden></button>
          <div class="lp-interaction-feedback" data-lp="interactionFeedback" role="status" aria-live="polite" hidden></div>
         <section class="lp-screen lp-lock" data-lp-screen="lock" aria-label="锁屏" hidden>
           <button type="button" data-lp="lockExit" class="lp-phone-exit" aria-label="关闭手机">×</button>
@@ -6933,6 +6975,12 @@ function makeUI() {
       <button type="button" data-lp-open="discover">◉ 朋友圈 <span>查看我的动态</span></button>
       <button type="button" data-lp-open="theme">✿ 主题装扮 <span>壁纸、字体与图标</span></button>
       <button type="button" data-lp-open="settings">⚙ 系统设置 <span>API、世界书与预设</span></button>
+    </div>
+    <div class="lp-me-notification-setting">
+      <label><input type="checkbox" data-lp="messageBannerToggle" checked />
+       <span><strong>新消息横幅提醒</strong><small>角色私聊和朋友圈动态：手机内或酒馆正文页面顶部提醒</small></span>
+      </label>
+      <div data-lp="messageBannerStatus" class="lp-me-notification-note" role="status">开启后可点击横幅查看对应内容。</div>
     </div>
     <details class="lp-me-section lp-autonomy" open>
       <summary>角色自主活动 <span>消息与朋友圈频率</span></summary>
@@ -7422,7 +7470,7 @@ function makeUI() {
           <button type="button" class="lp-clear-logs" data-lp="clearDiagnostics">清空本次运行日志</button>
         </section>
       </dialog>
-      <button type="button" class="lp-notification" data-lp="notification" aria-label="查看新消息" hidden></button>
+      <button type="button" class="lp-notification lp-message-banner" data-lp="notification" aria-label="查看新消息" hidden></button>
       `;
     return container;
 }
@@ -7562,7 +7610,7 @@ function mount() {
     nodes.close.addEventListener('click', closePhone);
     const openIncoming=event=>{
         const {contactId,alertScreen}=event.currentTarget.dataset;
-        nodes.notification.hidden=true;nodes.inlineNotification.hidden=true;openPhone();
+        dismissMessageBanner();openPhone();
         if(alertScreen==='discover')setScreen('discover');
         else void openContactChat(contactId||PRIMARY_CONTACT_ID);
     };
@@ -7603,6 +7651,7 @@ function mount() {
         const file=event.target.files?.[0];event.target.value='';
         void uploadMyAvatar(file);
     });
+    nodes.messageBannerToggle.addEventListener('change',event=>setMessageBannersEnabled(event.target.checked));
     nodes.saveAutonomy.addEventListener('click',()=>void saveAutonomySettings());
     nodes.rescanRelations.addEventListener('click',()=>void rescanStoryRelationships());
     nodes.testAutonomy.addEventListener('click',()=>void testAutonomousMessage());
