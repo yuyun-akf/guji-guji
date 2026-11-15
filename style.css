@@ -3308,3 +3308,8 @@
 
 #st-little-phone-root .lp-group-avatar{width:52px;height:52px;border-radius:13px;object-fit:cover;border:1px solid var(--lp-slate);}
 #st-little-phone-root .lp-group-photo{display:block;max-width:100%;max-height:190px;object-fit:contain;border-radius:9px;margin-top:7px;}
+
+/* v0.21.1: Qunxing follower count + unit selector, suitable for mobile widths. */
+#st-little-phone-root .lp-wb-follower-input{display:flex;align-items:stretch;gap:7px;min-width:0;}
+#st-little-phone-root .lp-wb-follower-input input[type="number"]{flex:1 1 auto;min-width:0;width:0;}
+#st-little-phone-root .lp-wb-follower-input select{flex:0 0 72px;width:72px;min-height:35px;padding:5px 8px;border:1px solid var(--lp-ice);border-radius:9px;background:var(--lp-white);color:var(--lp-navy);font:inherit;}
