@@ -6883,7 +6883,7 @@ function makeUI() {
               <button type="button" class="lp-settings-nav" data-settings-nav="presets"><span>预设与世界书<small>预设选择、世界书条目与触发</small></span><b>›</b></button>
               <button type="button" class="lp-settings-nav" data-settings-nav="chat"><span>聊天方式<small>消息显示与分条行为</small></span><b>›</b></button>
               <button type="button" class="lp-settings-nav" data-settings-nav="memory"><span>记忆管理<small>剧情日自动总结、独立 API、正文互通</small></span><b>›</b></button>
-              <button type="button" class="lp-settings-nav" data-settings-nav="data"><span>数据与诊断<small>运行日志与现有存档管理入口</small></span><b>›</b></button>
+              <button type="button" class="lp-settings-nav" data-settings-nav="data"><span>数据说明<small>存档与资料保存范围</small></span><b>›</b></button>
             </div>
           </div>
           <div class="lp-settings-category" data-settings-category="system" hidden>
@@ -6923,17 +6923,11 @@ function makeUI() {
               <option value="chat">咕叽聊</option>
               <option value="weibo">群星</option>
               <option value="takeout">外卖</option>
-              <option value="shopping">购物</option>
-              <option value="wallet">吱付宝</option>
-              <option value="calendar">日历</option>
-              <option value="theme">主题</option>
-              <option value="settings">设置</option>
-              <option value="diagnostics">运行日志</option>
               <option value="autonomy">角色自主活动</option>
               <option value="memory">手机记忆</option>
             </select>
           </label>
-          <p class="lp-settings-hint">纯界面应用目前没有模型生成操作，配置会保留供将来的功能使用。</p>
+          <p class="lp-settings-hint">仅显示需要调用模型的应用；其他本地功能不需要单独 API。</p>
           <div class="lp-settings-card" data-lp="apiInfo">当前酒馆连接</div>
           <label class="lp-field">连接方式<select data-lp="apiMode">
             <option value="follow">跟随小手机全局默认连接</option>
@@ -7004,10 +6998,9 @@ function makeUI() {
           <button type="button" class="lp-settings-link" data-lp="saveContextSettings">保存记忆与互通设置</button>
           </div>
           <div class="lp-settings-category" data-settings-category="data" hidden>
-          <h2>数据与诊断</h2>
-          <p class="lp-settings-hint">查看运行日志、API 错误及各应用的持久化记录。聊天导入导出请从咕叽聊的「聊天设置」进入。</p>
-          <button type="button" class="lp-settings-link" data-lp="settingsOpenDiagnostics">打开运行日志</button>
-          <p class="lp-settings-hint">记忆记录可在「记忆管理」中查看、修改、删除。删除操作只影响当前故事存档。</p>
+          <h2>数据说明</h2>
+          <p class="lp-settings-hint">群星账号与相册按角色卡共享，聊天、群聊及互动记录按当前故事存档保存。</p>
+          <p class="lp-settings-hint">需要查看报错或请求记录时，请返回桌面打开独立的「运行日志」App。聊天导入导出在咕叽聊的聊天设置中操作。</p>
           </div>
           <div class="lp-settings-status" data-lp="settingsStatus" role="status" aria-live="polite"></div>
           <p class="lp-settings-hint">咕叽咕机 · v0.22.0</p>
@@ -7224,7 +7217,7 @@ function mount() {
         'friendLabel', 'friendActions','profileAvatar','profileName','profileDescription','contactEvidence','contactExchange','contactLinks','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcScanState','npcCandidates','npcSaveCandidates','storyPeopleList','viewPrimaryContact','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','avatarUserFile','resetCharAvatar','resetUserAvatar',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
-        'settingsMenu','settingsOpenDiagnostics','apiTask','apiProfile','apiProfileFields','apiProfileHint','apiTest',
+        'settingsMenu','apiTask','apiProfile','apiProfileFields','apiProfileHint','apiTest',
         'phoneMemoryEnabled','phoneMemoryInterval','phoneMemoryInjectMainline','phoneMemorySchedule','phoneMemoryStatus','phoneMemorySave','phoneMemoryRun','phoneMemoryList',
         'shoppingContent','shoppingTabs','takeoutContent','takeoutTabs','walletBalance','walletPending','walletBills','walletAdjustInput','walletSaveBalance','walletToChat','walletStatus',
         'presetSource','presetInfo','presetEntries','worldBookList','worldSelectionSummary','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','saveSelections','savePresetPicker','saveWorldPicker','selectionSaveStatus','readMainlineMemory','memorySource','phoneToMainline','eventBridge','saveContextSettings','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themePreset','themeCustomColors','themeSaveColors','themeWallpaperPreview','themeDesktopEffect','interactionMotion','interactionFeedback','themeBindWallpaper','themeName','themeSaveNamed','themeRename','themeDelete','themeExport','themeImport','themeFeedback','themeCssFile','themeCssReset','themeCssStatus','themeFontFile','themeDesktopIconSize','themeDesktopGap','themeBubbleRadius','themeIconTarget','themeIconFile','themeIconReset','themeFloatingIconFile','themeFloatingIconReset','themeCopySelectors',
@@ -7275,6 +7268,7 @@ function mount() {
     }));
     nodes.messages.addEventListener('click',event=>{const button=event.target.closest('[data-share-message-id]');if(!button)return;const message=readData(context()).messages.find(m=>m.id===button.dataset.shareMessageId);if(message?.sharePost)openSharedPost(message.sharePost,'chat');});
     nodes.albumContent.addEventListener('click',event=>{void albumController?.handleClick(event);});
+    nodes.albumContent.addEventListener('change',event=>{albumController?.handleChange(event);});
     nodes.groupsContent.addEventListener('click',event=>{void groupsController?.handleClick(event);});
     nodes.groupsContent.addEventListener('change',event=>{if(event.target.closest('input[data-group-avatar]'))void groupsController?.handleFile(event);});
     nodes.shareTargets.addEventListener('click',event=>{const b=event.target.closest('[data-share-target]');if(b)void completeQunxingShare(b.dataset.shareType,b.dataset.shareTarget);});
@@ -7418,7 +7412,6 @@ function mount() {
      const target=e.target.closest('[data-settings-nav]');
      if(target)showSettingsCategory(target.dataset.settingsNav);
     });
-    nodes.settingsOpenDiagnostics.addEventListener('click',()=>setScreen('diagnostics'));
     nodes.phoneMemorySave.addEventListener('click',()=>void loadPhoneMemoryController().then(m=>m?.saveSettings()));
     nodes.phoneMemoryRun.addEventListener('click',()=>void loadPhoneMemoryController().then(m=>m?.summarize(true)));
     nodes.phoneMemoryList.addEventListener('click',e=>void memoryController?.handleClick(e));
