@@ -779,7 +779,7 @@ function applyTheme(){
   if(input)input.value=paletteValue(key,colors[key]||value);
  }
  if(nodes?.themeCustomColors)nodes.themeCustomColors.hidden=theme.palette==='swiss';
- if(nodes?.themeBindWallpaper)nodes.themeBindWallpaper.checked=bound;
+ if(nodes?.themeBindWallpaper){nodes.themeBindWallpaper.checked=theme.palette.startsWith('saved:')?true:bound;nodes.themeBindWallpaper.disabled=theme.palette.startsWith('saved:');}
  if(nodes?.themeWallpaperPreview)nodes.themeWallpaperPreview.textContent=
  (bound?'壁纸已绑定当前主题。':'壁纸在所有主题之间共用。')+
  (background==='none'?' 当前：默认纯色':' 当前：已应用自定义壁纸（主页与锁屏）');
