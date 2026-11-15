@@ -93,13 +93,11 @@ test('user pressing a sticker sends the image as user, not as the character',asy
         globalThis.chooseSticker=useSticker;`,box);
     await box.chooseSticker('s-cat','send');
     const messages=ctx.chatMetadata.st_little_phone_v1.messages;
-    assert.equal(messages.length,2);
+    assert.equal(messages.length,1,'发送表情包仅保存 user 消息，须手动点生成');
     assert.equal(messages[0].from,'user');
     assert.equal(messages[0].image,image);
     assert.equal(messages[0].sticker,true);
-    assert.equal(messages[1].from,'character');
-    assert.equal(messages[1].image,undefined);
-    assert.equal(calls,1);
+    assert.equal(calls,0,'发送按钮不能偷偷调用模型');
 });
 
 test('bulk importing 100 stickers saves once and skips overflow safely',async()=>{
@@ -172,8 +170,10 @@ test('player and character exchange stickers through normal host generation',asy
         nodes={input:{value:'草稿'},quotedPreview:{},morePanel:{},emojiPanel:{},status:{dataset:{}},diagnosticState:{}};`,box);
     await box.api.sendUserMessage('[表情包：开心]',image,box.api.stickerLibrary()[0]);
     const messages=ctx.chatMetadata.st_little_phone_v1.messages;
-    assert.equal(messages.length,3);assert.equal(messages[0].sticker,true);assert.equal(messages[2].image,image);
-    assert.ok(options.systemPrompt.includes('s-happy'));assert.equal(typeof options.prompt[0].content,'string');
+    assert.equal(messages.length,1);assert.equal(messages[0].sticker,true);
+    assert.equal(options,undefined,'发送后不能自动生成角色回复');
+    const reply=box.api.parseStickerReply('好呀[[sticker:s-happy]]',{},box.api.stickerLibrary());
+    assert.equal(reply[1].image,image,'角色在模型回复时选择已有表情包，才生成图片消息');
 });
 
 test('scan reads only current char/persona and explicitly selected book; excludes self and writing rules',async()=>{

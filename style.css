@@ -3191,3 +3191,120 @@
  font-size:12px;
 }
 #st-little-phone-root .lp-memory-entry .lp-memory-actions button:last-child{color:var(--lp-rose);}
+
+
+/* v0.21.0 — gallery, multi-photo composer, shared post cards, group conversations */
+#st-little-phone-root .lp-album-screen,
+#st-little-phone-root .lp-group-screen,
+#st-little-phone-root .lp-share-screen{
+ min-height:0;display:flex;flex-direction:column;
+ background:var(--lp-ice);color:var(--lp-navy);
+}
+#st-little-phone-root .lp-album-content,
+#st-little-phone-root .lp-group-content,
+#st-little-phone-root .lp-share-targets,
+#st-little-phone-root .lp-share-preview{
+ flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;
+ padding:16px 14px 26px;display:flex;flex-direction:column;gap:13px;
+}
+#st-little-phone-root .lp-album-header,
+#st-little-phone-root .lp-group-header{
+ display:flex;flex-direction:column;gap:5px;padding:8px 2px 12px;
+}
+#st-little-phone-root .lp-album-header strong,
+#st-little-phone-root .lp-group-header strong{font-size:19px;}
+#st-little-phone-root .lp-album-header small,
+#st-little-phone-root .lp-group-header small,
+#st-little-phone-root .lp-group-intro{font-size:12px;opacity:.72;line-height:1.6;}
+#st-little-phone-root .lp-album-form,
+#st-little-phone-root .lp-group-create{
+ background:var(--lp-white);border:1px solid var(--lp-slate);
+ border-radius:17px;padding:12px;display:flex;flex-direction:column;gap:10px;
+}
+#st-little-phone-root .lp-album-field{display:flex;flex-direction:column;gap:5px;font-size:12px;}
+#st-little-phone-root .lp-album-field input,
+#st-little-phone-root .lp-album-field select,
+#st-little-phone-root .lp-group-create input:not([type="checkbox"]),
+#st-little-phone-root .lp-group-composer textarea{
+ width:100%;box-sizing:border-box;color:var(--lp-navy);background:var(--lp-white);
+ border:1px solid var(--lp-slate);border-radius:9px;padding:9px;font:inherit;
+}
+#st-little-phone-root .lp-album-action,
+#st-little-phone-root .lp-group-button,
+#st-little-phone-root .lp-photo-draft-actions button{
+ border-radius:10px;border:1px solid var(--lp-slate);padding:8px 10px;
+ color:var(--lp-navy);background:var(--lp-white);font:inherit;
+}
+#st-little-phone-root .lp-album-grid{
+ display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+ gap:11px;align-items:start;
+}
+#st-little-phone-root .lp-album-card{
+ display:flex;flex-direction:column;min-width:0;overflow:hidden;
+ background:var(--lp-white);border:1px solid var(--lp-border);border-radius:14px;
+}
+#st-little-phone-root .lp-album-card>img{width:100%;aspect-ratio:1;object-fit:cover;}
+#st-little-phone-root .lp-album-info{padding:9px;display:flex;flex-direction:column;gap:5px;overflow-wrap:anywhere;}
+#st-little-phone-root .lp-album-info strong{font-size:13px;}
+#st-little-phone-root .lp-album-info small,
+#st-little-phone-root .lp-album-info p{font-size:11px;margin:0;line-height:1.5;}
+#st-little-phone-root .lp-album-actions{padding:0 8px 9px;display:flex;gap:5px;flex-wrap:wrap;}
+#st-little-phone-root .lp-album-actions button{font-size:10px;padding:7px;}
+#st-little-phone-root .lp-album-feedback,
+#st-little-phone-root .lp-group-feedback,
+#st-little-phone-root .lp-album-empty{font-size:12px;line-height:1.6;margin:0;}
+#st-little-phone-root .lp-wb-post-image{display:block;max-width:100%;max-height:330px;object-fit:contain;border-radius:11px;margin:9px 0;}
+#st-little-phone-root .lp-shared-post{
+ width:100%;display:flex;flex-direction:column;align-items:flex-start;gap:7px;
+ padding:8px;color:var(--lp-navy);text-align:left;font:inherit;
+ border:1px solid var(--lp-slate);background:var(--lp-ice);border-radius:11px;
+}
+#st-little-phone-root .lp-shared-post span{font-size:12px;line-height:1.5;overflow-wrap:anywhere;}
+#st-little-phone-root .lp-shared-post img{max-width:100%;max-height:145px;object-fit:contain;}
+#st-little-phone-root .lp-share-preview img{max-width:100%;max-height:440px;object-fit:contain;border-radius:9px;}
+#st-little-phone-root .lp-photo-draft{
+ flex:0 0 auto;background:var(--lp-white);
+ padding:11px;border-top:1px solid var(--lp-border);max-height:42%;overflow-y:auto;
+}
+#st-little-phone-root .lp-photo-draft[hidden]{display:none!important;}
+#st-little-phone-root .lp-photo-draft-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;}
+#st-little-phone-root .lp-photo-draft-item{position:relative;aspect-ratio:1;}
+#st-little-phone-root .lp-photo-draft-item img{width:100%;height:100%;object-fit:cover;border-radius:7px;}
+#st-little-phone-root .lp-photo-draft-item button{
+ position:absolute;right:0;top:0;width:24px;height:24px;border-radius:50%;
+ border:0;background:var(--lp-navy);color:var(--lp-white);
+}
+#st-little-phone-root .lp-photo-draft textarea{
+ box-sizing:border-box;width:100%;margin:9px 0;min-height:43px;
+ border:1px solid var(--lp-border);background:var(--lp-white);
+ border-radius:8px;padding:7px;color:var(--lp-navy);font:inherit;
+}
+#st-little-phone-root .lp-photo-draft-actions{display:flex;justify-content:flex-end;gap:8px;}
+#st-little-phone-root .lp-group-list{display:flex;flex-direction:column;gap:7px;}
+#st-little-phone-root .lp-group-create .lp-group-choice{display:flex;align-items:center;gap:8px;}
+#st-little-phone-root .lp-group-create input[type="checkbox"]{width:18px;height:18px;}
+#st-little-phone-root .lp-group-messages{
+ display:flex;flex-direction:column;gap:11px;flex:1;min-height:160px;
+ padding:9px;background:var(--lp-white);border:1px solid var(--lp-border);
+ border-radius:13px;overflow-y:auto;
+}
+#st-little-phone-root .lp-group-message{
+ max-width:86%;align-self:flex-start;background:var(--lp-ice);
+ border:1px solid var(--lp-border);padding:9px 12px;border-radius:13px;
+ overflow-wrap:anywhere;
+}
+#st-little-phone-root .lp-group-message.mine{
+ align-self:flex-end;background:var(--lp-rose,#f1d6d6);
+}
+#st-little-phone-root .lp-group-message strong{font-size:11px;}
+#st-little-phone-root .lp-group-message p{margin:5px 0 0;line-height:1.6;}
+#st-little-phone-root .lp-group-share{
+ border-left:3px solid var(--lp-slate);padding:8px;background:var(--lp-white);
+ margin-top:7px;border-radius:7px;overflow-wrap:anywhere;
+}
+#st-little-phone-root .lp-group-share img{max-width:100%;max-height:180px;object-fit:contain;}
+#st-little-phone-root .lp-group-composer{display:flex;flex-wrap:wrap;gap:6px;}
+#st-little-phone-root .lp-group-composer textarea{flex-basis:100%;resize:vertical;}
+
+#st-little-phone-root .lp-group-avatar{width:52px;height:52px;border-radius:13px;object-fit:cover;border:1px solid var(--lp-slate);}
+#st-little-phone-root .lp-group-photo{display:block;max-width:100%;max-height:190px;object-fit:contain;border-radius:9px;margin-top:7px;}

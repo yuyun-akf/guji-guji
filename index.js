@@ -1,5 +1,5 @@
 /**
- * GujiGuji v0.20.0: a modular phone shell with isolated per-chat context.
+ * GujiGuji v0.21.0: a modular phone shell with isolated per-chat context.
  * No direct host-module imports; uses only the documented context surface.
  */
 
@@ -85,6 +85,7 @@ const APP_CATALOG=[
  {key:'wallet',screen:'wallet',name:'吱付宝',ready:true},
  {key:'weibo',screen:'weibo',name:'群星',ready:true},
  {key:'calendar',screen:'calendar',name:'日历',ready:true},
+ {key:'album',screen:'album',name:'相册',ready:true},
  {key:'settings',screen:'settings',name:'设置',ready:true},
  {key:'diagnostics',screen:'diagnostics',name:'运行日志',ready:true},
  {key:'shopping',screen:'shopping',name:'购物',ready:true},
@@ -98,6 +99,7 @@ const APP_SHAPES={
  weibo:'<path d="M12 1.5 14.25 9.75 22.5 12l-8.25 2.25L12 22.5l-2.25-8.25L1.5 12l8.25-2.25L12 1.5Z"/><path d="m4 3 .55 1.45L6 5l-1.45.55L4 7l-.55-1.45L2 5l1.45-.55L4 3ZM20 3l.45 1.55L22 5l-1.55.45L20 7l-.45-1.55L18 5l1.55-.45L20 3ZM20 17l.55 1.45L22 19l-1.45.55L20 21l-.55-1.45L18 19l1.45-.55L20 17Z"/>',
  diagnostics:'<path d="m12 3 9.1 16a1.3 1.3 0 0 1-1.1 2H4a1.3 1.3 0 0 1-1.1-2L12 3Z"/><path d="M12 9v5"/><circle cx="12" cy="17.5" r=".85" fill="currentColor" stroke="none"/>',
  settings:'<circle cx="12" cy="12" r="7.3"/><circle cx="12" cy="12" r="3.15"/><path d="M12 1.9v2.3M12 19.8v2.3M1.9 12h2.3M19.8 12h2.3M4.86 4.86l1.63 1.63M17.51 17.51l1.63 1.63M4.86 19.14l1.63-1.63M17.51 6.49l1.63-1.63"/>',
+ album:'<rect x="2.5" y="3" width="19" height="18" rx="2"/><circle cx="8" cy="9" r="2"/><path d="m4 18 6-6 4 3 3-4 4 5"/>',
  calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18M8 14h2M13 14h2M8 18h2"/>',
  theme:'<path d="M12 3a9 9 0 1 0 0 18h2a2 2 0 0 0 1-3.7c-.5-.2-.8-.6-.8-1.1 0-.8.6-1.4 1.4-1.4H18A4 4 0 0 0 22 11c0-4.4-4.3-8-10-8Z"/><circle cx="7.5" cy="10" r=".8" fill="currentColor"/><circle cx="11" cy="7.5" r=".8" fill="currentColor"/><circle cx="16" cy="8.5" r=".8" fill="currentColor"/>',
  shopping:'<path d="M4 8h16l-1 13H5L4 8Z"/><path d="M8 9V6a4 4 0 0 1 8 0v3"/>',
@@ -130,10 +132,13 @@ let shoppingController=null;
 let shoppingLoadPromise=null;
 let memoryController=null;
 let memoryLoadPromise=null;
+let albumController=null,albumLoadPromise=null,groupsController=null,groupsLoadPromise=null;
+let pendingSharedPost=null,sharedPostPreview=null,sharedPostOrigin='chat';
+let chatPhotoDrafts=[];
 let clockTicker=null;
 let clockTickBusy=false;
 const weiboState={scope:'',posts:[],trending:[],tab:'feed',loading:false,selectedId:'',generationId:0};
-const SCREENS = new Set(['lock', 'home', 'weibo', 'wallet', 'shopping', 'takeout', 'chat', 'chatList', 'contacts', 'requests', 'profile', 'addNpc', 'discoverNpc', 'discover', 'me', 'chatOptions', 'settings', 'diagnostics', 'calendar', 'theme', 'presetPicker', 'worldPicker']);
+const SCREENS = new Set(['lock', 'home', 'weibo', 'wallet', 'shopping', 'takeout', 'album', 'groups', 'sharePicker', 'shareViewer', 'chat', 'chatList', 'contacts', 'requests', 'profile', 'addNpc', 'discoverNpc', 'discover', 'me', 'chatOptions', 'settings', 'diagnostics', 'calendar', 'theme', 'presetPicker', 'worldPicker']);
 
 function context() {
     try {
@@ -1097,14 +1102,164 @@ async function copyThemeSelectors(){
  catch{notifyTheme('当前 WebView 不支持复制，请长按指南中的文本',true);}
 }
 
+
+/* 相册随角色卡保存；普通照片不写入每个剧情存档的公共根数据。 */
+function characterPhotos(ctx=context()){
+ const key=qunxingAccountCardKey(ctx);
+ const all=ctx?.extensionSettings?.[SETTINGS_KEY]?.characterPhotoAlbums||{};
+ const photos=key&&all[key];
+ return Array.isArray(photos)?photos.filter(p=>p&&typeof p.id==='string'&&/^data:image\/(?:jpeg|png|webp);base64,/.test(p.image||'')).slice(0,40):[];
+}
+function saveCharacterPhotos(photos,ctx=context()){
+ const key=qunxingAccountCardKey(ctx);
+ if(!key||!ctx?.extensionSettings||typeof ctx.saveSettingsDebounced!=='function')
+  throw Error('无法保存相册：酒馆扩展设置不可用');
+ const selected=Array.isArray(photos)?photos.slice(0,40):[];
+ if(selected.reduce((n,p)=>n+(p.image?.length||0),0)>4000000)
+  throw Error('相册图片合计超过约3MB的存储上限');
+ const settings=ctx.extensionSettings[SETTINGS_KEY]||={};
+ const albums=settings.characterPhotoAlbums||={};
+ const old=albums[key];albums[key]=selected;
+ try{ctx.saveSettingsDebounced();}catch(error){if(old===undefined)delete albums[key];else albums[key]=old;throw error;}
+ return true;
+}
+function galleryPeople(ctx=context()){
+ if(!selectedCharacter(ctx))return [];
+ const r=readRootData(ctx);
+ return [
+  {id:'user',name:currentPersona(ctx)?.name||ctx?.name1||'我'},
+  {id:PRIMARY_CONTACT_ID,name:getCharacterName(selectedCharacter(ctx))},
+  ...r.contacts.map(p=>({id:p.id,name:p.name}))
+ ];
+}
+function photosForActor(actorId,access='chat',ctx=context()){
+ const people=galleryPeople(ctx),person=people.find(p=>p.id===actorId);
+ if(!person)return [];
+ return characterPhotos(ctx).filter(p=>(p.owner===actorId||(p.ownerName===person.name&&p.owner!=='user'))&&
+   (access==='private'||p.access==='public'||(access==='chat'&&p.access==='chat')));
+}
+function albumIdentityPrompt(actorId,ctx=context()){
+ const ownerPhotos=photosForActor(actorId,'private',ctx).slice(0,20);
+ if(!ownerPhotos.length)return '';
+ return '[角色本人的相册档案（仅用户确认的文字描述，不代表视觉模型已识别真实图片；不得拿它推断其他角色的照片）]\n'+
+  ownerPhotos.map(p=>((p.title||'照片')+'：'+(p.description||'未填写外貌描述')).slice(0,280)).join('；');
+}
+function albumCatalogPrompt(actorId,access='chat'){
+ const photos=photosForActor(actorId,access).slice(0,12);
+ if(!photos.length)return '';
+ return '【已确认的角色相册资料；仅文字标签，不代表模型已看到照片】'+photos.map(p=>
+   p.id+'：'+(p.title||'照片')+'；'+(p.description||'尚无图片描述')).join('；')+
+   '。角色可在适合的时机选择自己的照片，输出 [[photo:照片ID]] 作为独立图片消息；只能使用列出的ID，不能臆测未描述的细节。';
+}
+function photoByOwnerId(id,actorId,access='chat'){
+ return photosForActor(actorId,access).find(p=>p.id===id)||null;
+}
+function isPhoneFriend(id){
+ const ctx=context();return validContactId(readRootData(ctx),id)&&friendshipState(readData(ctx,id))==='friends';
+}
+async function albumSendToChat(photo){
+ if(photo.access!=='public'&&photo.access!=='chat')throw Error('照片未允许发送');
+ if(!isPhoneFriend(activeContactId))throw Error('当前联系人尚不是好友，不能发送照片');
+ await sendUserMessage('[图片]'+(photo.description?' '+photo.description:''),'',null,{images:[photo.image]});
+ setScreen('chat');
+}
+async function albumPostMoment(photo){
+ if(photo.owner!=='user'||photo.access!=='public')throw Error('只有允许公开的本人照片才能由 user 发布');
+ const caption=window.prompt('朋友圈配文（可留空）','');
+ if(caption===null)return;
+ momentImageDraft=photo.image;nodes.momentsText.value=caption;
+ await postMoment();setScreen('discover');
+}
+async function albumPostWeibo(photo){
+ if(photo.owner!=='user'||photo.access!=='public')throw Error('只有允许公开的本人照片才能由 user 发布');
+ const caption=window.prompt('群星动态配文',photo.title||'分享照片');
+ if(caption===null)return;
+ const controller=await loadWeiboController();
+ if(!controller)throw Error('群星尚未加载');
+ await controller.publishAlbumPhoto(photo,caption);setScreen('weibo');
+}
+async function loadAlbumController(){
+ if(albumController)return albumController;
+ if(albumLoadPromise)return albumLoadPromise;
+ albumLoadPromise=import('./album.js?v=0.21.0').then(mod=>{
+  albumController=mod.createAlbumModule({context,getNodes:()=>nodes,sharedPhotos:()=>characterPhotos(),saveSharedPhotos:saveCharacterPhotos,
+    albumScope:()=>qunxingAccountCardKey(context()),galleryPeople,notifyInteraction,albumSendToChat,albumPostMoment,albumPostWeibo});
+  return albumController;
+ }).catch(e=>{recordError('加载相册',e);albumLoadPromise=null;if(nodes?.albumContent)nodes.albumContent.textContent='相册加载失败：'+e.message;return null;});
+ return albumLoadPromise;
+}
+async function loadGroupsController(){
+ if(groupsController)return groupsController;
+ if(groupsLoadPromise)return groupsLoadPromise;
+ groupsLoadPromise=import('./groups.js?v=0.21.0').then(mod=>{
+  groupsController=mod.createGroupsModule({context,getNodes:()=>nodes,readRootData,writeData,galleryPeople,
+   isPhoneFriend,contactCharacter,phoneGenerate,stripModelReasoning,notifyInteraction,openSharedPost,encodeAvatarPhoto,
+   galleryPhotosForMember:id=>photosForActor(id,'chat')});
+  return groupsController;
+ }).catch(e=>{recordError('加载群聊',e);groupsLoadPromise=null;if(nodes?.groupsContent)nodes.groupsContent.textContent='群聊加载失败：'+e.message;return null;});
+ return groupsLoadPromise;
+}
+
+/* 群星分享采用内容快照，旧帖子刷新后聊天卡片也不会消失。 */
+function makeShareSnapshot(post){
+ return {id:String(post?.id||'').slice(0,85),author:String(post?.author||'群星用户').slice(0,50),
+  handle:String(post?.handle||'').slice(0,50),text:String(post?.text||'').slice(0,1800),
+  image:typeof post?.image==='string'&&/^data:image\/(?:jpeg|png|webp);base64,/.test(post.image)?post.image:''};
+}
+function openQunxingShare(post){
+ pendingSharedPost=makeShareSnapshot(post);if(!pendingSharedPost.text)return;
+ setScreen('sharePicker');
+}
+function renderQunxingSharePicker(){
+ if(!nodes?.shareTargets)return;
+ const list=nodes.shareTargets;list.replaceChildren();
+ const post=pendingSharedPost;if(!post){list.textContent='没有可分享的群星动态';return;}
+ const summary=document.createElement('p');summary.textContent=post.author+'：'+post.text.slice(0,180);list.append(summary);
+ const ctx=context();
+ const add=(type,id,label)=>{const b=document.createElement('button');b.type='button';b.className='lp-list-action';
+  b.dataset.shareType=type;b.dataset.shareTarget=id;b.textContent=label;list.append(b);};
+ for(const id of [PRIMARY_CONTACT_ID,...readRootData(ctx).contacts.map(c=>c.id)])
+  if(isPhoneFriend(id))add('contact',id,'发给 '+contactDisplayName(ctx,id));
+ for(const group of readRootData(ctx).groupChats||[])add('group',group.id,'发到群聊 '+group.name);
+ if(!list.querySelector('button'))list.append(document.createTextNode('请先添加好友或创建群聊'));
+}
+async function completeQunxingShare(type,id){
+ const post=pendingSharedPost;if(!post)return;
+ const ctx=context(),meta=ctx?.chatMetadata;
+ try{
+  if(type==='contact'){
+   if(!isPhoneFriend(id))throw Error('目标联系人不是好友');
+   const data=structuredClone(readData(ctx,id));
+   appendPhoneMessage(data,'user','[群星分享] '+post.author+'：'+post.text.slice(0,900),{sharePost:post});
+   await writeData(ctx,data);
+   if(ctx.chatMetadata!==meta)return;
+   pendingSharedPost=null;activeContactId=id;render();setScreen('chat');
+  }else if(type==='group'){
+   const controller=await loadGroupsController();if(!controller)throw Error('群聊功能未加载');
+   await controller.shareToGroup(id,post);
+   if(ctx.chatMetadata!==meta)return;
+   pendingSharedPost=null;setScreen('groups');
+  }
+ }catch(e){setStatus('分享失败：'+String(e.message||e),'error');}
+}
+function openSharedPost(post,origin=activeScreen){
+ sharedPostPreview=makeShareSnapshot(post);sharedPostOrigin=origin;
+ setScreen('shareViewer');
+}
+function renderSharedPostViewer(){
+ const node=nodes?.sharePreview;if(!node)return;node.replaceChildren();
+ const post=sharedPostPreview;if(!post)return;
+ const author=document.createElement('strong');author.textContent=post.author;
+ const body=document.createElement('p');body.textContent=post.text;node.append(author,body);
+ if(post.image){const img=document.createElement('img');img.src=post.image;img.alt='群星动态配图';node.append(img);}
+}
+
 function apiSessionId(ctx) {
     return String(ctx?.characterId ?? 'none') + '::' + String(ctx?.chatId ?? ctx?.getCurrentChatId?.() ?? 'default');
 }
 const PHONE_API_TARGETS=[
- ['default','全部应用 · 默认连接'],['chat','咕叽聊'],['weibo','群星'],
- ['takeout','外卖'],['shopping','购物'],['wallet','吱付宝'],
- ['calendar','日历'],['theme','主题'],['settings','设置'],
- ['diagnostics','运行日志'],['autonomy','角色自主活动'],['memory','手机记忆']
+ ['default','全部应用 · 默认连接'],['chat','咕叽聊（含群聊）'],['weibo','群星'],
+ ['takeout','外卖 · 商户生成'],['autonomy','角色自主活动'],['memory','手机记忆']
 ];
 const API_TARGET_IDS=new Set(PHONE_API_TARGETS.map(x=>x[0]));
 function apiKeySlot(ctx,task='default'){
@@ -2850,7 +3005,7 @@ function readExternalMemory(ctx,data) {
 
 async function composePhonePrompt(ctx, char, data) {
     const persona=currentPersona(ctx);
-    const parts = [createSystemPrompt(char, data, persona)];
+    const parts = [createSystemPrompt(char, data, persona),albumIdentityPrompt(data?.__contactId||activeContactId,ctx)].filter(Boolean);
     const summary={preset:0,selected:0,world:0,skipped:0,characters:0};
     const config=data?.config||{};
     // The chosen preset implicitly enables its originally enabled prompts.
@@ -3019,12 +3174,16 @@ function buildPrompt(data,ctx=null,char=null) {
         .map(message => {
             const payment=message.paymentId?walletState(data).transfers.find(tx=>tx.id===message.paymentId):null;
             const paymentText=payment?'['+walletTransferLabel(payment)+' ¥'+walletMoney(payment.amountCents)+
-                ' · '+walletStatusLabel(payment.status)+(payment.note?' · '+payment.note:'')+']':message.text;
+                ' · '+walletStatusLabel(payment.status)+(payment.note?' · '+payment.note:'')+']':
+                message.sharePost?'[群星分享 · '+message.sharePost.author+'] '+message.sharePost.text:message.text;
             return ({
             role: message.from === 'character' ? 'assistant' : 'user',
-            content: !message.sticker && message.image && typeof message.image==='string' && /^data:image\/(?:jpeg|png|webp);base64,/.test(message.image)
-              ? [{type:'text',text:resolvePhonePlaceholders((message.replyQuote?'[引用：'+message.replyQuote+']\n':'')+(message.text||'')+'（请根据图片中实际可见内容回复，不要虚构看不到的细节）',ctx,char)},
-                 {type:'image_url',image_url:{url:message.image,detail:'auto'}}]
+            content: !message.sticker && (Array.isArray(message.images)&&message.images.length||message.image||message.sharePost?.image)
+              ? [{type:'text',text:resolvePhonePlaceholders((message.replyQuote?'[引用：'+message.replyQuote+']\n':'')+paymentText+'（请根据图片中实际可见内容回复，不要虚构看不到的细节）',ctx,char)},
+                 ...(Array.isArray(message.images)&&message.images.length?message.images:[message.image])
+                   .concat(message.sharePost?.image?[message.sharePost.image]:[])
+                   .filter(src=>typeof src==='string'&&/^data:image\/(?:jpeg|png|webp);base64,/.test(src))
+                   .map(src=>({type:'image_url',image_url:{url:src,detail:'auto'}}))]
               : resolvePhonePlaceholders((message.replyQuote?'[引用：'+message.replyQuote+']\n':'')+paymentText,ctx,char),
         });});
 }
@@ -3139,7 +3298,7 @@ async function scanQunxingAccounts(extraWorld=''){
 async function loadWeiboController(){
  if(weiboController)return weiboController;
  if(weiboLoadPromise)return weiboLoadPromise;
- weiboLoadPromise=import('./weibo.js?v=0.20.0').then(module=>{
+ weiboLoadPromise=import('./weibo.js?v=0.21.0').then(module=>{
   weiboController=module.createWeiboModule({
    context,getNodes:()=>nodes,readRootData,writeData,readData,
    phoneGenerate:(ctx,options,data)=>phoneGenerate(ctx,{...options,task:options?.task||'weibo'},data),
@@ -3148,7 +3307,8 @@ async function loadWeiboController(){
    readSharedAccounts:()=>sharedQunxingAccounts(context()),
    saveSharedAccounts:(accounts,originalCtx)=>saveSharedQunxingAccounts(accounts,originalCtx||context()),
    ensureSharedAccounts:()=>ensureSharedQunxingAccounts(context()),
-   storyContext:weiboStoryContext,scanAccounts:scanQunxingAccounts
+   storyContext:weiboStoryContext,scanAccounts:scanQunxingAccounts,
+    sharePost:openQunxingShare,photosForAccount:name=>{const person=galleryPeople().find(p=>p.name===name);return person?photosForActor(person.id,'public'):[];}
   });return weiboController;
  }).catch(error=>{
   if(nodes?.weiboFeedback)nodes.weiboFeedback.textContent='群星加载失败：'+String(error.message||error);
@@ -3160,7 +3320,7 @@ async function loadWeiboController(){
 async function loadShoppingController(){
  if(shoppingController)return shoppingController;
  if(shoppingLoadPromise)return shoppingLoadPromise;
- shoppingLoadPromise=import('./shopping.js?v=0.20.0').then(module=>{
+ shoppingLoadPromise=import('./shopping.js?v=0.21.0').then(module=>{
   shoppingController=module.createShoppingModule({context,getNodes:()=>nodes});
   return shoppingController;
  }).catch(error=>{
@@ -3174,7 +3334,7 @@ async function loadShoppingController(){
 async function loadTakeoutController(){
  if(takeoutController)return takeoutController;
  if(takeoutLoadPromise)return takeoutLoadPromise;
- takeoutLoadPromise=import('./takeout.js?v=0.20.0').then(module=>{
+ takeoutLoadPromise=import('./takeout.js?v=0.21.0').then(module=>{
   takeoutController=module.createTakeoutModule({
    context,getNodes:()=>nodes,readRootData,writeData,readData,currentPersona,
    walletChargeOrder,walletRefundOrder,walletMoney,
@@ -3194,7 +3354,7 @@ async function loadTakeoutController(){
 async function loadPhoneMemoryController(){
  if(memoryController)return memoryController;
  if(memoryLoadPromise)return memoryLoadPromise;
- memoryLoadPromise=import('./memory.js?v=0.20.0').then(module=>{
+ memoryLoadPromise=import('./memory.js?v=0.21.0').then(module=>{
   memoryController=module.createPhoneMemoryModule({
    context,getNodes:()=>nodes,readRootData,writeData,recordError,recordActivity,
    stripModelReasoning,notifyInteraction,
@@ -3433,7 +3593,7 @@ function setScreen(screen, options={}) {
     }
     nodes.back.hidden = screen === 'home'||screen==='lock';
     if(nodes.close)nodes.close.hidden=true;
-    const titles = {lock:'锁屏',home:'咕叽咕机',weibo:'群星',wallet:'吱付宝',shopping:'购物',takeout:'外卖',chat:'',chatList:'咕叽聊',contacts:'咕叽聊',discover:'咕叽聊',me:'咕叽聊',requests:'新的朋友',profile:'联系人资料',addNpc:'添加 NPC',discoverNpc:'发现故事人物',chatOptions:'聊天设置',settings:'设置',diagnostics:'运行日志',calendar:'日历',theme:'主题',presetPicker:'选择预设条目',worldPicker:'选择世界书条目' };
+    const titles = {album:'相册',groups:'群聊',sharePicker:'分享动态',shareViewer:'动态详情',lock:'锁屏',home:'咕叽咕机',weibo:'群星',wallet:'吱付宝',shopping:'购物',takeout:'外卖',chat:'',chatList:'咕叽聊',contacts:'咕叽聊',discover:'咕叽聊',me:'咕叽聊',requests:'新的朋友',profile:'联系人资料',addNpc:'添加 NPC',discoverNpc:'发现故事人物',chatOptions:'聊天设置',settings:'设置',diagnostics:'运行日志',calendar:'日历',theme:'主题',presetPicker:'选择预设条目',worldPicker:'选择世界书条目' };
     nodes.title.textContent = screen === 'chat' ? contactDisplayName(context()) : titles[screen];
     nodes.chatMenu.hidden = screen !== 'chat';
     if(nodes.homeExit)nodes.homeExit.hidden=screen!=='home';
@@ -3445,6 +3605,10 @@ function setScreen(screen, options={}) {
         else void loadWeiboController().then(w=>{if(w&&activeScreen==='weibo')w.open(options);});
     }
     if (screen === 'diagnostics') renderDiagnostics();
+    if (screen === 'album')void loadAlbumController().then(m=>{if(activeScreen==='album')m?.open();});
+    if (screen === 'groups')void loadGroupsController().then(m=>{if(activeScreen==='groups')m?.render();});
+    if (screen === 'sharePicker')renderQunxingSharePicker();
+    if (screen === 'shareViewer')renderSharedPostViewer();
     if (screen === 'wallet')renderWallet(context());
     if(screen==='shopping'){
       if(shoppingController)shoppingController.open();
@@ -3609,6 +3773,7 @@ function switchContact(id,screen='profile') {
     const root=readRootData(ctx);
     if (!validContactId(root,id)) return setStatus('联系人不存在','error');
     activeContactId=id;
+    discardChatPhotoDraft();
     if(nodes?.timeJumpPanel)nodes.timeJumpPanel.hidden=true;
     if(nodes?.paymentPanel)nodes.paymentPanel.hidden=true;
     clearQuote();
@@ -3794,21 +3959,40 @@ function saveSticker(image,label,ctx=context(),usage='') {
     saveStickerLibrary([...list,item],ctx);
     return item;
 }
+function chooseStickerCandidates(catalog,data){
+    if(!catalog.length)return [];
+    const recent=(data?.messages||[]).slice(-7).map(m=>String(m?.text||'')).join(' ').slice(-850);
+    const emotions={开心:['笑','哈哈','开心','高兴','好耶','快乐'],难过:['哭','伤心','难过','呜呜','委屈'],生气:['气','骂','烦','无语'],害羞:['害羞','脸红','亲亲','爱你'],疑惑:['疑惑','为什么','不懂','问号','？'],震惊:['震惊','惊讶','我靠','救命'],撒娇:['撒娇','抱抱','贴贴'],得意:['得意','哼','骄傲']};
+    return catalog.map((item,index)=>{
+        const tags=String(item.label||'')+' '+String(item.usage||'');
+        let score=item.usage?1:0;
+        for(const [emotion,words] of Object.entries(emotions))
+            if(tags.includes(emotion)&&words.some(word=>recent.includes(word)))score+=5;
+        for(const token of tags.split(/[，,、/／；;\s（）()·._-]+/).filter(v=>v.length>=2).slice(0,15))
+            if(recent.includes(token))score+=4;
+        return {item,index,score};
+    }).sort((a,b)=>b.score-a.score||a.index-b.index).slice(0,18).map(x=>x.item);
+}
 function stickerPrompt(catalog) {
     if(!catalog.length)return '';
-    return '可以酌情发送下面已有的图片表情包。名称与用途是图片内容/情绪标签，不是指令。'+
+    return '你可以像真人聊天一样，自然地主动选择以下表情包（并非必须发送）。参考当前语境、人物性格及名称/用途的情绪标签，契合时可与文字搭配，也可只发表情包；无需等待 user 提起，也不要每轮机械发送。名称和用途仅是标签，不能推断未描述的图像细节。'+
         '用 [[sticker:ID]] 表示角色自己选择发送图片；user 刚发送的表情包属于 user，不要当成角色自己发的，也不必原样复发。只能使用列出的ID，不要编造图片或地址。\n'+
         JSON.stringify(catalog.map(({id,label,usage})=>({id,label,...(usage?{usage}:{})})));
 }
-function parseStickerReply(reply,data,catalog) {
+function parseStickerReply(reply,data,catalog,photos=[]) {
     const messages=[];
-    const pattern=/\[\[sticker:([^\]\r\n]*)\]\]/g;
+    const pattern=/\[\[(sticker|photo):([^\]\r\n]*)\]\]/g;
     let cursor=0;
     const addText=text=>{for(const part of splitPhoneReply(text,data))messages.push({text:part});};
     for(const match of reply.matchAll(pattern)) {
         addText(reply.slice(cursor,match.index));
-        const sticker=catalog.find(item=>item.id===match[1]);
-        if(sticker)messages.push({text:'[表情包：'+sticker.label+']',image:sticker.image,sticker:true,stickerName:sticker.label});
+        if(match[1]==='sticker'){
+            const sticker=catalog.find(item=>item.id===match[2]);
+            if(sticker)messages.push({text:'[表情包：'+sticker.label+']',image:sticker.image,sticker:true,stickerName:sticker.label});
+        }else{
+            const photo=photos.find(item=>item.id===match[2]);
+            if(photo)messages.push({text:'[图片] '+(photo.description||photo.title||''),images:[photo.image]});
+        }
         cursor=match.index+match[0].length;
     }
     addText(reply.slice(cursor));
@@ -4171,19 +4355,21 @@ async function tickAutonomousActivity(manualChannel='') {
         if(!same())return;
         const contact=contactCharacter(ctx,id),data=structuredClone(readData(ctx,id));
         const system=await composePhonePrompt(ctx,contact,data);
+        const stickerCatalog=stickerLibrary(ctx),suggestedStickers=chooseStickerCandidates(stickerCatalog,data);
+        const rolePhotos=photosForActor(id,'chat',ctx),publicPhotos=photosForActor(id,'public',ctx);
         const plannedPost={authorId:id,author:contactDisplayName(ctx,id),text:''};
         const batchActors=channel==='moments'&&cfg.momentInteractions?momentBatchActors(ctx,plannedPost):[];
         let answer;
         if(channel==='messages'){
             answer=await generateWithTimeout(ctx,{
-                task:'autonomy',systemPrompt:[system,messageStylePrompt(data),paymentReplyInstructions(data,id),
+                task:'autonomy',systemPrompt:[system,messageStylePrompt(data),stickerPrompt(suggestedStickers),albumCatalogPrompt(id),paymentReplyInstructions(data,id),
                     '【主动发消息】请你作为当前联系人，结合关系、角色性格、现有私聊和最近生活，自然地给 user 发一条主动消息。不是回复正在等待的提问。可以决定不打扰，此时只输出 [SKIP]。不得替 user 说话，也不要虚构已经发生的事件。'].join('\n\n'),
                 prompt:[...buildPrompt(data,ctx,contact).slice(-10),{role:'user',content:'【系统触发：主动发消息时机】可以自主决定是否联系 user。'}]
             },data);
         }else{
             const writePostWithReactions=batchActors.length>0;
             answer=await generateWithTimeout(ctx,{
-                task:'autonomy',systemPrompt:system+'\n\n【角色朋友圈】写一条此角色愿意公开的朋友圈动态，不代替 user 发言，不虚构重大事件；不想发布只输出 [SKIP]。'+
+                task:'autonomy',systemPrompt:system+'\n\n【角色朋友圈】写一条此角色愿意公开的朋友圈动态，不代替 user 发言，不虚构重大事件；不想发布只输出 [SKIP]。如有合适的本角色公开相册图片，可在朋友圈正文末尾添加 [[photo:照片ID]]，只能使用以下ID：'+publicPhotos.map(p=>p.id+'（'+(p.description||p.title||'照片')+'）').join('；')+'。'+
                     (writePostWithReactions?'\n\n'+momentBatchTask(ctx,plannedPost,batchActors,{writePost:true}):'不超过120字。'),
                 prompt:[{role:'user',content:'【系统触发：朋友圈发布时机】请按角色性格自行决定。'}]
             },data);
@@ -4198,8 +4384,8 @@ async function tickAutonomousActivity(manualChannel='') {
         if(channel==='messages'){
             const afterReceipt=applyPaymentModelTags(data,String(answer),id);
             const paymentResult=applyCharacterPaymentSendTag(data,afterReceipt,id);
-            const messages=paymentResult.text?splitPhoneReply(paymentResult.text,data).slice(0,4):[];
-            for(const message of messages)appendPhoneMessage(data,'character',resolvePhonePlaceholders(message,ctx,contact));
+            const messages=paymentResult.text?parseStickerReply(paymentResult.text,data,stickerCatalog,rolePhotos).slice(0,4):[];
+            for(const message of messages)appendPhoneMessage(data,'character',resolvePhonePlaceholders(message.text,ctx,contact),message);
             if(paymentResult.created){
                 const card=appendPhoneMessage(data,'character',
                     paymentResult.created.kind==='redpacket'?'[红包]':'[转账]');
@@ -4216,12 +4402,15 @@ async function tickAutonomousActivity(manualChannel='') {
         }else{
             const parsed=batchActors.length?parseMomentBatch(answer):null;
             const postText=batchActors.length?parsed?.post:String(answer).slice(0,450);
-            if(!postText){recordActivity('角色朋友圈','未解析出有效动态；不会再次请求模型以避免额外费用','info');return;}
+            const photoTag=String(postText||'').match(/\[\[photo:([^\]\r\n]+)\]\]/);
+            const selectedPhoto=photoTag?publicPhotos.find(p=>p.id===photoTag[1]):null;
+            const publishedText=String(postText||'').replace(/\[\[photo:[^\]\r\n]+\]\]/g,'').trim();
+            if(!publishedText){recordActivity('角色朋友圈','未解析出有效动态；不会再次请求模型以避免额外费用','info');return;}
             const fresh=structuredClone(readRootData(ctx));
             fresh.moments=Array.isArray(fresh.moments)?fresh.moments:[];
             const created={id:'moment-'+Date.now()+'-'+Math.random().toString(36).slice(2,8),
                 authorId:id,author:contactDisplayName(ctx,id),
-                contactId:id,text:postText,storyTime:fresh.storyTime,createdAt:new Date().toISOString()};
+                contactId:id,text:publishedText,...(selectedPhoto?{image:selectedPhoto.image}:{}),storyTime:fresh.storyTime,createdAt:new Date().toISOString()};
             fresh.moments.push(created);
             const reactions=parsed?applyMomentBatch(ctx,fresh,created,batchActors,parsed.actions):0;
             if(batchActors.length)fresh.momentInteractionSeen=[...new Set([...(fresh.momentInteractionSeen||[]),created.id])].slice(-150);
@@ -5027,8 +5216,8 @@ async function resetAvatar(side) {
 }
 function exportChatPayload(ctx,data) {
     return {format:'gujiguji-chat',version:1,character:getCharacterName(selectedCharacter(ctx)),exportedAt:new Date().toISOString(),
-        messages:data.messages.map(({id,from,text,storyTime,createdAt,image,sticker,stickerName,replyTo,replyQuote})=>({
-            id,from,text,storyTime,createdAt,...(image?{image}:{}),...(sticker?{sticker:true,stickerName}:{}),
+        messages:data.messages.map(({id,from,text,storyTime,createdAt,image,images,sharePost,sticker,stickerName,replyTo,replyQuote})=>({
+            id,from,text,storyTime,createdAt,...(image?{image}:{}),...(Array.isArray(images)?{images}:{}),...(sharePost?{sharePost}:{}),...(sticker?{sticker:true,stickerName}:{}),
             ...(replyTo?{replyTo}:{}),...(replyQuote?{replyQuote}:{})
         }))};
 }
@@ -5040,10 +5229,12 @@ function parseChatImport(raw) {
         if (!m || !['user','character','system'].includes(m.from) || typeof m.text!=='string'||m.text.length>50000)
             throw new Error('第'+(i+1)+'条消息格式不合法');
         const image=typeof m.image==='string' && /^data:image\/(?:jpeg|png|webp|gif);base64,/.test(m.image) && m.image.length<950000?m.image:'';
+        const images=Array.isArray(m.images)?m.images.filter(src=>typeof src==='string'&&/^data:image\/(?:jpeg|png|webp);base64,/.test(src)&&src.length<1600000).slice(0,9):[];
+        const sharePost=m.sharePost&&typeof m.sharePost==='object'?makeShareSnapshot(m.sharePost):null;
         return {id: typeof m.id==='string'&&m.id.length<100?m.id:'import-'+i+'-'+Date.now(),
             from:m.from,text:m.text,storyTime:typeof m.storyTime==='string'?m.storyTime.slice(0,30):'',
             createdAt:typeof m.createdAt==='string'?m.createdAt.slice(0,40):new Date().toISOString(),
-            ...(image?{image}:{}),...(image&&m.sticker===true?{sticker:true,stickerName:String(m.stickerName||'').slice(0,60)}:{}),
+            ...(image?{image}:{}),...(images.length?{images}:{}),...(sharePost?.text?{sharePost}:{}),...(image&&m.sticker===true?{sticker:true,stickerName:String(m.stickerName||'').slice(0,60)}:{}),
             ...(typeof m.replyQuote==='string'?{replyQuote:m.replyQuote.slice(0,180)}:{}),
             ...(typeof m.replyTo==='string'?{replyTo:m.replyTo.slice(0,100)}:{})
         };
@@ -5191,7 +5382,7 @@ async function handleMessageOperation(action) {
     }
     closeMessageActions();
 }
-async function encodeChatPhoto(file) {
+async function encodeChatPhoto(file,limit=1400000) {
     if(!['image/jpeg','image/png','image/webp'].includes(file?.type))
         throw new Error('目前支持 PNG、JPG、WebP 图片');
     if(file.size>12*1024*1024)throw new Error('图片超过 12MB，请换一张较小的图片');
@@ -5203,7 +5394,6 @@ async function encodeChatPhoto(file) {
     });
     if(typeof original!=='string'||!/^data:image\/(?:jpeg|png|webp);base64,/.test(original))
         throw new Error('图片数据不符合格式要求');
-    const limit=1400000;
     if(original.length<=limit)return original;
     if(typeof Image!=='function')throw new Error('此浏览器无法压缩大图，请换一张较小的图片');
     const picture=await new Promise((resolve,reject)=>{
@@ -5215,24 +5405,72 @@ async function encodeChatPhoto(file) {
     if(!picture.width||!picture.height)throw new Error('图片尺寸无效');
     const canvas=document.createElement('canvas'),paint=canvas.getContext('2d');
     if(!paint)throw new Error('浏览器不支持图片压缩');
-    for(const edge of [1600,1400,1200,1024,896]){
+    for(const edge of [1600,1400,1200,1024,896,720,640]){
         const ratio=Math.min(1,edge/Math.max(picture.width,picture.height));
         canvas.width=Math.max(1,Math.round(picture.width*ratio));
         canvas.height=Math.max(1,Math.round(picture.height*ratio));
         paint.drawImage(picture,0,0,canvas.width,canvas.height);
-        for(const quality of [0.86,0.76,0.66]){
+        for(const quality of [0.86,0.76,0.66,0.54,0.42]){
             const result=canvas.toDataURL('image/jpeg',quality);
             if(result.length<=limit)return result;
         }
     }
     throw new Error('照片压缩后仍太大，请换一张图片');
 }
-async function sendImageFile(file) {
-    if(!file||busy)return;
+
+function discardChatPhotoDraft(){
+ for(const entry of chatPhotoDrafts)try{URL.revokeObjectURL(entry.url);}catch{}
+ chatPhotoDrafts=[];
+ if(nodes?.chatPhotoPreview){nodes.chatPhotoPreview.hidden=true;nodes.chatPhotoPreview.replaceChildren();}
+}
+function renderChatPhotoDraft(){
+ if(!nodes?.chatPhotoPreview)return;
+ const wrap=nodes.chatPhotoPreview;wrap.replaceChildren();wrap.hidden=!chatPhotoDrafts.length;
+ if(!chatPhotoDrafts.length)return;
+ const grid=document.createElement('div');grid.className='lp-photo-draft-grid';
+ chatPhotoDrafts.forEach((entry,index)=>{
+  const cell=document.createElement('div');cell.className='lp-photo-draft-item';
+  const img=document.createElement('img');img.src=entry.url;img.alt='待发送的第'+(index+1)+'张图片';
+  const remove=document.createElement('button');remove.type='button';remove.textContent='×';remove.dataset.photoRemove=String(index);remove.setAttribute('aria-label','移除这张图片');
+  cell.append(img,remove);grid.append(cell);
+ });
+ const caption=document.createElement('textarea');caption.dataset.photoCaption='true';caption.rows=2;caption.maxLength=500;caption.placeholder='给这组照片配一句话（选填）';
+ caption.value=wrap.dataset.photoCaption||'';
+ caption.addEventListener('input',()=>{wrap.dataset.photoCaption=caption.value;});
+ const buttons=document.createElement('div');buttons.className='lp-photo-draft-actions';
+ const confirm=document.createElement('button');confirm.type='button';confirm.dataset.photoSend='true';confirm.textContent='发送 '+chatPhotoDrafts.length+' 张图片';
+ const cancel=document.createElement('button');cancel.type='button';cancel.dataset.photoCancel='true';cancel.textContent='取消';
+ buttons.append(cancel,confirm);wrap.append(grid,caption,buttons);
+}
+function prepareChatPhotoDraft(files){
+ if(!files.length)return;
+ if(files.length>9)return setStatus('一次最多选择9张图片','error');
+ const valid=files.every(file=>['image/png','image/jpeg','image/webp'].includes(file.type)&&file.size<=12*1024*1024);
+ if(!valid)return setStatus('仅支持12MB以内的 PNG、JPG、WebP 图片','error');
+ discardChatPhotoDraft();
+ chatPhotoDrafts=files.map(file=>({file,url:URL.createObjectURL(file)}));
+ nodes.chatPhotoPreview.dataset.photoCaption='';
+ renderChatPhotoDraft();
+}
+async function confirmChatPhotoDraft(){
+ if(!chatPhotoDrafts.length||busy)return;
+ const files=chatPhotoDrafts.map(x=>x.file),caption=nodes.chatPhotoPreview.dataset.photoCaption||'';
+ await sendImageFiles(files,caption);
+}
+async function sendImageFiles(files,caption='') {
+    if(!files?.length||busy)return;
+    if(files.length>9)return setStatus('一次最多选择9张图片','error');
     const session=captureSession(context());
     try{
-        const encoded=await encodeChatPhoto(file);
-        if(sameSession(session))await sendUserMessage('[图片]',encoded);
+        const encoded=[];
+        for(const file of files){
+            encoded.push(await encodeChatPhoto(file,Math.min(1400000,Math.max(320000,Math.floor(3000000/files.length)))));
+            if(!sameSession(session))return;
+        }
+        if(sameSession(session)){
+            await sendUserMessage(caption.trim().slice(0,500)||'[图片]', '', null, {images:encoded});
+            discardChatPhotoDraft();
+        }
     }catch(error){if(sameSession(session))setStatus(recordError('发送照片',error),'error');}
 }
 
@@ -5609,7 +5847,7 @@ function renderMessages(data){
  let lastSeparator='';
  const currentStoryDate=String(data.storyTime||localDateTime());
  for(const message of list){
-  if(typeof message?.text!=='string'||(message.from==='character'&&!message.text.trim()&&!message.image))continue;
+  if(typeof message?.text!=='string'||(message.from==='character'&&!message.text.trim()&&!message.image&&!message.images?.length))continue;
   const stamp=String(message.storyTime||'');
   if(stamp&&isChatTimeBreak(lastSeparator,stamp)){
    const separator=document.createElement('div');separator.className='lp-chat-time-divider';
@@ -5624,6 +5862,15 @@ function renderMessages(data){
   const located=!message.paymentId?locationCard(message.text):null;
   if(located){bubble.classList.add('lp-location-shell');bubble.append(located);}
   else bubble.textContent=visibleStickerText(message,ctx,character);
+  if(message.sharePost){
+   const p=message.sharePost;bubble.textContent='';
+   const view=document.createElement('button');view.type='button';view.className='lp-shared-post';view.dataset.shareMessageId=message.id;
+   const author=document.createElement('strong');author.textContent='群星 · '+(p.author||'用户');
+   const preview=document.createElement('span');preview.textContent=String(p.text||'').slice(0,360);
+   view.append(author,preview);
+   if(p.image){const img=document.createElement('img');img.src=p.image;img.alt='群星分享配图';view.append(img);}
+   bubble.append(view);
+  }
   if(message.paymentId){
    const paymentCard=walletRenderCard(ctx,message);
    if(paymentCard){bubble.textContent='';bubble.append(paymentCard);}
@@ -5632,10 +5879,10 @@ function renderMessages(data){
    const quote=document.createElement('div');quote.className='lp-inline-quote';
    quote.textContent=resolvePhonePlaceholders(message.replyQuote,ctx,character);bubble.prepend(quote);
   }
-  if(message.image){
-   const picture=document.createElement('img');picture.className='lp-chat-image';picture.src=message.image;
-   picture.alt=message.sticker?'表情包图片':'聊天图片';bubble.append(picture);
-  }
+  for(const src of (Array.isArray(message.images)&&message.images.length?message.images:message.image?[message.image]:[])){
+    const picture=document.createElement('img');picture.className='lp-chat-image';picture.src=src;
+    picture.alt=message.sticker?'表情包图片':'聊天图片';bubble.append(picture);
+   }
   body.append(bubble);
   if(message.from!=='system'){
    row.append(makeAvatarElement(message.from==='character'?avatars.character:avatars.user,message.from==='character'?'角色头像':'我的头像'),body);
@@ -5772,12 +6019,14 @@ async function runReply(ctx, char, data, session, existingJob = null) {
     recordActivity('开始生成', '已将当前手机对话交给酒馆生成接口，正在等待模型返回。');
     try {
         const catalog=stickerLibrary(ctx);
-        const systemPrompt = [await composePhonePrompt(ctx, char, data), messageStylePrompt(data), stickerPrompt(catalog),
+        const selectedStickers=chooseStickerCandidates(catalog,data);
+        const rolePhotos=photosForActor(activeContactId,'chat',ctx);
+        const systemPrompt = [await composePhonePrompt(ctx, char, data), messageStylePrompt(data), stickerPrompt(selectedStickers),albumCatalogPrompt(activeContactId),
             paymentReplyInstructions(data,activeContactId)].filter(Boolean).join('\n\n');
         recordActivity('生成配置','使用当前酒馆连接'+(ctx?.mainApi?' · '+ctx.mainApi:'')+'；手机历史 '+buildPrompt(data).length+' 条；当前手机预设 '+(configuredPhonePreset(data)||'未选择')+'；启用世界书 '+selectedWorldBookNames(data).length+' 本。实际注入数请看「注入预览」，包含自动继承的原版启用条目。');
         const phoneHistory=buildPrompt(data,ctx,char);
         const count=phoneRequestImageCount(phoneHistory);
-        const imageRecords=(data.messages||[]).filter(msg=>msg?.image&&!msg?.sticker).length;
+        const imageRecords=(data.messages||[]).reduce((sum,msg)=>sum+(!msg?.sticker?(Array.isArray(msg?.images)?msg.images.length:(msg?.image?1:0))+(msg?.sharePost?.image?1:0):0),0);
         recordActivity('图片上下文',`当前手机记录有 ${imageRecords} 张普通照片；最近 ${CONTEXT_MESSAGE_LIMIT} 条消息内已纳入 ${count} 张；${count?'将使用多模态图片通道':'本轮仅文本，未向模型传图片'}。`);
         const result = await generateWithTimeout(ctx, {
             task:'chat',systemPrompt,
@@ -5791,7 +6040,7 @@ async function runReply(ctx, char, data, session, existingJob = null) {
         const afterReceipt=applyPaymentModelTags(data,reply,activeContactId);
         const receiptChanged=walletState(data).transfers.some((tx,i)=>beforeStatuses[i]!==tx.id+':'+tx.status);
         const paymentResult=applyCharacterPaymentSendTag(data,afterReceipt,activeContactId);
-        const phoneMessages=paymentResult.text?parseStickerReply(paymentResult.text,data,catalog):[];
+        const phoneMessages=paymentResult.text?parseStickerReply(paymentResult.text,data,catalog,rolePhotos):[];
         if(!phoneMessages.length&&!paymentResult.created&&!receiptChanged)
             throw new Error('模型没有返回可发送的角色消息');
         for (const message of phoneMessages) appendPhoneMessage(data,'character',resolvePhonePlaceholders(message.text,ctx,char),message);
@@ -5830,7 +6079,7 @@ async function generateReply() {
     await runReply(ctx, char, data, captureSession(ctx));
 }
 
-async function sendUserMessage(text,image='',sticker=null) {
+async function sendUserMessage(text,image='',sticker=null,extra={}) {
     if (!mounted || busy) return;
     const ctx=context();
     const char=contactCharacter(ctx);
@@ -5841,7 +6090,7 @@ async function sendUserMessage(text,image='',sticker=null) {
     const session=captureSession(ctx);
     const data=structuredClone(readData(ctx));
     const quoted=data.messages.find(x=>x.id===quotedMessageId);
-    const message=appendPhoneMessage(data,'user',content);
+    const message=appendPhoneMessage(data,'user',content,extra);
     if(quoted){message.replyTo=quoted.id;message.replyQuote=quoted.text.slice(0,180);}
     if(image)message.image=image;
     if(sticker){message.sticker=true;message.stickerName=sticker.label;}
@@ -5854,7 +6103,7 @@ async function sendUserMessage(text,image='',sticker=null) {
         nodes.input.value='';
         clearQuote();
         nodes.morePanel.hidden=true;nodes.emojiPanel.hidden=true;
-        setStatus('已发送，可继续发送；准备好后点「生成」让角色回复。');
+        setStatus('');
     }catch(e){if(sameSession(session))setStatus(recordError('发送消息',e),'error');}
     finally{finishBusy(job);if(mounted)render();}
 }
@@ -6321,8 +6570,21 @@ function makeUI() {
             <button type="button" data-takeout-tab="me"><span aria-hidden="true">♙</span><small>我</small></button>
           </nav>
         </section>
+        <section class="lp-screen lp-album-screen" data-lp-screen="album" aria-label="故事相册" hidden>
+          <div data-lp="albumContent" class="lp-album-content"></div>
+        </section>
+        <section class="lp-screen lp-group-screen" data-lp-screen="groups" aria-label="群聊" hidden>
+          <div data-lp="groupsContent" class="lp-group-content"></div>
+        </section>
+        <section class="lp-screen lp-share-screen" data-lp-screen="sharePicker" aria-label="分享群星动态" hidden>
+          <div data-lp="shareTargets" class="lp-share-targets"></div>
+        </section>
+        <section class="lp-screen lp-share-screen" data-lp-screen="shareViewer" aria-label="分享详情" hidden>
+          <div data-lp="sharePreview" class="lp-share-preview"></div>
+        </section>
         <section class="lp-screen lp-chatlist" data-lp-screen="chatList" aria-label="消息列表" hidden>
           <div class="lp-list-body">
+            <button type="button" class="lp-list-action" data-lp-open="groups">＋ 创建 / 查看群聊</button>
             <div data-lp="recentChats"></div>
           </div>
           <nav class="lp-tabbar" aria-label="咕叽聊导航">
@@ -6521,7 +6783,8 @@ function makeUI() {
             <span data-lp="quotedText"></span>
             <button type="button" data-lp="cancelQuote" aria-label="取消引用">✕</button>
           </div>
-          <input type="file" accept="image/png,image/jpeg,image/webp" data-lp="chatImageInput" hidden />
+          <input type="file" accept="image/png,image/jpeg,image/webp" data-lp="chatImageInput" multiple hidden />
+          <div class="lp-photo-draft" data-lp="chatPhotoPreview" hidden></div>
           <div class="lp-payment-panel" data-lp="paymentPanel" hidden>
             <div class="lp-payment-panel-head"><strong data-lp="paymentTitle">转账</strong><button type="button" data-lp="paymentClose" aria-label="关闭">×</button></div>
             <label>类型 <select data-lp="paymentKind">
@@ -6724,7 +6987,7 @@ function makeUI() {
           <p class="lp-settings-hint">记忆记录可在「记忆管理」中查看、修改、删除。删除操作只影响当前故事存档。</p>
           </div>
           <div class="lp-settings-status" data-lp="settingsStatus" role="status" aria-live="polite"></div>
-          <p class="lp-settings-hint">咕叽咕机 · v0.20.0</p>
+          <p class="lp-settings-hint">咕叽咕机 · v0.21.0</p>
         </section>
         <section class="lp-screen lp-picker" data-lp-screen="presetPicker" hidden>
           <div class="lp-picker-head" data-lp="presetPickerTitle">预设</div>
@@ -6931,6 +7194,7 @@ function mount() {
     nodes = Object.fromEntries(['title', 'subtitle', 'back', 'close', 'time',
         'homeTime','homeDate','homeScene','homePages','homeDots','homeSwipe','homeHotSearch','homeCharacter','homeLogCount','homeUnreadCount',
         'lockTime','lockDate','lockPin','lockRepeat','lockDots','lockKeypad','lockIntro','lockFeedback','lockAction','lockExit','homeExit','lockOldPin','lockNewPin','lockConfirmPin','lockChangePin','lockChangeFeedback',
+        'albumContent','groupsContent','shareTargets','sharePreview',
         'weiboGenerate','weiboFeedback','weiboFeed','weiboHot','weiboNearby','weiboCompose','weiboMe','weiboDetail','weiboTabs','weiboComposeText','weiboPublish','weiboDetailBack','weiboRefreshBox',
         'desktopSortList','clockMode','clockRate','clockContinueClosed','clockCustomFields','clockSave','lockEnabled','lockSaveEnabled','notification','inlineNotification','calendarPrev','calendarNext','calendarHeading','calendarViews','calendarGrid','calendarSelected','calendarSummary','calendarSelectedTime','calendarStoryToday','calendarRealToday','calendarSaveTime','calendarExactSave',
         'momentsPost', 'momentsText', 'momentsFeed', 'momentFeedback','momentsPreview','momentImageUpload','momentRemovePhoto','myAvatarUpload','myAvatarFallback','myAvatarStatus','myIdentity', 'myAvatar', 'myPersona', 'autoMessagesMode','autoMessagesDays','autoMomentsMode','autoMomentsDays','relationAutoSync','phoneInPast','characterRequests','momentInteractions','autonomyStatus','autonomyFeedback','saveAutonomy','rescanRelations','testAutonomy', 'stickerUpload','stickerPackUpload', 'stickerStatus', 'stickerLibrary',
@@ -6942,7 +7206,7 @@ function mount() {
         'shoppingContent','shoppingTabs','takeoutContent','takeoutTabs','walletBalance','walletPending','walletBills','walletAdjustInput','walletSaveBalance','walletToChat','walletStatus',
         'presetSource','presetInfo','presetEntries','worldBookList','worldSelectionSummary','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','saveSelections','savePresetPicker','saveWorldPicker','selectionSaveStatus','readMainlineMemory','memorySource','phoneToMainline','eventBridge','saveContextSettings','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themePreset','themeCustomColors','themeSaveColors','themeWallpaperPreview','themeDesktopEffect','interactionMotion','interactionFeedback','themeBindWallpaper','themeName','themeSaveNamed','themeRename','themeDelete','themeExport','themeImport','themeFeedback','themeCssFile','themeCssReset','themeCssStatus','themeFontFile','themeDesktopIconSize','themeDesktopGap','themeBubbleRadius','themeIconTarget','themeIconFile','themeIconReset','themeFloatingIconFile','themeFloatingIconReset','themeCopySelectors',
         'diagnostics', 'diagnosticState', 'copyDiagnostics', 'clearDiagnostics',
-        'messages','messageActions','quotedPreview','quotedText','cancelQuote','emojiPanel','morePanel','chatImageInput','timeJumpPanel','timeJumpHint','timeJumpCurrent','timeJumpAmount','timeJumpUnit','timeJumpApply','timeJumpClose','paymentPanel','paymentTitle','paymentKind','paymentAmount','paymentNote','paymentBalance','paymentClose','paymentSend','input', 'generate', 'send', 'launcher']
+        'messages','messageActions','chatPhotoPreview','quotedPreview','quotedText','cancelQuote','emojiPanel','morePanel','chatImageInput','timeJumpPanel','timeJumpHint','timeJumpCurrent','timeJumpAmount','timeJumpUnit','timeJumpApply','timeJumpClose','paymentPanel','paymentTitle','paymentKind','paymentAmount','paymentNote','paymentBalance','paymentClose','paymentSend','input', 'generate', 'send', 'launcher']
         .map(key => [key, key === 'launcher' ? floating : root.querySelector(`[data-lp="${key}"]`)]));
 
     const draggedClick=enableLauncherDragging(nodes.launcher);
@@ -6986,6 +7250,11 @@ function mount() {
       if(w.state.tab==='discover')return w.generateHot();
       return w.generate(w.state.tab==='nearby'?'nearby':'home');
     }));
+    nodes.messages.addEventListener('click',event=>{const button=event.target.closest('[data-share-message-id]');if(!button)return;const message=readData(context()).messages.find(m=>m.id===button.dataset.shareMessageId);if(message?.sharePost)openSharedPost(message.sharePost,'chat');});
+    nodes.albumContent.addEventListener('click',event=>{void albumController?.handleClick(event);});
+    nodes.groupsContent.addEventListener('click',event=>{void groupsController?.handleClick(event);});
+    nodes.groupsContent.addEventListener('change',event=>{if(event.target.closest('input[data-group-avatar]'))void groupsController?.handleFile(event);});
+    nodes.shareTargets.addEventListener('click',event=>{const b=event.target.closest('[data-share-target]');if(b)void completeQunxingShare(b.dataset.shareType,b.dataset.shareTarget);});
     nodes.weiboPublish.addEventListener('click',()=>void loadWeiboController().then(w=>w?.publish()));
     nodes.weiboDetailBack.addEventListener('click',()=>weiboController?.back());
     nodes.shoppingTabs.addEventListener('click',event=>{
@@ -7068,8 +7337,10 @@ function mount() {
         if(activeScreen==='weibo'&&weiboController?.back())return;
         if(activeScreen==='shopping'&&shoppingController?.back())return;
         if(activeScreen==='takeout'&&takeoutController?.back())return;
+        if(activeScreen==='groups'&&groupsController?.back())return;
+        if(activeScreen==='shareViewer'){setScreen(sharedPostOrigin||'chat');return;}
         setScreen({
-          wallet:'home',shopping:'home',takeout:'home',weibo:'home',chat:'chatList',
+          wallet:'home',shopping:'home',takeout:'home',weibo:'home',album:'home',groups:'chatList',sharePicker:'weibo',chat:'chatList',
           contacts:'chatList',discover:'chatList',me:'chatList',
           profile:'contacts',requests:'contacts',addNpc:'contacts',
           discoverNpc:'addNpc',chatOptions:'chat',
@@ -7177,7 +7448,13 @@ function mount() {
     nodes.timeJumpClose.addEventListener('click',()=>{nodes.timeJumpPanel.hidden=true;});
     nodes.stickerUpload.addEventListener('change',event=>{const files=[...event.target.files];event.target.value='';void uploadStickers(files);});
     nodes.stickerPackUpload.addEventListener('change',event=>{const files=[...event.target.files];event.target.value='';void uploadStickerPack(files);});
-    nodes.chatImageInput.addEventListener('change',event=>{void sendImageFile(event.target.files?.[0]);event.target.value='';});
+    nodes.chatImageInput.addEventListener('change',event=>{const files=[...(event.target.files||[])];event.target.value='';prepareChatPhotoDraft(files);});
+    nodes.chatPhotoPreview.addEventListener('click',event=>{
+     const remove=event.target.closest('[data-photo-remove]'),send=event.target.closest('[data-photo-send]'),cancel=event.target.closest('[data-photo-cancel]');
+     if(remove){const idx=Number(remove.dataset.photoRemove);const [item]=chatPhotoDrafts.splice(idx,1);if(item)URL.revokeObjectURL(item.url);renderChatPhotoDraft();}
+     else if(send)void confirmChatPhotoDraft();
+     else if(cancel)discardChatPhotoDraft();
+    });
     nodes.messages.addEventListener('scroll',()=>{if(selectedMessageId)closeMessageActions();},{passive:true});
     root.addEventListener('click',event=>{
         if(selectedMessageId&&!event.target.closest('.lp-message-actions,.lp-bubble'))closeMessageActions();
@@ -7273,6 +7550,7 @@ function mount() {
         listeningEvent = ctx.event_types.CHAT_CHANGED;
         chatChangedHandler = () => {
             activeContactId=PRIMARY_CONTACT_ID;
+            discardChatPhotoDraft();
             if(nodes?.timeJumpPanel)nodes.timeJumpPanel.hidden=true;
             clearQuote();
             npcCandidates=[];npcScanSession=null;
