@@ -3117,11 +3117,15 @@ async function scanQunxingAccounts(extraWorld=''){
  const ownDescription=[mainInfo.description,mainInfo.personality,mainInfo.scenario,
   mainInfo.creator_notes,mainInfo.system_prompt,mainInfo.mes_example]
   .filter(x=>typeof x==='string').join('\n').slice(0,22000);
- const followers=explicitAccountFollowers(ownDescription);
- const primary={name:charName,kind:'角色',handle:'',bio:'',publicFigure:/(?:顶流|公众人物|艺人|演员|明星|歌手|爱豆|偶像|网红)/.test(ownDescription),
+ const sameNameLore=(result.candidates||[]).find(c=>c?.name===charName);
+ const loreDescription=String(sameNameLore?.description||'').slice(0,7500);
+ // Merge explicit same-character lore details before de-duplicating candidates.
+ // Character card wins if two sources state incompatible follower counts.
+ const followers=explicitAccountFollowers(ownDescription)??explicitAccountFollowers(loreDescription);
+ const primary={name:charName,kind:'角色',handle:'',bio:'',publicFigure:/(?:顶流|公众人物|艺人|演员|明星|歌手|爱豆|偶像|网红)/.test(ownDescription+'\n'+loreDescription),
   ...(followers!==null?{followers}:{}),
-  reference:ownDescription.slice(0,4000),
-  source:'当前角色卡'};
+  reference:(ownDescription+'\n'+(loreDescription?'【关联世界书同名资料】'+loreDescription:'')).slice(0,6500),
+  source:loreDescription?'当前角色卡与关联世界书':'当前角色卡'};
  const candidates=[primary,...result.candidates.map(c=>({
   name:c.name,kind:'NPC',handle:'',bio:'',publicFigure:false,
   ...(explicitAccountFollowers(c.description)!==null?{followers:explicitAccountFollowers(c.description)}:{}),
