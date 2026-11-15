@@ -3548,3 +3548,22 @@
 }
 #st-little-phone-root[data-motion="off"] .lp-touch-ripple,
 #st-little-phone-root[data-motion="off"] .lp-like-burst {display:none!important;}
+
+
+/* v0.25: account identity and follow action share one row; no follow button below avatar. */
+#st-little-phone-root .lp-wb-account-meta {
+ display:flex;align-items:center;justify-content:space-between;
+ min-width:0;flex:1;gap:8px;
+}
+#st-little-phone-root .lp-wb-account-meta .lp-wb-account-details {
+ min-width:0;flex:1;overflow-wrap:anywhere;
+}
+#st-little-phone-root .lp-wb-account-meta .lp-wb-profile-buttons {
+ flex:0 0 auto;align-self:center;
+}
+#st-little-phone-root .lp-wb-account-meta .lp-wb-profile-buttons button {
+ padding:8px 10px;font-size:12px;white-space:nowrap;
+}
+#st-little-phone-root .lp-wb-account-stats strong {overflow-wrap:anywhere;}
+#st-little-phone-root .lp-wb-account-stats>div {padding:0 2px;}
+#st-little-phone-root .lp-wb-account-intro>.lp-wb-avatar {flex:0 0 62px;}
