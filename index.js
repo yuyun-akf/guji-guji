@@ -7080,7 +7080,7 @@ function makeUI() {
             <label class="lp-field">选择酒馆已保存的站点（按 URL / Key 归类）<select data-lp="apiProfile"></select></label>
             <label class="lp-field">该站点可选模型<select data-lp="apiProfileModel"></select></label>
             <label class="lp-field">模型 ID（无法拉取时可选填）<input data-lp="apiProfileModelManual" type="text" autocomplete="off" placeholder="不填写则使用上方选中的模型"/></label>
-            <button type="button" class="lp-settings-link" data-lp="apiReloadModels">从酒馆拉取该站点模型</button>
+            <button type="button" class="lp-settings-link" data-lp="apiReloadModels">重新读取酒馆站点及模型</button>
             <p class="lp-settings-hint" data-lp="apiProfileHint">正在读取可用连接…</p>
           </div>
           <div class="lp-api-custom" data-lp="customApiFields" hidden>
@@ -7551,7 +7551,7 @@ function mount() {
     nodes.apiTask.addEventListener('change',loadPhoneApiUI);
     nodes.apiMode.addEventListener('change',()=>{showApiFields();if(nodes.apiMode.value==='profile')void loadSavedSiteModels(readApiOptions(readRootData(context()),currentApiTarget()).model);});
     nodes.apiProfile.addEventListener('change',()=>void loadSavedSiteModels());
-    nodes.apiReloadModels.addEventListener('click',()=>void loadSavedSiteModels(nodes.apiProfileModelManual.value.trim()||nodes.apiProfileModel.value));
+    nodes.apiReloadModels.addEventListener('click',()=>{savedSiteSecrets=null;void loadSavedSiteModels(nodes.apiProfileModelManual.value.trim()||nodes.apiProfileModel.value);});
     nodes.saveApi.addEventListener('click',()=>void savePhoneApi());
     nodes.apiTest.addEventListener('click',()=>void testPhoneApi());
     nodes.saveMessageStyle.addEventListener('click', () => void savePhoneMessageStyle());
