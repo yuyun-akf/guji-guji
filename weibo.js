@@ -605,10 +605,14 @@ export function createWeiboModule(api) {
   }
   if(comments.childNodes.length)box.append(comments);
   const a=actionState(p),actions=el('div','lp-wb-actions lp-wb-actions-inline');
-  const like=control('♡ '+((p.likes||0)+(a.liked?1:0)),'like',p.id,a.liked);
-  like.title='点赞';like.classList.add('lp-wb-action-compact');
-  const favorite=control(a.favorited?'★ 已收藏':'☆ 收藏','favorite',p.id,a.favorited);
-  favorite.title='收藏';favorite.setAttribute('aria-label','收藏');favorite.classList.add('lp-wb-action-compact');
+  const like=control((a.liked?'♥ ':'♡ ')+((p.likes||0)+(a.liked?1:0)),'like',p.id,a.liked);
+  like.title=a.liked?'取消点赞':'点赞';like.classList.add('lp-wb-action-compact');
+  like.dataset.touchEffect='like';like.setAttribute('aria-pressed',String(Boolean(a.liked)));
+  const favorite=control(a.favorited?'★':'☆','favorite',p.id,a.favorited);
+  favorite.title=a.favorited?'取消收藏':'收藏';favorite.setAttribute('aria-label',favorite.title);
+  favorite.setAttribute('aria-pressed',String(Boolean(a.favorited)));
+  favorite.dataset.touchEffect='favorite';
+  favorite.classList.add('lp-wb-action-compact','lp-wb-favorite-icon');
   const share=control('分享','shareMenu',p.id);
   share.classList.add('lp-wb-action-compact');
   const comment=el('div','lp-wb-inline-comment');
@@ -772,12 +776,16 @@ export function createWeiboModule(api) {
   parent.append(control('清空测试互动记录','clearInteractions'));
   parent.append(heading('管理群星账号','账号绑定具体故事人物；媒体、表白墙和后援会等可建立独立组织账号'));
   for(const a of q.accounts){
-   const line=el('div','lp-wb-account-line');line.append(avatar(a.avatar,a.name));
-   line.append(el('span','',a.name+' · '+(a.handle||'未设ID')+' · '+(savedProfession(a)||(subjectOfAccount(a).type==='organization'?'组织账号':'故事人物'))+' · '+formatFollowers(a.followers)));
-   line.append(control('主页','openAccount',a.id));line.append(control('编辑','editAccount',a.id));
-   if(a.source==='manual')line.append(control('历史帖管理','manageHistory',a.id));
-   line.append(control('删除','deleteAccount',a.id));
-   parent.append(line);
+   const line=el('div','lp-wb-account-line lp-wb-managed-account');
+   const identity=el('div','lp-wb-managed-identity');
+   identity.append(avatar(a.avatar,a.name));
+   const summary=el('div','lp-wb-managed-summary');
+   summary.append(el('strong','',a.name),el('small','',(a.handle||'未设ID')+' · '+(savedProfession(a)||(subjectOfAccount(a).type==='organization'?'组织账号':'故事人物'))+' · '+formatFollowers(a.followers)));
+   identity.append(summary);
+   const actions=el('div','lp-wb-managed-actions');
+   actions.append(control('主页','openAccount',a.id),control('编辑','editAccount',a.id),
+    control('历史帖管理','manageHistory',a.id),control('删除','deleteAccount',a.id));
+   line.append(identity,actions);parent.append(line);
   }
   parent.append(control('＋ 新建账号','newAccount'));
    const scanner=el('div','lp-wb-scanner');
