@@ -3456,13 +3456,19 @@ async function loadWeiboController(){
      const ctx=context();
      if(subject?.type==='primary'){
       const char=selectedCharacter(ctx),info=char?.data||char||{};
-      return [info.description,info.personality,info.scenario]
-       .filter(v=>typeof v==='string').join('\n').slice(0,1800);
+      return [
+       '人物背景：'+String(info.description||'').slice(0,1850),
+       '性格与行为：'+String(info.personality||'').slice(0,1350),
+       '故事场景：'+String(info.scenario||'').slice(0,600)
+      ].join('\n').slice(0,3800);
      }
      if(subject?.type==='npc'){
       const npc=readRootData(ctx).contacts.find(p=>p.name===subject.name);
-      return [npc?.description,npc?.relationship,npc?.personality]
-       .filter(v=>typeof v==='string').join('\n').slice(0,1200);
+      return [
+       '人物资料：'+String(npc?.description||'').slice(0,1250),
+       '性格：'+String(npc?.personality||'').slice(0,850),
+       '关系与公开身份：'+String(npc?.relationship||'').slice(0,350)
+      ].join('\n').slice(0,2450);
      }
      return '';
     },
