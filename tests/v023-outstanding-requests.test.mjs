@@ -9,10 +9,10 @@ const css=readFileSync(new URL('../style.css',import.meta.url),'utf8');
 const manifest=JSON.parse(readFileSync(new URL('../manifest.json',import.meta.url),'utf8'));
 const clone=x=>JSON.parse(JSON.stringify(x));
 
-test('v0.23.0 sources parse and all module import URLs use the updated cache key',()=>{
- assert.equal(manifest.version,'0.23.0');
+test('v0.24.0 sources parse and all module import URLs use the updated cache key',()=>{
+ assert.equal(manifest.version,'0.24.0');
  for(const source of [index,weibo,album])assert.doesNotThrow(()=>new Function(source.replace(/^export /gm,'')));
- for(const src of ['weibo.js','album.js','groups.js'])assert.ok(index.includes(src+'?v=0.23.0'));
+ for(const src of ['weibo.js','album.js','groups.js'])assert.ok(index.includes(src+'?v=0.24.0'));
 });
 
 test('followers are a social count, not 人, with compact 万/亿 labels',()=>{
@@ -48,33 +48,14 @@ test('settings no longer contain the duplicate run-log entry or inactive API app
  assert.match(index,/独立的「运行日志」App/);
 });
 
-test('saved SillyTavern profiles fetch available models with secret ID, never raw key',async()=>{
- const begin=index.indexOf('async function loadSavedSiteModels('),end=index.indexOf('async function savePhoneApi(',begin);
- assert.ok(begin>0&&end>begin);
- const profiles=[{id:'p1',name:'玖时',api:'custom',model:'model-a',
-  'api-url':'https://example.invalid/v1','secret-id':'server-stored-secret-reference'}];
- const service={getProfile:id=>profiles.find(x=>x.id===id),validateProfile:()=>({selected:'openai',source:'custom'})};
- const ctx={ConnectionManagerRequestService:service,getRequestHeaders:()=>({'Content-Type':'application/json','X-CSRF-Token':'test'})};
- const picker={options:[],replaceChildren(){this.options=[];},append(x){this.options.push(x);},value:'',disabled:false};
- const nodes={apiProfile:{value:'p1'},apiProfileModel:picker,apiProfileModelManual:{value:''},apiProfileHint:{textContent:''}};
- let captured;
- const mockFetch=async(url,options)=>{
-  captured={url,body:JSON.parse(options.body),headers:options.headers};
-  return {ok:true,json:async()=>({data:[{id:'model-b'},{id:'model-c'}]})};
- };
- const query=new Function('nodes','context','availableConnectionProfiles','document','fetch',
-  index.slice(begin,end)+'return loadSavedSiteModels;')(
-    nodes,()=>ctx,()=>({profiles:[{id:'p1'}]}),
-    {createElement:()=>({value:'',textContent:''})},mockFetch);
- await query('model-b');
- assert.deepEqual(picker.options.map(x=>x.value),['model-a','model-b','model-c']);
- assert.equal(picker.value,'model-b');
- assert.equal(captured.url,'/api/backends/chat-completions/status');
- assert.equal(captured.body.custom_url,profiles[0]['api-url']);
- assert.equal(captured.body.secret_id,profiles[0]['secret-id']);
- assert.equal(captured.body.api_key,undefined);
- assert.equal(captured.body.key,undefined);
- assert.match(index,/cfg\.model\?\.trim\(\)\?\{model:cfg\.model\.trim\(\)\}/);
+test('API sites are grouped by URL and key rather than displayed as model presets',()=>{
+ assert.match(index,/function savedApiSites\(/);
+ assert.match(index,/function resolveSavedSite\(/);
+ assert.match(index,/site\.profileIds\.includes\(value\)/);
+ assert.match(index,/api\/secrets\/read/);
+ assert.match(index,/api\/backends\/chat-completions\/status/);
+ assert.match(index,/getTavernRequestHeaders/);
+ assert.match(index,/service\.sendRequest\(site\.profileId/);
 });
 
 test('Qunxing toolbar stays in one row and share menu includes both destinations',()=>{
