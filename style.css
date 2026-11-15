@@ -3294,7 +3294,7 @@
  overflow-wrap:anywhere;
 }
 #st-little-phone-root .lp-group-message.mine{
- align-self:flex-end;background:var(--lp-pink);
+ align-self:flex-end;background:var(--lp-rose,#f1d6d6);
 }
 #st-little-phone-root .lp-group-message strong{font-size:11px;}
 #st-little-phone-root .lp-group-message p{margin:5px 0 0;line-height:1.6;}
@@ -3305,3 +3305,6 @@
 #st-little-phone-root .lp-group-share img{max-width:100%;max-height:180px;object-fit:contain;}
 #st-little-phone-root .lp-group-composer{display:flex;flex-wrap:wrap;gap:6px;}
 #st-little-phone-root .lp-group-composer textarea{flex-basis:100%;resize:vertical;}
+
+#st-little-phone-root .lp-group-avatar{width:52px;height:52px;border-radius:13px;object-fit:cover;border:1px solid var(--lp-slate);}
+#st-little-phone-root .lp-group-photo{display:block;max-width:100%;max-height:190px;object-fit:contain;border-radius:9px;margin-top:7px;}
