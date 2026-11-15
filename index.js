@@ -3664,11 +3664,13 @@ function createInteractionController({getRoot,getNodes,getMode,onError}){
    const count=document.createElement('em');
    count.className='lp-burst-count';count.textContent='+1';container.append(count);
   }
-  for(let i=0;i<(small?5:8);i++){
+  const subtle=mode()==='gentle';
+  const count=small?(subtle?3:5):(subtle?5:8),radius=small?(subtle?12:19):(subtle?20:31);
+  for(let i=0;i<count;i++){
    const particle=document.createElement('i');
-   const angle=i*Math.PI*2/(small?5:8);
-   particle.style.setProperty('--bx',Math.round(Math.cos(angle)*(small?19:31))+'px');
-   particle.style.setProperty('--by',Math.round(Math.sin(angle)*(small?19:31))+'px');
+   const angle=i*Math.PI*2/count;
+   particle.style.setProperty('--bx',Math.round(Math.cos(angle)*radius)+'px');
+   particle.style.setProperty('--by',Math.round(Math.sin(angle)*radius)+'px');
    particle.style.background=i%2?'var(--lp-slate)':'var(--lp-rose)';
    container.append(particle);
   }
