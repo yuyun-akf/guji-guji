@@ -3662,7 +3662,8 @@ function createInteractionController({getRoot,getNodes,getMode,onError}){
    const el=target(e);release();if(!el)return;
    el.classList.remove('lp-click-feedback');
    void el.offsetWidth;el.classList.add('lp-click-feedback');
-   setTimeout(()=>el.classList?.remove?.('lp-click-feedback'),140);
+   const isSocial=el.dataset?.wbAction==='like'||el.dataset?.wbAction==='favorite';
+   setTimeout(()=>el.classList?.remove?.('lp-click-feedback'),isSocial&&mode()!=='off'?260:140);
   },true);
   const watch=['lockFeedback','lockChangeFeedback','themeFeedback','selectionSaveStatus',
    'stickerStatus','momentFeedback','autonomyFeedback','myAvatarStatus','npcScanState',
