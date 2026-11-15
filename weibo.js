@@ -141,7 +141,7 @@ export function createWeiboModule(api) {
  const feedback=s=>{
    if(nodes()?.weiboFeedback)nodes().weiboFeedback.textContent=/正在|加载中|生成中|刷新中|读取中/.test(s)?s:'';
    if(s){
-    const kind=/失败|出错|错误|无效/.test(s)?'error':
+    const kind=/失败|出错|错误|无效|请先|请填写|必须|不能|未找到|超出|已被.*使用|不存在|需要选择/.test(s)?'error':
      /正在|加载中|生成中|刷新中|读取中/.test(s)?'pending':
      /已|成功|完成|保存|清空|更新/.test(s)?'success':'info';
     api.notifyInteraction?.(s,kind);
