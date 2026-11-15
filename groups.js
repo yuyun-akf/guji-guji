@@ -1,7 +1,7 @@
 /* 咕叽聊群聊：群消息仅属于当前剧情存档，所有发言独立归属成员。 */
 export function createGroupsModule(api){
  const el=(tag,cls='',text='')=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text)n.textContent=text;return n;};
- const state={active:'',busy:false,status:''};
+ const state={active:'',busy:false,status:'',manage:false,avatarDraft:''};
  const host=()=>api.getNodes()?.groupsContent;
  const ctx=()=>api.context();
  const root=()=>api.readRootData(ctx());
@@ -17,7 +17,23 @@ export function createGroupsModule(api){
   target.replaceChildren();
   const group=groups().find(g=>g.id===state.active);
   if(group){
-   const heading=el('div','lp-group-header');heading.append(el('strong','',group.name||'群聊'),el('small','',group.members.map(who).join('、')),button('返回列表','back'));target.append(heading);
+   const heading=el('div','lp-group-header');
+   if(group.avatar){const avatar=el('img','lp-group-avatar');avatar.src=group.avatar;avatar.alt='群聊头像';heading.append(avatar);}
+   heading.append(el('strong','',group.name||'群聊'),el('small','',group.members.map(who).join('、')),
+    button('返回列表','back'),button(state.manage?'返回聊天':'管理群聊','manage'));target.append(heading);
+   if(state.manage){
+    const form=el('div','lp-group-create'),name=el('input');name.dataset.groupInput='editName';name.maxLength=40;name.value=group.name||'';name.placeholder='群聊名称';
+    const avatar=el('input');avatar.type='file';avatar.accept='image/png,image/jpeg,image/webp';avatar.dataset.groupAvatar='true';
+    form.append(el('strong','','群聊资料'),name,el('p','','修改群头像'),avatar,el('p','','管理成员（至少保留两人）'));
+    const available=new Map([...group.members.map(id=>[id,{id,name:who(id)}]),...people().map(p=>[p.id,p])]);
+    for(const person of available.values()){
+     const label=el('label','lp-group-choice'),check=el('input');check.type='checkbox';check.dataset.groupEditMember='true';check.value=person.id;check.checked=group.members.includes(person.id);
+     label.append(check,document.createTextNode(person.name));form.append(label);
+    }
+    form.append(button('保存群资料','save-manage'));target.append(form);
+    if(state.status)target.append(el('p','lp-group-feedback',state.status));
+    return;
+   }
    const feed=el('div','lp-group-messages');
    for(const msg of group.messages||[]){
     const item=el('article','lp-group-message'+(msg.from==='user'?' mine':''));
@@ -118,9 +134,18 @@ export function createGroupsModule(api){
  async function handleClick(e){
   const button=e.target.closest('button[data-group-action]');if(!button||state.busy)return false;
   const act=button.dataset.groupAction,id=button.dataset.groupId;
-  if(act==='view-share'){const group=groups().find(g=>g.id===state.active),msg=group?.messages?.find(m=>m.id===id);if(msg?.sharePost)api.openSharedPost?.(msg.sharePost,'groups');}
-  else if(act==='open'){state.active=id;state.status='';render();}
-  else if(act==='back'){state.active='';state.status='';render();}
+  if(act==='manage'){state.manage=!state.manage;state.avatarDraft='';state.status='';render();}
+  else if(act==='save-manage'){
+   const name=host()?.querySelector('[data-group-input="editName"]')?.value?.trim()||'群聊';
+   const members=[...host().querySelectorAll('input[data-group-edit-member]:checked')].map(x=>x.value);
+   if(members.length<2){status('至少保留两名群成员',true);return true;}
+   try{await mutate(all=>{const g=all.find(x=>x.id===state.active);if(!g)throw Error('群聊不存在');g.name=name;g.members=members;if(state.avatarDraft)g.avatar=state.avatarDraft;});
+     state.manage=false;state.avatarDraft='';state.status='群资料已保存';render();}
+   catch(e){status('修改失败：'+String(e.message||e),true);}
+  }
+  else if(act==='view-share'){const group=groups().find(g=>g.id===state.active),msg=group?.messages?.find(m=>m.id===id);if(msg?.sharePost)api.openSharedPost?.(msg.sharePost,'groups');}
+  else if(act==='open'){state.active=id;state.manage=false;state.status='';render();}
+  else if(act==='back'){state.active='';state.manage=false;state.avatarDraft='';state.status='';render();}
   else if(act==='create'){
    const name=host()?.querySelector('[data-group-input="name"]')?.value?.trim()||'新的群聊';
    const members=[...host().querySelectorAll('input[data-group-member]:checked')].map(x=>x.value);
@@ -132,7 +157,18 @@ export function createGroupsModule(api){
   else return false;
   return true;
  }
- function open(){state.active='';state.status='';render();}
- function back(){if(!state.active)return false;state.active='';render();return true;}
- return {open,back,render,handleClick,shareToGroup};
+ async function handleFile(event){
+  const input=event.target.closest('input[data-group-avatar]');if(!input)return false;
+  const file=input.files?.[0];input.value='';if(!file)return false;
+  try{
+   state.avatarDraft=await api.encodeAvatarPhoto(file);
+   const header=host()?.querySelector('.lp-group-header');
+   if(header){let img=header.querySelector('.lp-group-avatar');if(!img){img=el('img','lp-group-avatar');header.prepend(img);}img.src=state.avatarDraft;img.alt='群聊新头像预览';}
+   state.status='已选择头像，点击保存群资料后生效';
+  }catch(e){state.status='头像处理失败：'+String(e.message||e);}
+  return true;
+ }
+ function open(){state.active='';state.manage=false;state.status='';render();}
+ function back(){if(state.manage){state.manage=false;state.avatarDraft='';render();return true;}if(!state.active)return false;state.active='';render();return true;}
+ return {open,back,render,handleClick,handleFile,shareToGroup};
 }
