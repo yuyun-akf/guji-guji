@@ -519,10 +519,24 @@ export function createWeiboModule(api) {
    comments.append(line);
   }
   if(comments.childNodes.length)box.append(comments);
-  const a=actionState(p),actions=el('div','lp-wb-actions');
-  actions.append(control('♡ '+((p.likes||0)+(a.liked?1:0)),'like',p.id,a.liked),
-   control('评论','detail',p.id),control('转发','repost',p.id,a.reposted),control('分享','share',p.id),control('收藏','favorite',p.id,a.favorited));
-  box.append(actions);
+  const a=actionState(p),actions=el('div','lp-wb-actions lp-wb-actions-inline');
+  const like=control('♡ '+((p.likes||0)+(a.liked?1:0)),'like',p.id,a.liked);
+  like.title='点赞';like.classList.add('lp-wb-action-compact');
+  const favorite=control(a.favorited?'★':'☆','favorite',p.id,a.favorited);
+  favorite.title='收藏';favorite.setAttribute('aria-label','收藏');favorite.classList.add('lp-wb-action-compact');
+  const share=control('分享','shareMenu',p.id);
+  share.classList.add('lp-wb-action-compact');
+  const comment=el('div','lp-wb-inline-comment');
+  const input=document.createElement('input');input.type='text';input.maxLength=500;
+  input.placeholder='评论…';input.dataset.wbCommentFor=p.id;input.setAttribute('aria-label','写评论');
+  const send=control('↗','sendComment',p.id);send.title='发送评论';send.setAttribute('aria-label','发送评论');
+  comment.append(input,send);
+  actions.append(like,favorite,share,comment);box.append(actions);
+  if(state.sharingId===p.id){
+   const menu=el('div','lp-wb-share-menu');
+   menu.append(control('转发到我的群星','repost',p.id,a.reposted),control('发送到咕叽聊','shareChat',p.id));
+   box.append(menu);
+  }
   if(!detailed)box.append(control('查看详情','detail',p.id));
   return box;
  }
@@ -732,9 +746,7 @@ export function createWeiboModule(api) {
     const p=byId(state.detail);
     if(p){
      n.weiboDetail.append(card(p,true));
-     const input=document.createElement('textarea');
-     input.dataset.wbCommentInput='';input.maxLength=500;input.placeholder='写下评论…';
-     n.weiboDetail.append(input,control('发表评论','sendComment',p.id));
+     // 评论输入框已整合到帖子操作栏。
     }else n.weiboDetail.append(el('p','lp-wb-empty','这条动态暂时不可读取'));
    }else if(state.topic){
     const t=state.topic;
@@ -970,11 +982,16 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
    state.editing='';state.avatarDraft='';feedback('群星账号已保存');render();return;
   }
   const p=byId(id);if(!p)return;
+  if(type==='shareMenu'){state.sharingId=state.sharingId===p.id?'':p.id;render();return;}
+  if(type==='shareChat'){state.sharingId='';api.sharePost?.(p);return;}
   if(type==='share'){api.sharePost?.(p);return;}
   if(type==='detail'){state.detail=id;render();return;}
   if(type==='follow'||type==='unfollow'){await followPost(p,type==='follow');render();return;}
   if(type==='sendComment'){
-   const input=nodes().weiboDetail.querySelector('[data-wb-comment-input]');
+   const input=nodes().weiboDetail?.querySelector('[data-wb-comment-for="'+p.id+'"]')||
+    nodes().weiboFeed?.querySelector('[data-wb-comment-for="'+p.id+'"]')||
+    nodes().weiboNearby?.querySelector('[data-wb-comment-for="'+p.id+'"]')||
+    nodes().weiboHot?.querySelector('[data-wb-comment-for="'+p.id+'"]');
    const text=clean(input?.value,500);if(!text)return;
    const c={id:uid('comment'),name:data().profile.nickname||'我',text};
    await persistAction(p,{comments:[...(actionState(p).comments||[]),c],newComment:c});
@@ -1058,6 +1075,18 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
    else return false;
    render();return true;
   }
+ function handleInput(event){
+  if(!event.target?.matches?.('[data-wb-account-search]'))return false;
+  state.searchQuery=event.target.value||'';
+  renderAccountSearchResults(event.target.parentElement?.querySelector('[data-wb-search-results]'));
+  return true;
+ }
+ function handleKeydown(event){
+  if(event.key!=='Enter'||!event.target?.matches?.('[data-wb-comment-for]'))return false;
+  event.preventDefault();
+  void action('sendComment',event.target.dataset.wbCommentFor).catch(e=>feedback('评论失败：'+String(e.message||e)));
+  return true;
+ }
  function handleClick(event){
   const n=event.target?.closest?.('[data-wb-action],[data-wb-topic]');if(!n)return false;
   if(n.dataset.wbTopic!==undefined){void openTopic(n.dataset.wbTopic,n.dataset.wbZone==='nearby'?'nearby':'home');return true;}
@@ -1133,5 +1162,5 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
    state.attempted.world=true;void generate('home');
   }
  }
- return {open,render,generate,generateHot,confirmHotSearch,endPhoneSession,headline,selectTab,back,publish,publishAlbumPhoto,handleClick,handleFile,tick,state,parse,normalize,openTopic};
+ return {open,render,generate,generateHot,confirmHotSearch,endPhoneSession,headline,selectTab,back,publish,publishAlbumPhoto,handleClick,handleInput,handleKeydown,handleFile,tick,state,parse,normalize,openTopic};
 }
