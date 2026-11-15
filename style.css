@@ -2815,3 +2815,16 @@
 #gujiguji-extension-settings .gujiguji-host-recovery small{
  display:block;margin:1px 0 0;opacity:.8;line-height:1.5;
 }
+
+
+/* v0.15: only two reliable transitions. Hidden pages cannot bleed on Android. */
+#st-little-phone-root .lp-desktop-pages[data-effect="slide"]>.lp-desktop-page,
+#st-little-phone-root .lp-desktop-pages[data-effect="fade"]>.lp-desktop-page{
+ transition:transform .36s cubic-bezier(.22,.7,.22,1),opacity .32s ease,visibility .36s!important;
+ transform-origin:center center!important;transform-style:flat!important;
+ backface-visibility:hidden!important;contain:paint;
+}
+#st-little-phone-root .lp-desktop-pages>.lp-desktop-page[aria-hidden="true"]{pointer-events:none!important;}
+@media(prefers-reduced-motion:reduce){
+ #st-little-phone-root .lp-desktop-pages>.lp-desktop-page{transition:none!important;}
+}
