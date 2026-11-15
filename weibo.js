@@ -143,6 +143,7 @@ export function createWeiboModule(api) {
     try{
      response=await api.phoneGenerate(context(),{
       systemPrompt:'你是虚构社交平台的帖子生成器；只返回合法JSON。',
+      maxTokens:nearby?4000:2000,maxLength:nearby?4000:2000,
       prompt:[{role:'user',content:prompt(nearby?12:5,zone,topic,false)}]
      },api.readData(context()));
     }catch(e){
@@ -186,6 +187,7 @@ export function createWeiboModule(api) {
    // ONE model invocation generates both the topics and their actual conversations.
    const response=await api.phoneGenerate(context(),{
     systemPrompt:'只返回紧凑且合法的JSON，不输出推理。',
+    maxTokens:10000,maxLength:10000,
     prompt:[{role:'user',content:hotPrompt()}]
    },api.readData(context()));
    if(session!==scope()||sessionId!==state.sessionId)return;
