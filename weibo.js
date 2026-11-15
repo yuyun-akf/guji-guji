@@ -748,6 +748,12 @@ export function createWeiboModule(api) {
   select.value=options.some(x=>x.value===wanted)?wanted:'primary';
   row.append(select);parent.append(row);return select;
  }
+ const selectField=(parent,label,name,value,options)=>{
+  const row=el('label','lp-wb-field');row.append(el('span','',label));
+  const input=document.createElement('select');input.dataset.wbField=name;
+  for(const [key,text] of options){const option=document.createElement('option');option.value=key;option.textContent=text;input.append(option);}
+  input.value=value;row.append(input);parent.append(row);return input;
+ };
  const field=(parent,label,name,value='',type='text')=>{
   const row=el('label','lp-wb-field');row.append(el('span','',label));
   const input=document.createElement('input');input.type=type;input.dataset.wbField=name;
@@ -808,11 +814,23 @@ export function createWeiboModule(api) {
    field(form,'职业／公开身份','accountProfession',savedProfession(active));
    field(form,'个性签名','accountBio',active.bio||'');
    field(form,'是否为公众人物','accountPublic',active.publicFigure||false,'checkbox');
+   selectField(form,'账号运营方式','accountOperatorMode',operatorMode(active),[
+    ['self','本人运营'],['team','工作室／经纪团队运营'],['joint','本人及团队共同运营'],['other','其他指定运营者']
+   ]);
+   field(form,'指定运营者（选择其他时填写）','accountOperatorName',active.operatorName||'');
+   selectField(form,'账号真实身份公开程度','accountIdentityVisibility',active.identityVisibility||'public',[
+    ['public','公开：账号身份可知'],
+    ['private','不公开：私人小号'],
+    ['limited','仅指定知情者知晓']
+   ]);
+   field(form,'指定知情者（可选，仅用于内部剧情）','accountIdentityKnownTo',active.identityKnownTo||'');
+   form.append(el('small','lp-wb-bind-note','同一人物可绑定多个独立账号；私人小号不会自动暴露与其他账号的关联。'));
    followerField(form,'粉丝数量','accountFollowers',active.followers||0);
    const extraFields=[['accountFollowing','关注数量（选填）',active.followingCount],
     ['accountLikes','累计获赞（选填）',active.likesTotal],
     ['accountComments','累计获评（选填）',active.commentsTotal]];
    for(const [key,label,value] of extraFields){const input=field(form,label,key,value??'','number');input.min='0';input.step='1';}
+   form.append(el('small','lp-wb-bind-note','关注／累计获赞／累计获评可留空：根据粉丝数量和账号类型自动估算既有历史数据；手动填写优先。'));
    avatarPicker(form,'更换角色账号头像','accountAvatar',state.avatarDraft||active.avatar||'',active.name||'角色');
    form.append(control('保存群星账号','saveAccount'));parent.append(form);
   }
