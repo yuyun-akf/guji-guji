@@ -212,9 +212,7 @@ export function createWeiboModule(api) {
    }
    wrap.append(menu);return;
   }
-  const bar=el('div','lp-wb-subpage-bar');
-  bar.append(el('strong','',names[state.subview]||'群星'));
-  wrap.append(bar);
+  // Fixed phone title replaces the scrolling subpage heading.
   if(state.subview==='settings')renderSettings(wrap,q);
   else if(state.subview==='profile')renderProfile(wrap,q);
   else if(state.subview==='following'){
@@ -328,6 +326,8 @@ export function createWeiboModule(api) {
  function render(){
   const n=nodes();if(!n?.weiboFeed)return;
   reset();
+  const pageNames={mine:'我的动态',interactions:'我的互动',following:'关注列表',profile:'个人资料',settings:'群星设置'};
+  if(n.title)n.title.textContent=state.detail?'动态详情':state.topic?'热搜详情':state.tab==='me'&&state.subview?(pageNames[state.subview]||'群星'):'群星';
   n.weiboGenerate.disabled=state.loading;
   n.weiboGenerate.textContent=state.tab==='nearby'?'刷新周边':state.tab==='discover'?'刷新热搜':'刷新更多';
   n.weiboTabs.querySelectorAll('[data-weibo-tab]').forEach(b=>b.classList.toggle('selected',b.dataset.weiboTab===state.tab));
