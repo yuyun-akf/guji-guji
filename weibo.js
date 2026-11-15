@@ -1,6 +1,6 @@
 /* 群星 · character-card accounts + per-story persistent generated feeds and interactions. */
 export function createWeiboModule(api) {
- const state={scope:'',tab:'home',detail:'',topic:null,profileAccount:'',historyEditingId:'',historyFormOpen:false,searchQuery:'',sharingId:'',subview:'',posts:{home:[],nearby:[]},trends:[],nearbyTrends:[],loading:false,hotLoading:false,attempted:{},token:0,sessionId:0,headline:'',hotBundles:{},queuedNearby:false,confirming:false,editing:'',avatarDraft:'',avatarOwnerDraft:'',candidates:[],scanLoading:false,scanMessage:''};
+ const state={scope:'',tab:'home',detail:'',topic:null,profileAccount:'',adminHistoryAccount:'',historyEditingId:'',historyFormOpen:false,searchQuery:'',sharingId:'',subview:'',posts:{home:[],nearby:[]},trends:[],nearbyTrends:[],loading:false,hotLoading:false,attempted:{},token:0,sessionId:0,headline:'',hotBundles:{},queuedNearby:false,confirming:false,editing:'',avatarDraft:'',avatarOwnerDraft:'',candidates:[],scanLoading:false,scanMessage:''};
  let writes=Promise.resolve(), autoBusy=false,closeHotConfirmation=null;
  const context=()=>api.context(), nodes=()=>api.getNodes(), root=()=>api.readRootData(context());
  const uid=(prefix='qx')=>prefix+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
@@ -124,7 +124,7 @@ export function createWeiboModule(api) {
   // An explicitly saved empty role directory means previously deleted accounts
   // must not be resurrected by an older story chat.
   api.ensureSharedAccounts?.();
-  state.scope=next;state.tab='home';state.detail='';state.topic=null;state.profileAccount='';state.historyEditingId='';state.historyFormOpen=false;state.searchQuery='';state.sharingId='';state.subview='';
+  state.scope=next;state.tab='home';state.detail='';state.topic=null;state.profileAccount='';state.adminHistoryAccount='';state.historyEditingId='';state.historyFormOpen=false;state.searchQuery='';state.sharingId='';state.subview='';
   state.candidates=[];state.scanMessage='';state.scanLoading=false;
   const stored=data().generated;
   const feeds=stored?.feeds||{};
@@ -535,6 +535,18 @@ export function createWeiboModule(api) {
   form.append(control('按上述要求生成历史帖（调用模型）','generateAccountHistory',account.id));
   panel.append(form);container.append(panel);
  }
+ function renderAccountHistoryManager(container){
+  const account=data().accounts.find(a=>a.id===state.adminHistoryAccount&&a.source==='manual');
+  if(!account){container.append(el('p','lp-wb-empty','该角色账号无法管理'));return;}
+  const history=accountHistory(account);
+  container.append(heading(account.name+' · 历史帖管理','仅当前故事存档 · 可代发／修改／按要求生成'));
+  renderHistoryEditor(container,account,history);
+  container.append(heading('已保存的公开帖子','点击编辑后在上方修改，其他入口只允许浏览'));
+  for(const post of history.slice(0,80)){
+   container.append(card(post,false),control('编辑此条历史帖','editHistoryPost',post.id));
+  }
+  if(!history.length)container.append(el('p','lp-wb-empty','尚无历史公开动态，可在上方代发或生成。'));
+ }
  function renderAccountProfile(container){
   const p=state.profileAccount;
   const source=p.startsWith('post:')?byId(p.slice(5)):null;
@@ -543,15 +555,15 @@ export function createWeiboModule(api) {
   const q=data(),history=accountHistory(account);
   const head=el('div','lp-wb-account-page'),intro=el('div','lp-wb-account-intro');
   intro.append(avatar(account.avatar,account.name));
-  const detail=el('div','lp-wb-account-details');
+  const meta=el('div','lp-wb-account-meta'),detail=el('div','lp-wb-account-details');
   detail.append(el('strong','',account.name),el('small','',account.handle||'尚未设置群星 ID'));
   if(savedProfession(account))detail.append(el('small','',savedProfession(account)));
-  intro.append(detail);head.append(intro);
-  if(account.bio)head.append(el('p','lp-wb-account-bio',account.bio));
+  meta.append(detail);
   const followed=q.following.includes(account.id),buttons=el('div','lp-wb-profile-buttons');
   if(account.id!=='self')buttons.append(control(followed?'已关注':'＋关注',
    followed?'unfollowAccount':'followAccount',account.id));
-  head.append(buttons);
+  meta.append(buttons);intro.append(meta);head.append(intro);
+  if(account.bio)head.append(el('p','lp-wb-account-bio',account.bio));
   const knownLikes=history.reduce((n,item)=>n+Math.max(0,Number(item.likes)||0),0);
   const knownComments=history.reduce((n,item)=>n+(item.comments?.length||0),0);
   const stats=el('div','lp-wb-account-stats');
@@ -564,11 +576,9 @@ export function createWeiboModule(api) {
   ];
   for(const [label,value] of display){const tile=el('div');tile.append(el('strong','',value),el('small','',label));stats.append(tile);}
   head.append(stats);container.append(head);
-  renderHistoryEditor(container,account,history);
   container.append(heading('公开动态','按已保存的故事时间排序'));
   for(const item of history.slice(0,80)){
    container.append(card(item,false));
-   if(account.source==='manual')container.append(control('编辑此条历史帖','editHistoryPost',item.id));
   }
   if(!history.length)container.append(el('p','lp-wb-empty','还没有记录该账号的公开动态。'));
 
@@ -646,6 +656,7 @@ export function createWeiboModule(api) {
   }
   // Fixed phone title replaces the scrolling subpage heading.
   if(state.subview==='settings')renderSettings(wrap,q);
+  else if(state.subview==='accountEditor')renderAccountEditor(wrap,q);
   else if(state.subview==='profile')renderProfile(wrap,q);
   else if(state.subview==='following'){
    wrap.append(heading('关注列表','取消关注不删除已经保存的账号资料'));
@@ -728,6 +739,27 @@ export function createWeiboModule(api) {
   avatarPicker(form,'更换我的群星头像','ownerAvatar',state.avatarOwnerDraft||q.profile.avatar,q.profile.nickname);
   form.append(control('保存个人资料','saveProfile'));parent.append(form);
  }
+ function renderAccountEditor(parent,q){
+  parent.append(control('返回群星设置','backAccountEditor'));
+  const active=q.accounts.find(a=>a.id===state.editing)||{};
+  if(state.editing==='new'||active.id){
+   const form=el('div','lp-wb-editor');form.append(heading(active.id?'编辑账号':'新增账号'));
+   subjectField(form,'绑定故事人物／账号主体','accountSubject',active);
+   form.append(el('small','lp-wb-bind-note','绑定关系仅用于关联角色卡和世界书人物；公开主页显示的是昵称、职业和个性签名。'));
+   field(form,'账号昵称','accountName',active.name||'');
+   field(form,'群星 ID（例如 @example）','accountHandle',active.handle||'');
+   field(form,'职业／公开身份','accountProfession',savedProfession(active));
+   field(form,'个性签名','accountBio',active.bio||'');
+   field(form,'是否为公众人物','accountPublic',active.publicFigure||false,'checkbox');
+   followerField(form,'粉丝数量','accountFollowers',active.followers||0);
+   const extraFields=[['accountFollowing','关注数量（选填）',active.followingCount],
+    ['accountLikes','累计获赞（选填）',active.likesTotal],
+    ['accountComments','累计获评（选填）',active.commentsTotal]];
+   for(const [key,label,value] of extraFields){const input=field(form,label,key,value??'','number');input.min='0';input.step='1';}
+   avatarPicker(form,'更换角色账号头像','accountAvatar',state.avatarDraft||active.avatar||'',active.name||'角色');
+   form.append(control('保存群星账号','saveAccount'));parent.append(form);
+  }
+ }
  function renderSettings(parent,q){
   parent.append(el('p','lp-wb-settings-note','角色与 NPC 账号保存后，同一张角色卡的其他聊天也可直接使用；帖子、互动与热搜仍属于当前故事存档。'));
   const controls=el('div','lp-wb-editor');
@@ -742,7 +774,9 @@ export function createWeiboModule(api) {
   for(const a of q.accounts){
    const line=el('div','lp-wb-account-line');line.append(avatar(a.avatar,a.name));
    line.append(el('span','',a.name+' · '+(a.handle||'未设ID')+' · '+(savedProfession(a)||(subjectOfAccount(a).type==='organization'?'组织账号':'故事人物'))+' · '+formatFollowers(a.followers)));
-   line.append(control('主页','openAccount',a.id));line.append(control('编辑','editAccount',a.id));line.append(control('删除','deleteAccount',a.id));
+   line.append(control('主页','openAccount',a.id));line.append(control('编辑','editAccount',a.id));
+   if(a.source==='manual')line.append(control('历史帖管理','manageHistory',a.id));
+   line.append(control('删除','deleteAccount',a.id));
    parent.append(line);
   }
   parent.append(control('＋ 新建账号','newAccount'));
@@ -779,36 +813,18 @@ export function createWeiboModule(api) {
     });
     scanner.append(control('保存勾选的账号','saveCandidates'));
    }
-  const active=q.accounts.find(a=>a.id===state.editing)||{};
-  if(state.editing==='new'||active.id){
-   const form=el('div','lp-wb-editor');form.append(heading(active.id?'编辑账号':'新增账号'));
-   subjectField(form,'绑定故事人物／账号主体','accountSubject',active);
-   form.append(el('small','lp-wb-bind-note','绑定关系仅用于关联角色卡和世界书人物；公开主页显示的是昵称、职业和个性签名。'));
-   field(form,'账号昵称','accountName',active.name||'');
-   field(form,'群星 ID（例如 @example）','accountHandle',active.handle||'');
-   field(form,'职业／公开身份','accountProfession',savedProfession(active));
-   field(form,'个性签名','accountBio',active.bio||'');
-   field(form,'是否为公众人物','accountPublic',active.publicFigure||false,'checkbox');
-   followerField(form,'粉丝数量','accountFollowers',active.followers||0);
-   const extraFields=[['accountFollowing','关注数量（选填）',active.followingCount],
-    ['accountLikes','累计获赞（选填）',active.likesTotal],
-    ['accountComments','累计获评（选填）',active.commentsTotal]];
-   for(const [key,label,value] of extraFields){const input=field(form,label,key,value??'','number');input.min='0';input.step='1';}
-   avatarPicker(form,'更换角色账号头像','accountAvatar',state.avatarDraft||active.avatar||'',active.name||'角色');
-   form.append(control('保存群星账号','saveAccount'));parent.append(form);
-  }
   parent.append(scanner);
  }
 
  function render(){
   const n=nodes();if(!n?.weiboFeed)return;
   reset();
-  const pageNames={mine:'我的动态',interactions:'我的互动',following:'关注列表',profile:'个人资料',settings:'群星设置'};
-  if(n.title)n.title.textContent=state.profileAccount?'个人主页':state.detail?'动态详情':state.topic?'热搜详情':state.tab==='me'&&state.subview?(pageNames[state.subview]||'群星'):'群星';
+  const pageNames={mine:'我的动态',interactions:'我的互动',following:'关注列表',profile:'个人资料',settings:'群星设置',accountEditor:'编辑群星账号'};
+  if(n.title)n.title.textContent=state.adminHistoryAccount?'历史帖管理':state.profileAccount?'个人主页':state.detail?'动态详情':state.topic?'热搜详情':state.tab==='me'&&state.subview?(pageNames[state.subview]||'群星'):'群星';
   n.weiboGenerate.disabled=state.loading||state.hotLoading;
   n.weiboGenerate.textContent=state.tab==='nearby'?'刷新周边帖子':state.tab==='discover'?'重新生成15条热搜':'刷新更多';
   n.weiboTabs.querySelectorAll('[data-weibo-tab]').forEach(b=>b.classList.toggle('selected',b.dataset.weiboTab===state.tab));
-  const expanded=Boolean(state.profileAccount||state.detail||state.topic);
+  const expanded=Boolean(state.adminHistoryAccount||state.profileAccount||state.detail||state.topic);
   const panels={home:n.weiboFeed,discover:n.weiboHot,nearby:n.weiboNearby,compose:n.weiboCompose,me:n.weiboMe};
   Object.entries(panels).forEach(([key,node])=>{
    node.hidden=key!==state.tab||expanded;
@@ -821,7 +837,8 @@ export function createWeiboModule(api) {
   n.weiboFeedback.hidden=!n.weiboFeedback.textContent;
   if(expanded){
    // No scrolling duplicate back control in detail view.
-   if(state.profileAccount){
+   if(state.adminHistoryAccount)renderAccountHistoryManager(n.weiboDetail);
+   else if(state.profileAccount){
     renderAccountProfile(n.weiboDetail);
    }else if(state.detail){
     const p=byId(state.detail);
@@ -913,7 +930,7 @@ if(type==='clearInteractions'){
    render();return;
   }
 if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';render();nodes().weiboMe.parentElement.scrollTop=0;return;}
-  if(type==='backMe'){state.subview='';state.editing='';render();nodes().weiboMe.parentElement.scrollTop=0;return;}
+  if(type==='backMe'){state.subview=state.subview==='accountEditor'?'settings':'';state.editing='';render();nodes().weiboMe.parentElement.scrollTop=0;return;}
   if(type==='retryTopic'){state.topic=null;state.tab='discover';await generateHot();return;}
   if(type==='scanAccounts'){
    if(state.scanLoading)return;
@@ -971,6 +988,13 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
    state.candidates=[];state.scanMessage='已保存 '+chosen.length+' 个已确认账号，未勾选的没有写入。';
    feedback(state.scanMessage);render();return;
   }
+  if(type==='manageHistory'){
+   const account=data().accounts.find(a=>a.id===id&&a.source==='manual');
+   if(!account||state.subview!=='settings')return;
+   state.adminHistoryAccount=id;state.profileAccount='';state.historyEditingId='';state.historyFormOpen=true;
+   state.detail='';state.topic=null;render();return;
+  }
+  if(type==='backAccountEditor'){state.editing='';state.avatarDraft='';state.subview='settings';render();return;}
   if(type==='openAccount'||type==='openPostAuthor'){
    const post=type==='openPostAuthor'?byId(id):null;
    state.profileAccount=post?'post:'+post.id:id;
@@ -985,7 +1009,7 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
   }
   if(type==='editHistoryPost'){
    const found=byId(id);
-   const owner=data().accounts.find(a=>a.id===state.profileAccount);
+   const owner=data().accounts.find(a=>a.id===state.adminHistoryAccount);
    if(!found||!owner||!accountMatches(found,owner)||owner.source!=='manual')return;
    state.historyEditingId=id;state.historyFormOpen=true;render();return;
   }
@@ -994,7 +1018,7 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
   }
   if(type==='saveHistoryPost'){
    const owner=data().accounts.find(a=>a.id===id);
-   if(!owner||owner.source!=='manual'||state.profileAccount!==id)return;
+   if(!owner||owner.source!=='manual'||state.adminHistoryAccount!==id)return;
    const form=nodes()?.weiboDetail;
    const get=name=>form?.querySelector('[data-wb-history-field="'+name+'"]')?.value||'';
    const text=clean(get('text'),1000),time=get('time').trim();
@@ -1030,7 +1054,7 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
    feedback(original?'历史帖子已更新':'已代该角色保存历史帖子');render();return;
   }
   if(type==='deleteHistoryPost'){
-   const post=byId(id),owner=data().accounts.find(a=>a.id===state.profileAccount);
+   const post=byId(id),owner=data().accounts.find(a=>a.id===state.adminHistoryAccount);
    if(!post||!owner||!accountMatches(post,owner)||owner.source!=='manual')return;
    if(typeof window!=='undefined'&&typeof window.confirm==='function'&&!window.confirm('删除这条角色历史帖？此操作只影响当前剧情存档。'))return;
    await mutate(q=>{
@@ -1045,7 +1069,7 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
   }
   if(type==='generateAccountHistory'){
    const account=data().accounts.find(a=>a.id===id);
-   if(!account||account.source!=='manual'||state.profileAccount!==id)return;
+   if(!account||account.source!=='manual'||state.adminHistoryAccount!==id)return;
    const details=nodes()?.weiboDetail;
    const extra=clean(details?.querySelector('[data-wb-history-field="instructions"]')?.value,1400);
    const count=Math.max(1,Math.min(5,Number(details?.querySelector('[data-wb-history-field="count"]')?.value)||3));
@@ -1109,8 +1133,8 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
    }catch(e){feedback('生成历史动态失败：'+String(e.message||e));}
    render();return;
   }
-  if(type==='newAccount'){state.editing='new';state.avatarDraft='';render();return;}
-  if(type==='editAccount'){state.editing=id;state.avatarDraft='';render();return;}
+  if(type==='newAccount'){state.editing='new';state.avatarDraft='';state.subview='accountEditor';render();return;}
+  if(type==='editAccount'){state.editing=id;state.avatarDraft='';state.subview='accountEditor';render();return;}
   if(type==='deleteAccount'){
    await mutate(q=>{q.accounts=q.accounts.filter(a=>a.id!==id);q.following=q.following.filter(x=>x!==id);});
    state.editing='';render();return;
@@ -1164,7 +1188,7 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
      followers,avatar:avatarDraft||old.avatar||'',source:'manual'};
     q.accounts=old.id?q.accounts.map(a=>a.id===old.id?next:a):[...q.accounts,next];
    });
-   state.editing='';state.avatarDraft='';feedback('群星账号已保存');render();return;
+   state.editing='';state.avatarDraft='';state.subview='settings';feedback('群星账号已保存');render();return;
   }
   const p=byId(id);if(!p)return;
   if(type==='shareMenu'){state.sharingId=state.sharingId===p.id?'':p.id;render();return;}
@@ -1239,13 +1263,13 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
   t=alias[t]||t;
   if(!['home','discover','nearby','compose','me'].includes(t))return;
   if(t==='discover'){
-   state.tab='discover';state.detail='';state.topic=null;state.profileAccount='';state.subview='';
+   state.tab='discover';state.detail='';state.topic=null;state.profileAccount='';state.adminHistoryAccount='';state.subview='';
    feedback('');render();return;
   }
   if(t!==state.tab)feedback('');
   if(t==='me'&&state.tab==='me')state.subview='';
   if(t!=='me')state.subview='';
-  state.tab=t;state.detail='';state.topic=null;state.profileAccount='';state.sharingId='';render();
+  state.tab=t;state.detail='';state.topic=null;state.profileAccount='';state.adminHistoryAccount='';state.sharingId='';render();
   if(nodes()?.weiboFeed?.parentElement)nodes().weiboFeed.parentElement.scrollTop=0;
   if(t==='home'&&!state.attempted.world){state.attempted.world=true;void generate('home');}
   if(t==='nearby'&&!state.attempted.nearby){
@@ -1253,9 +1277,11 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
   }
  }
  function back(){
-   if(state.profileAccount)state.profileAccount='';
+   if(state.adminHistoryAccount){state.adminHistoryAccount='';state.historyEditingId='';state.historyFormOpen=false;}
+   else if(state.profileAccount)state.profileAccount='';
    else if(state.detail)state.detail='';
    else if(state.topic)state.topic=null;
+   else if(state.subview==='accountEditor'){state.subview='settings';state.editing='';}
    else if(state.subview)state.subview='';
    else return false;
    render();return true;
