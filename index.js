@@ -695,9 +695,9 @@ async function savePhoneLockEnabled(){
 
 const SWISS_THEME={white:'#ffffff',ice:'#e0e8f2',blush:'#f1d6d6',rose:'#e39f9f',slate:'#8b9bc1',navy:'#35568a'};
 const BUILTIN_PALETTES={
- 'concept-violet':{name:'02 · 瑞士花影（紫金）',colors:{white:'#ffffff',ice:'#d9deef',blush:'#f2edd0',rose:'#ead78f',slate:'#aca8cd',navy:'#5f508a'}},
- 'concept-coral':{name:'03 · 瑞士珊瑚（红绿）',colors:{white:'#ffffff',ice:'#cce2da',blush:'#f7e8e8',rose:'#df8d8e',slate:'#8ec9b7',navy:'#bc535d'}},
- 'concept-amber':{name:'04 · 瑞士麦穗（金蓝）',colors:{white:'#ffffff',ice:'#e5f2fe',blush:'#f0e2cd',rose:'#f6d476',slate:'#ccd0e5',navy:'#dea246'}}
+ 'concept-violet':{name:'鸢尾流光',colors:{white:'#ffffff',ice:'#d9deef',blush:'#f2edd0',rose:'#ead78f',slate:'#aca8cd',navy:'#5f508a'}},
+ 'concept-coral':{name:'海棠春信',colors:{white:'#ffffff',ice:'#cce2da',blush:'#f7e8e8',rose:'#df8d8e',slate:'#8ec9b7',navy:'#bc535d'}},
+ 'concept-amber':{name:'金盏朝露',colors:{white:'#ffffff',ice:'#e5f2fe',blush:'#f0e2cd',rose:'#f6d476',slate:'#ccd0e5',navy:'#dea246'}}
 };
 const isBuiltInPalette=id=>id==='swiss'||Object.prototype.hasOwnProperty.call(BUILTIN_PALETTES,id);
 const WALLPAPER_STORAGE_KEY='gujiguji-wallpaper-v1';
@@ -891,9 +891,9 @@ function renderThemeSelector(theme=themeView()){
   nodes.themePreset.dataset.library=signature;
   nodes.themePreset.replaceChildren();
   for(const [value,label] of [
-   ['swiss','01 · 瑞士纸韵（不可删除）'],
+   ['swiss','琉璃繁缕（内置）'],
    ...Object.entries(BUILTIN_PALETTES).map(([key,item])=>[key,item.name+'（内置）']),
-   ['custom','05 · 自定义主题']
+   ['custom','自定义主题']
   ]){
    const option=document.createElement('option');option.value=value;option.textContent=label;nodes.themePreset.append(option);
   }
@@ -959,14 +959,14 @@ function renameNamedTheme(){
 }
 function deleteSelectedTheme(){
  const raw=themeData(),entry=savedThemeProfile(raw);
- if(isBuiltInPalette(raw.palette)||!raw.palette)return notifyTheme('内置主题不可删除，可另存为自定义主题',true);
+ if(isBuiltInPalette(raw.palette)||!raw.palette)return notifyTheme('请先选择自定义主题再删除',true);
  if(!window.confirm('删除当前自定义主题？这不会影响聊天、订单和其他主题。'))return;
  if(entry){
-  persistTheme({...raw,savedThemes:(raw.savedThemes||[]).filter(x=>x.id!==entry.id),palette:'swiss'},'已删除主题「'+entry.name+'」，切回瑞士纸韵');
+  persistTheme({...raw,savedThemes:(raw.savedThemes||[]).filter(x=>x.id!==entry.id),palette:'swiss'},'已删除主题「'+entry.name+'」，切回琉璃繁缕');
  }else{
   persistTheme({...raw,palette:'swiss',colors:{},font:'system',fontData:'',wallpaper:'',customCss:'',
    icons:{},floatingIcon:'',desktopEffect:'slide',desktopIconSize:34,desktopGap:25,
-   chatBubbleRadius:15,wallpapers:{...(raw.wallpapers||{}),custom:''}},'自定义配色已清除，切回瑞士纸韵');
+   chatBubbleRadius:15,wallpapers:{...(raw.wallpapers||{}),custom:''}},'自定义配色已清除，切回琉璃繁缕');
  }
 }
 function exportNamedTheme(){
@@ -5639,7 +5639,7 @@ function restoreDefaultThemeFromHost(){
  const ctx=context();
  if(!ctx?.extensionSettings||typeof ctx.saveSettingsDebounced!=='function')
   return window.alert('当前酒馆无法保存扩展设置');
- if(!window.confirm('恢复咕叽咕机的默认主题？当前选择会变回瑞士纸韵，已保存的其他主题资料及聊天数据不会删除。'))return;
+ if(!window.confirm('恢复咕叽咕机的默认主题？当前选择会变回琉璃繁缕，已保存的其他主题资料及聊天数据不会删除。'))return;
  const settings=ctx.extensionSettings[SETTINGS_KEY]||={};
  settings.theme={...(settings.theme||{}),palette:'swiss',font:'system',desktopEffect:'slide',
   wallpaper:'',bindWallpaper:false,customCss:'',customCssEnabled:false};
@@ -6213,11 +6213,11 @@ function makeUI() {
         <section class="lp-screen lp-settings" data-lp-screen="theme" aria-label="主题" hidden>
           <h2>可选主题</h2>
           <select data-lp="themePreset" aria-label="选择主题">
-            <option value="swiss">01 · 瑞士纸韵（蓝灰玫瑰）</option>
-            <option value="custom">05 · 自定义主题</option>
+            <option value="swiss">琉璃繁缕（内置）</option>
+            <option value="custom">自定义主题</option>
           </select>
           <div class="lp-theme-library-tools">
-            <label>新主题名称／重命名 <input type="text" data-lp="themeName" maxlength="36" placeholder="例如：琉璃繁缕" /></label>
+            <label>新主题名称／重命名 <input type="text" data-lp="themeName" maxlength="36" placeholder="例如：月下花影" /></label>
             <div class="lp-theme-button-grid">
               <button type="button" data-lp="themeSaveNamed">另存为新主题</button>
               <button type="button" data-lp="themeRename">重命名</button>
@@ -6225,7 +6225,7 @@ function makeUI() {
               <button type="button" data-lp="themeExport">导出 JSON</button>
             </div>
             <label>导入主题文件 <input type="file" data-lp="themeImport" accept="application/json,.json" /></label>
-            <p class="lp-settings-hint" data-lp="themeFeedback" role="status">内置瑞士纸韵永久保留；自定义主题可以单独删除。</p>
+            <p class="lp-settings-hint" data-lp="themeFeedback" role="status">四套内置主题可直接切换，自定义主题可另存、重命名和删除。</p>
           </div>
           <div class="lp-theme-custom-colors" data-lp="themeCustomColors" hidden>
             <p>自定义六色</p>
