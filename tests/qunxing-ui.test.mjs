@@ -60,3 +60,36 @@ test('群星资料识别、独立子页面、刷新尾部、主题壁纸和桌�
  assert.ok(css.includes('scrollbar-color:color-mix'));
  assert.ok(css.includes('lp-theme-binding'));
 });
+
+
+test('扫描只生成候选账号，明确勾选保存后才写入存档',async()=>{
+ const extended=new Function('document',src.replace('export function createWeiboModule','function createWeiboModule')
+   .replace('return {open,render,','return {action,open,render,')+'\nreturn createWeiboModule;')({visibilityState:'visible'});
+ const ctx={characterId:0,chatId:'test-scan',chatMetadata:{st_little_phone_v1:{
+  storyTime:'2025-12-17T19:50',contacts:[],messages:[],qunxing:{accounts:[]}
+ }}};
+ let selected=[];
+ const n={weiboFeed:null,weiboMe:{parentElement:{scrollTop:0},
+  querySelector:()=>({value:''}),querySelectorAll:()=>selected}};
+ const api={
+  context:()=>ctx,getNodes:()=>n,readRootData:()=>ctx.chatMetadata.st_little_phone_v1,
+  readData:()=>ctx.chatMetadata.st_little_phone_v1,selectedCharacter:()=>({name:'角色'}),
+  currentPersona:()=>({name:'我'}),recordError:()=>{},
+  writeData:async(_,d)=>{delete d.__contactId;ctx.chatMetadata.st_little_phone_v1=d;},
+  scanAccounts:async()=>({scanned:5,worlds:1,failures:[],candidates:[
+   {name:'角色甲',kind:'NPC',source:'世界书',reference:'演员'}
+  ]})
+ };
+ const module=extended(api);
+ await module.action('scanAccounts');
+ assert.equal(module.state.candidates.length,1);
+ assert.equal(ctx.chatMetadata.st_little_phone_v1.qunxing.accounts.length,0);
+ const fields={name:{value:'角色甲'},handle:{value:'@actor'},kind:{value:'演员'},
+  bio:{value:'公开身份：演员'},publicFigure:{checked:true,type:'checkbox'}};
+ selected=[{closest:()=>({querySelector:s=>fields[s.match(/data-wb-candidate-field="([^"]+)"/)[1]]})}];
+ await module.action('saveCandidates');
+ const saved=ctx.chatMetadata.st_little_phone_v1.qunxing.accounts;
+ assert.equal(saved.length,1);
+ assert.equal(saved[0].handle,'@actor');
+ assert.equal(saved[0].source,'manual');
+});
