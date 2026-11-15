@@ -1288,6 +1288,67 @@ function availableConnectionProfiles(ctx=context()){
   return {profiles,error:profiles.length?'':'当前没有可直接请求的已保存连接档案'};
  }catch(e){return {profiles:[],error:'无法读取连接档案：'+String(e.message||e)};}
 }
+
+let savedSiteSecrets=null,savedSiteSecretsPromise=null;
+async function loadSavedSiteSecretMetadata(){
+ if(savedSiteSecrets)return savedSiteSecrets;
+ if(savedSiteSecretsPromise)return savedSiteSecretsPromise;
+ const ctx=context();
+ if(typeof ctx?.getRequestHeaders!=='function')return {};
+ savedSiteSecretsPromise=(async()=>{
+  try{
+   const response=await fetch('/api/secrets/read',{
+    method:'POST',headers:ctx.getRequestHeaders({omitContentType:true}),cache:'no-store'
+   });
+   if(!response.ok)throw Error('酒馆密钥目录暂不可读');
+   const data=await response.json();
+   savedSiteSecrets=data&&typeof data==='object'?data:{};
+   return savedSiteSecrets;
+  }catch{return {};}finally{savedSiteSecretsPromise=null;}
+ })();
+ return savedSiteSecretsPromise;
+}
+function savedApiSites(ctx=context(),secrets=savedSiteSecrets||{}){
+ const service=ctx?.ConnectionManagerRequestService;
+ const groups=new Map(),profiles=availableConnectionProfiles(ctx).profiles;
+ const customSecrets=Array.isArray(secrets.api_key_custom)?secrets.api_key_custom:[];
+ for(const item of profiles){
+  let profile;try{profile=service?.getProfile?.(item.id);}catch{}
+  if(!profile)continue;
+  const url=String(profile['api-url']||'').trim();
+  if(!/^https?:\/\//i.test(url))continue;
+  const keyId=String(profile['secret-id']||''),source=String(profile.api||'custom');
+  const key=JSON.stringify([source,url,keyId]),existing=groups.get(key);
+  if(existing){
+   existing.profileIds.push(item.id);
+   if(profile.model&&!existing.models.includes(profile.model))existing.models.push(profile.model);
+   continue;
+  }
+  let hostname=url;try{hostname=new URL(url).hostname;}catch{}
+  const secret=customSecrets.find(x=>x.id===keyId);
+  const title=String(secret?.label||'').trim();
+  groups.set(key,{id:'site:'+encodeURIComponent(key),label:title&&title!==hostname?title+' · '+hostname:hostname,
+   url,secretId:keyId,source,profileId:item.id,profileIds:[item.id],
+   models:profile.model?[profile.model]:[],defaultModel:String(profile.model||''),kind:'profile'});
+ }
+ // Include the native SillyTavern current custom API site even if no model-specific profile exists.
+ const current=ctx?.chatCompletionSettings||{},url=String(current.custom_url||'').trim();
+ const active=customSecrets.find(x=>x?.active);
+ if(/^https?:\/\//i.test(url)&&active?.id){
+  const key=JSON.stringify(['custom',url,String(active.id)]);
+  if(!groups.has(key)){
+   let hostname=url;try{hostname=new URL(url).hostname;}catch{}
+   groups.set(key,{id:'site:'+encodeURIComponent(key),label:(active.label?active.label+' · ':'')+hostname,
+    url,secretId:String(active.id),source:'custom',profileId:'',profileIds:[],
+    models:current.custom_model?[String(current.custom_model)]:[],
+    defaultModel:String(current.custom_model||''),kind:'active'});
+  }
+ }
+ return [...groups.values()];
+}
+function resolveSavedSite(value,ctx=context(),secrets=savedSiteSecrets||{}){
+ return savedApiSites(ctx,secrets).find(s=>s.id===value||s.profileIds.includes(value))||null;
+}
 function chooseApiTask(task){
  return API_TARGET_IDS.has(task)?task:'default';
 }
@@ -1330,14 +1391,22 @@ async function phoneGenerate(ctx,options={},data){
   ?Math.min(10000,Math.max(cfg.maxTokens,Math.floor(+options.maxTokens)))
   :cfg.maxTokens;
  if(cfg.mode==='profile'){
+  await loadSavedSiteSecretMetadata();
+  const site=resolveSavedSite(cfg.profileId,ctx);
+  if(!site)throw new Error('所选酒馆站点 URL/Key 已失效，请重新选择');
+  const model=cfg.model?.trim()||site.defaultModel;
+  if(!model)throw new Error('请选择站点模型或手动填写模型 ID');
+  if(site.kind==='active'){
+   const service=ctx?.ChatCompletionService;
+   if(typeof service?.sendRequest!=='function')throw new Error('酒馆未开放独立请求接口');
+   const result=await service.sendRequest({chat_completion_source:'custom',custom_url:normalizeApiUrl(site.url),
+    secret_id:site.secretId,model,messages,stream:false,max_tokens:budget});
+   return typeof result==='string'?result:result?.content||'';
+  }
   const service=ctx?.ConnectionManagerRequestService;
-  if(typeof service?.sendRequest!=='function')throw new Error('酒馆未开放独立连接档案请求接口');
-  const profiles=availableConnectionProfiles(ctx);
-  if(!profiles.profiles.some(p=>p.id===cfg.profileId))
-   throw new Error('所选酒馆连接档案不可用，请在 API 设置中重新选择');
-  const response=await service.sendRequest(cfg.profileId,messages,budget,
-   {stream:false,extractData:true,includePreset:false,includeInstruct:false},
-   cfg.model?.trim()?{model:cfg.model.trim()}:{});
+  if(typeof service?.sendRequest!=='function')throw new Error('酒馆未开放连接配置请求接口');
+  const response=await service.sendRequest(site.profileId,messages,budget,
+   {stream:false,extractData:true,includePreset:false,includeInstruct:false},{model});
   return typeof response==='string'?response:response?.content||'';
  }
  if(cfg.mode==='inherit'){
