@@ -856,6 +856,199 @@ function saveThemeColors(){
  else changeTheme({palette:'custom',colors});
 }
 
+
+const MAX_NAMED_THEMES=20;
+function renderThemeSelector(theme=themeView()){
+ if(!nodes?.themePreset)return;
+ const raw=themeData(),list=Array.isArray(raw.savedThemes)?raw.savedThemes:[];
+ const signature=list.map(t=>t.id+':'+t.name).join('|');
+ if(nodes.themePreset.dataset.library!==signature){
+  nodes.themePreset.dataset.library=signature;
+  nodes.themePreset.replaceChildren();
+  for(const [value,label] of [['swiss','01 · 瑞士纸韵（不可删除）'],['custom','02 · 自定义主题']]){
+   const option=document.createElement('option');option.value=value;option.textContent=label;nodes.themePreset.append(option);
+  }
+  for(const item of list){
+   const option=document.createElement('option');
+   option.value='saved:'+item.id;option.textContent=item.name;nodes.themePreset.append(option);
+  }
+ }
+ nodes.themePreset.value=[...nodes.themePreset.options].some(option=>option.value===theme.palette)?theme.palette:'swiss';
+ const item=savedThemeProfile(raw);
+ if(nodes.themeName)nodes.themeName.value=item?.name||'';
+ if(nodes.themeDelete)nodes.themeDelete.disabled=(theme.palette==='swiss');
+ if(nodes.themeRename)nodes.themeRename.disabled=!item;
+}
+function notifyTheme(message,error=false){
+ if(nodes?.themeFeedback)nodes.themeFeedback.textContent=message;
+ setStatus(message,error?'error':'');
+}
+function persistTheme(raw,info='主题已保存'){
+ const ctx=context();
+ if(!ctx?.extensionSettings||typeof ctx.saveSettingsDebounced!=='function'){
+  notifyTheme('无法保存当前酒馆主题设置',true);return false;
+ }
+ (ctx.extensionSettings[SETTINGS_KEY]||={}).theme=raw;
+ ctx.saveSettingsDebounced();
+ applyTheme();desktopLayoutSignature='';renderDesktop();
+ notifyTheme(info);
+ return true;
+}
+function currentThemeSnapshot(name){
+ const v=themeView(),raw=themeData();
+ const key=raw.palette==='custom'?'custom':'swiss';
+ const fromBinding=raw.bindWallpaper?raw.wallpapers?.[key]:null;
+ const image=v.palette.startsWith('saved:')?v.wallpaper:(fromBinding||raw.wallpaper);
+ return {
+  name:String(name||'我的主题').trim().slice(0,36),
+  colors:Object.fromEntries(Object.keys(SWISS_THEME).map(k=>[k,paletteValue(k,v.colors?.[k])])),
+  wallpaper:typeof image==='string'?image:'',
+  bindWallpaper:true,
+  font:v.font||'system',fontData:v.fontData||'',
+  desktopEffect:desktopEffect(),
+  desktopIconSize:Number(v.desktopIconSize)||34,
+  desktopGap:Number(v.desktopGap)||25,
+  chatBubbleRadius:Number(v.chatBubbleRadius)||15,
+  icons:{...(v.icons||{})},floatingIcon:v.floatingIcon||'',
+  customCss:v.customCss||''
+ };
+}
+function saveNamedTheme(){
+ const raw=themeData(),list=Array.isArray(raw.savedThemes)?raw.savedThemes:[];
+ if(list.length>=MAX_NAMED_THEMES)return notifyTheme('最多保存 20 套自定义主题',true);
+ const name=String(nodes.themeName?.value||'').trim().slice(0,36)||'自定义主题 '+(list.length+1);
+ const id='theme-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6);
+ const item={id,...currentThemeSnapshot(name)};
+ persistTheme({...raw,savedThemes:[...list,item],palette:'saved:'+id},'主题「'+name+'」已保存');
+}
+function renameNamedTheme(){
+ const raw=themeData(),entry=savedThemeProfile(raw);
+ if(!entry)return notifyTheme('请先选择已保存的主题',true);
+ const name=String(nodes.themeName?.value||'').trim().slice(0,36);
+ if(!name)return notifyTheme('请输入主题名称',true);
+ persistTheme({...raw,savedThemes:raw.savedThemes.map(t=>t.id===entry.id?{...t,name}:t)},'已重命名为「'+name+'」');
+}
+function deleteSelectedTheme(){
+ const raw=themeData(),entry=savedThemeProfile(raw);
+ if(raw.palette==='swiss'||!raw.palette)return notifyTheme('瑞士纸韵是内置恢复主题，不能删除',true);
+ if(!window.confirm('删除当前自定义主题？这不会影响聊天、订单和其他主题。'))return;
+ if(entry){
+  persistTheme({...raw,savedThemes:(raw.savedThemes||[]).filter(x=>x.id!==entry.id),palette:'swiss'},'已删除主题「'+entry.name+'」，切回瑞士纸韵');
+ }else{
+  persistTheme({...raw,palette:'swiss',colors:{},font:'system',fontData:'',wallpaper:'',customCss:'',
+   icons:{},floatingIcon:'',desktopEffect:'slide',desktopIconSize:34,desktopGap:25,
+   chatBubbleRadius:15,wallpapers:{...(raw.wallpapers||{}),custom:''}},'自定义配色已清除，切回瑞士纸韵');
+ }
+}
+function exportNamedTheme(){
+ const t=currentThemeSnapshot(savedThemeProfile()?.name||'我的咕叽主题');
+ const data=JSON.stringify({format:'gujiguji-theme',version:1,theme:t},null,2);
+ const blob=new Blob([data],{type:'application/json'});
+ const url=URL.createObjectURL(blob);
+ const a=document.createElement('a');a.href=url;a.download='GujiGuji-'+(t.name.replace(/[\\/:*?"<>|]/g,'_')||'theme')+'.json';
+ document.body.append(a);a.click();a.remove();
+ setTimeout(()=>URL.revokeObjectURL(url),2000);
+ notifyTheme('主题文件已导出');
+}
+function checkThemeImage(value,max=900000){
+ const text=String(value||'');
+ return text.length<=max&&/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(text)?text:'';
+}
+function importedThemeProfile(payload){
+ if(!payload||typeof payload!=='object')throw Error('主题数据无效');
+ const name=String(payload.name||'导入主题').trim().slice(0,36)||'导入主题';
+ const src=payload.colors||{},colors={};
+ for(const key of Object.keys(SWISS_THEME))colors[key]=paletteValue(key,src[key]);
+ const font=['system','serif','rounded','uploaded'].includes(payload.font)?payload.font:'system';
+ const f=String(payload.fontData||'');
+ const fontData=f.length<800000&&/^data:(?:font\/(?:ttf|otf|woff|woff2)|application\/(?:x-font-ttf|font-woff)|application\/octet-stream);base64,[A-Za-z0-9+/=]+$/i.test(f)?f:'';
+ const icons={};for(const key of Object.keys(APP_SHAPES))if(payload.icons?.[key])icons[key]=checkThemeImage(payload.icons[key],550000);
+ return {name,colors,font:font==='uploaded'&&!fontData?'system':font,fontData,
+  wallpaper:checkThemeImage(payload.wallpaper),bindWallpaper:true,
+  desktopEffect:DESKTOP_EFFECTS.has(payload.desktopEffect)?payload.desktopEffect:'slide',
+  desktopIconSize:Math.max(22,Math.min(52,Number(payload.desktopIconSize)||34)),
+  desktopGap:Math.max(8,Math.min(45,Number(payload.desktopGap)||25)),
+  chatBubbleRadius:Math.max(6,Math.min(30,Number(payload.chatBubbleRadius)||15)),
+  icons,floatingIcon:checkThemeImage(payload.floatingIcon,550000),
+  customCss:validThemeCss(payload.customCss||'')};
+}
+async function importNamedTheme(file){
+ if(!file)return;
+ if(!/\.json$/i.test(file.name)||file.size>2*1024*1024)return notifyTheme('请选择不超过 2 MB 的主题 JSON 文件',true);
+ try{
+  const parsed=JSON.parse(await file.text());
+  if(parsed?.format!=='gujiguji-theme'||parsed.version!==1)throw Error('不是兼容的咕叽主题文件');
+  const raw=themeData(),list=Array.isArray(raw.savedThemes)?raw.savedThemes:[];
+  if(list.length>=MAX_NAMED_THEMES)throw Error('最多保存 20 套自定义主题');
+  const item={id:'theme-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6),...importedThemeProfile(parsed.theme)};
+  persistTheme({...raw,savedThemes:[...list,item],palette:'saved:'+item.id},'已导入主题「'+item.name+'」');
+ }catch(e){notifyTheme('导入失败：'+String(e.message||e),true);}
+}
+async function importThemeCssFile(file){
+ if(!file)return;
+ if(file.size>40000)return notifyTheme('CSS 文件不可超过 40 KB',true);
+ try{
+  const css=validThemeCss(await file.text());
+  editableThemePatch({customCss:css});notifyTheme('已应用自定义 CSS，可在酒馆扩展设置中恢复默认');
+ }catch(e){notifyTheme('CSS 未导入：'+String(e.message||e),true);}
+}
+function readThemeAsset(file,types,maxBytes,onData){
+ if(!file)return;
+ if(file.size>maxBytes||!types.test(file.name)||!file.size)return notifyTheme('文件格式或大小不符合要求',true);
+ const reader=new FileReader();
+ reader.onload=()=>{
+  const data=String(reader.result||'');
+  try{onData(data);}catch(error){notifyTheme(String(error.message||error),true);}
+ };
+ reader.onerror=()=>notifyTheme('无法读取文件',true);
+ reader.readAsDataURL(file);
+}
+function importThemeFont(file){
+ readThemeAsset(file,/\.(?:ttf|otf|woff|woff2)$/i,400000,data=>{
+  if(!/^data:[^,]+;base64,[A-Za-z0-9+/=]+$/.test(data))throw Error('无法读取字体');
+  editableThemePatch({font:'uploaded',fontData:data});
+  notifyTheme('已导入字体：'+file.name);
+ });
+}
+function importThemeIcon(file,floating=false){
+ readThemeAsset(file,/\.(?:png|jpe?g|webp)$/i,400000,data=>{
+  const image=checkThemeImage(data,550000);
+  if(!image)throw Error('请上传有效的 PNG/JPEG/WebP 图标（上限 400 KB）');
+  if(floating)editableThemePatch({floatingIcon:image});
+  else{
+   const key=nodes?.themeIconTarget?.value;
+   if(!APP_SHAPES[key])throw Error('请先选择应用');
+   editableThemePatch({icons:{...(themeView().icons||{}),[key]:image}});
+   desktopLayoutSignature='';renderDesktop();
+  }
+  notifyTheme(floating?'已更换外部悬浮按钮图标':'应用图标已更新');
+ });
+}
+function resetThemeIcon(floating=false){
+ if(floating)editableThemePatch({floatingIcon:''});
+ else{
+  const icons={...(themeView().icons||{})};delete icons[nodes?.themeIconTarget?.value];
+  editableThemePatch({icons});desktopLayoutSignature='';renderDesktop();
+ }
+ notifyTheme('已恢复内置图标');
+}
+async function copyThemeSelectors(){
+ const lines=[
+  '#st-little-phone-root  /* 手机根容器 */',
+  '#st-little-phone-root .lp-desktop-grid  /* 桌面网格 */',
+  '#st-little-phone-root .lp-desktop-app-icon  /* 应用图标 */',
+  '#st-little-phone-root .lp-home-widget  /* 时间卡 */',
+  '#st-little-phone-root .lp-bubble  /* 聊天气泡 */',
+  '#st-little-phone-root .lp-mine .lp-bubble  /* 发出的消息 */',
+  '#st-little-phone-root .lp-theirs .lp-bubble  /* 收到的消息 */',
+  '#st-little-phone-root .lp-payment-card  /* 转账红包 */',
+  '#st-little-phone-root .lp-weibo-screen  /* 群星 */',
+  '#st-little-phone-root .lp-takeout-screen  /* 外卖 */'
+ ];
+ try{await navigator.clipboard.writeText(lines.join('\n'));notifyTheme('已复制常用 CSS 类名');}
+ catch{notifyTheme('当前 WebView 不支持复制，请长按指南中的文本',true);}
+}
+
 function apiSessionId(ctx) {
     return String(ctx?.characterId ?? 'none') + '::' + String(ctx?.chatId ?? ctx?.getCurrentChatId?.() ?? 'default');
 }
