@@ -5381,7 +5381,7 @@ async function handleMessageOperation(action) {
     }
     closeMessageActions();
 }
-async function encodeChatPhoto(file) {
+async function encodeChatPhoto(file,limit=1400000) {
     if(!['image/jpeg','image/png','image/webp'].includes(file?.type))
         throw new Error('目前支持 PNG、JPG、WebP 图片');
     if(file.size>12*1024*1024)throw new Error('图片超过 12MB，请换一张较小的图片');
@@ -5393,7 +5393,6 @@ async function encodeChatPhoto(file) {
     });
     if(typeof original!=='string'||!/^data:image\/(?:jpeg|png|webp);base64,/.test(original))
         throw new Error('图片数据不符合格式要求');
-    const limit=1400000;
     if(original.length<=limit)return original;
     if(typeof Image!=='function')throw new Error('此浏览器无法压缩大图，请换一张较小的图片');
     const picture=await new Promise((resolve,reject)=>{
@@ -5405,12 +5404,12 @@ async function encodeChatPhoto(file) {
     if(!picture.width||!picture.height)throw new Error('图片尺寸无效');
     const canvas=document.createElement('canvas'),paint=canvas.getContext('2d');
     if(!paint)throw new Error('浏览器不支持图片压缩');
-    for(const edge of [1600,1400,1200,1024,896]){
+    for(const edge of [1600,1400,1200,1024,896,720,640]){
         const ratio=Math.min(1,edge/Math.max(picture.width,picture.height));
         canvas.width=Math.max(1,Math.round(picture.width*ratio));
         canvas.height=Math.max(1,Math.round(picture.height*ratio));
         paint.drawImage(picture,0,0,canvas.width,canvas.height);
-        for(const quality of [0.86,0.76,0.66]){
+        for(const quality of [0.86,0.76,0.66,0.54,0.42]){
             const result=canvas.toDataURL('image/jpeg',quality);
             if(result.length<=limit)return result;
         }
@@ -5464,7 +5463,7 @@ async function sendImageFiles(files,caption='') {
     try{
         const encoded=[];
         for(const file of files){
-            encoded.push(await encodeChatPhoto(file));
+            encoded.push(await encodeChatPhoto(file,Math.min(1400000,Math.max(320000,Math.floor(3000000/files.length)))));
             if(!sameSession(session))return;
         }
         if(sameSession(session)){
