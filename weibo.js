@@ -36,6 +36,45 @@ export function createWeiboModule(api) {
   const unit=wrap?.querySelector('[data-wb-field="'+name+'Unit"]');
   return parseFollowerValue(input?.value,unit?.value||'person');
  };
+ // Bind accounts to a named person across story saves or an independent organization.
+ const subjectChoices=(extraNames=[])=>{
+  const people=Array.isArray(api.accountSubjects?.())?api.accountSubjects():[];
+  const primary=people.find(p=>p?.id==='primary')||{name:api.selectedCharacter?.(context())?.name||'当前主角色'};
+  const result=[{value:'primary',type:'primary',name:primary.name,label:primary.name+'（主角色）'}];
+  const seen=new Set([String(primary.name).trim().toLocaleLowerCase()]);
+  for(const person of [...people.filter(p=>p.id!=='primary'),...extraNames.map(name=>({name}))]){
+   const name=clean(person?.name,65),key=name.toLocaleLowerCase();
+   if(!name||seen.has(key))continue;
+   seen.add(key);result.push({value:'npc:'+encodeURIComponent(name),type:'npc',name,label:name+'（NPC）'});
+  }
+  result.push({value:'organization',type:'organization',name:'',label:'独立组织账号（媒体／表白墙／后援会等）'});
+  return result;
+ };
+ const subjectOfAccount=account=>{
+  const given=account?.subject;
+  if(given&&['primary','npc','organization'].includes(given.type)){
+   if(given.type==='primary')return {type:'primary',name:subjectChoices()[0].name};
+   if(given.type==='organization')return {type:'organization',name:''};
+   if(clean(given.name,65))return {type:'npc',name:clean(given.name,65)};
+  }
+  const name=clean(account?.name,65),kind=clean(account?.kind,40);
+  if(name&&name===subjectChoices()[0].name)return {type:'primary',name};
+  if(/^(?:媒体|粉丝|官方|组织|校园组织|机构|企业|品牌|后援会|公众账号)$/.test(kind)
+      ||/官方号|后援会|表白墙|广播站|资讯号|日报/.test(name))return {type:'organization',name:''};
+  return {type:'npc',name};
+ };
+ const subjectValue=subject=>subject?.type==='primary'?'primary':subject?.type==='organization'?'organization':'npc:'+encodeURIComponent(subject?.name||'');
+ const readSubject=(raw,options)=>{
+  const found=options.find(x=>x.value===raw);
+  if(!found)throw Error('请选择有效的故事人物或独立组织账号');
+  return {type:found.type,name:found.type==='organization'?'':found.name};
+ };
+ const savedProfession=account=>{
+  if(typeof account?.profession==='string')return clean(account.profession,80);
+  const kind=clean(account?.kind,40);
+  return ['角色','NPC','人物','媒体','粉丝','组织','网友'].includes(kind)?'':kind;
+ };
+ const publicAccountDescription=account=>[savedProfession(account),clean(account?.bio,130)].filter(Boolean).join('；');
  const data=()=>{
   const r=root(),q=r.qunxing||{};
   // NPC/character identities are shared across chats of this character card.
@@ -177,7 +216,7 @@ export function createWeiboModule(api) {
  }
  function prompt(count,zone,topic='',withTrend=false){
   const q=data(),r=root(),char=api.selectedCharacter(context()),nearby=zone==='nearby';
-  const accounts=q.accounts.slice(0,25).map(a=>a.name+'（@'+(a.handle||a.id)+'；'+(a.kind||'人物')+'；'+clean(a.bio,80)+'）').join('、');
+  const accounts=q.accounts.slice(0,25).map(a=>a.name+'（@'+(a.handle||a.id)+'；'+publicAccountDescription(a)+'）').join('、');
   const followed=q.accounts.filter(a=>q.following.includes(a.id)).map(a=>a.name).join('、');
   const known=(r.contacts||[]).slice(0,18).map(a=>a.name+'：'+clean(a.description,80)).join('；');
   const contextText=clean(api.storyContext?.()||'',2100);
@@ -455,6 +494,16 @@ export function createWeiboModule(api) {
   }
  }
 
+ function subjectField(parent,label,name,account,extraNames=[]){
+  const options=subjectChoices(extraNames),bound=subjectOfAccount(account),wanted=subjectValue(bound);
+  if(!options.some(x=>x.value===wanted)&&bound.type==='npc'&&bound.name)
+   options.splice(options.length-1,0,{value:wanted,type:'npc',name:bound.name,label:bound.name+'（已保存的人物）'});
+  const row=el('label','lp-wb-field');row.append(el('span','',label));
+  const select=document.createElement('select');select.dataset.wbField=name;
+  for(const item of options){const option=document.createElement('option');option.value=item.value;option.textContent=item.label;select.append(option);}
+  select.value=options.some(x=>x.value===wanted)?wanted:'primary';
+  row.append(select);parent.append(row);return select;
+ }
  const field=(parent,label,name,value='',type='text')=>{
   const row=el('label','lp-wb-field');row.append(el('span','',label));
   const input=document.createElement('input');input.type=type;input.dataset.wbField=name;
@@ -514,21 +563,21 @@ export function createWeiboModule(api) {
   parent.append(controls);
   parent.append(heading('互动记录管理','清理当前存档里的测试互动，不影响原创动态或账号'));
   parent.append(control('清空测试互动记录','clearInteractions'));
-  parent.append(heading('管理角色账号','手动绑定角色、NPC、媒体和粉丝账号；不依赖角色卡预设'));
+  parent.append(heading('管理群星账号','账号绑定具体故事人物；媒体、表白墙和后援会等可建立独立组织账号'));
   for(const a of q.accounts){
    const line=el('div','lp-wb-account-line');line.append(avatar(a.avatar,a.name));
-   line.append(el('span','',a.name+' · '+(a.handle||'未设ID')+' · '+(a.kind||'人物')+' · 粉丝 '+formatFollowers(a.followers)));
+   line.append(el('span','',a.name+' · '+(a.handle||'未设ID')+' · '+(savedProfession(a)||(subjectOfAccount(a).type==='organization'?'组织账号':'故事人物'))+' · 粉丝 '+formatFollowers(a.followers)));
    line.append(control('编辑','editAccount',a.id));line.append(control('删除','deleteAccount',a.id));
    parent.append(line);
   }
-  parent.append(control('＋ 新建角色账号','newAccount'));
+  parent.append(control('＋ 新建账号','newAccount'));
    const scanner=el('div','lp-wb-scanner');
    scanner.append(heading('从故事资料检测账号','读取角色卡与关联世界书，仅展示候选；勾选并确认后才会保存'));
    field(scanner,'额外世界书名称（选填）','scanWorldName',state.scanWorldName||'');
    scanner.append(control(state.scanLoading?'正在检测…':'检测角色与世界书','scanAccounts'));
    if(state.scanMessage)scanner.append(el('p','lp-wb-scan-message',state.scanMessage));
    if(state.candidates.length){
-    scanner.append(heading('待确认账号（'+state.candidates.length+'）','编辑身份信息后勾选，未勾选的不会创建账号'));
+    scanner.append(heading('待确认账号（'+state.candidates.length+'）','确认人物绑定、职业和个性签名后勾选；未勾选的不会保存'));
     state.candidates.forEach((candidate,index)=>{
      const existing=q.accounts.find(a=>a.name===candidate.name);
      const row=el('div','lp-wb-candidate');row.dataset.wbCandidate=String(index);
@@ -539,11 +588,13 @@ export function createWeiboModule(api) {
      const detail=el('details','lp-wb-candidate-reference');
      detail.append(el('summary','','查看检测到的角色资料'),el('p','',candidate.reference||'暂无进一步资料'));
      row.append(detail);
+     const draft=existing||{...candidate,subject:{type:candidate.kind==='角色'?'primary':'npc',name:candidate.name}};
+     subjectField(row,'绑定故事人物／账号主体','candidate-'+index+'-subject',draft,[candidate.name]);
      for(const [key,label,value,type] of [
       ['name','账号名称',existing?.name||candidate.name,'text'],
       ['handle','群星 ID',existing?.handle||candidate.handle||'','text'],
-      ['kind','身份类型',existing?.kind||candidate.kind||'角色','text'],
-      ['bio','公开简介（请自行审阅）',existing?.bio||candidate.bio||'','text'],
+      ['profession','职业／公开身份',savedProfession(existing||candidate),'text'],
+      ['bio','个性签名（公开展示）',existing?.bio||candidate.bio||'','text'],
       ['followers','粉丝数量（角色卡明确写出时才预填）',existing?.followers??candidate.followers??0,'followers'],
       ['publicFigure','公众人物',existing?.publicFigure||candidate.publicFigure||false,'checkbox']]){
        const item=type==='followers'?followerField(row,label,'candidate-'+index+'-'+key,value):field(row,label,'candidate-'+index+'-'+key,value,type);
@@ -556,14 +607,16 @@ export function createWeiboModule(api) {
   const active=q.accounts.find(a=>a.id===state.editing)||{};
   if(state.editing==='new'||active.id){
    const form=el('div','lp-wb-editor');form.append(heading(active.id?'编辑账号':'新增账号'));
-   field(form,'角色／账号名称','accountName',active.name||'');
+   subjectField(form,'绑定故事人物／账号主体','accountSubject',active);
+   form.append(el('small','lp-wb-bind-note','绑定关系仅用于关联角色卡和世界书人物；公开主页显示的是昵称、职业和个性签名。'));
+   field(form,'账号昵称','accountName',active.name||'');
    field(form,'群星 ID（例如 @example）','accountHandle',active.handle||'');
-   field(form,'职业、性格与公开身份','accountBio',active.bio||'');
-   field(form,'身份类型（角色／NPC／媒体／粉丝）','accountKind',active.kind||'角色');
+   field(form,'职业／公开身份','accountProfession',savedProfession(active));
+   field(form,'个性签名','accountBio',active.bio||'');
    field(form,'是否为公众人物','accountPublic',active.publicFigure||false,'checkbox');
    followerField(form,'粉丝数量','accountFollowers',active.followers||0);
    avatarPicker(form,'更换角色账号头像','accountAvatar',state.avatarDraft||active.avatar||'',active.name||'角色');
-   form.append(control('保存角色账号','saveAccount'));parent.append(form);
+   form.append(control('保存群星账号','saveAccount'));parent.append(form);
   }
   parent.append(scanner);
  }
@@ -708,14 +761,25 @@ if(type==='subview'){state.subview=id;state.editing='';render();nodes().weiboMe.
     let followers;
     try{followers=readFollowerField(row,'candidate-'+row.dataset.wbCandidate+'-followers');}
     catch(error){feedback(name+'：'+error.message);return;}
-    chosen.push({name,handle:value('handle'),kind:value('kind')||'角色',
-      bio:value('bio'),publicFigure:value('publicFigure'),followers});
+    let subject;
+    try{
+     const raw=row.querySelector('[data-wb-field="candidate-'+row.dataset.wbCandidate+'-subject"]')?.value;
+     const scanned=state.candidates[Number(row.dataset.wbCandidate)]?.name||name;
+     subject=readSubject(raw,subjectChoices([scanned,name]));
+    }catch(error){feedback(name+'：'+error.message);return;}
+    const candidateInfo=state.candidates[Number(row.dataset.wbCandidate)];
+    chosen.push({name,handle:value('handle'),subject,
+     kind:subject.type==='primary'?'角色':subject.type==='organization'?'组织':'NPC',
+     profession:value('profession'),bio:value('bio'),publicFigure:value('publicFigure'),followers,
+     ...(subject.type==='npc'&&candidateInfo?.reference?{roleBrief:clean(candidateInfo.reference,1000)}:{})});
    }
    if(!chosen.length){feedback('请先勾选要保存的候选账号');return;}
    await mutate(q=>{
     for(const candidate of chosen){
      const old=q.accounts.find(x=>x.name===candidate.name||(candidate.handle&&x.handle===candidate.handle));
+     const sameSubject=old?.subject?.type===candidate.subject.type&&old?.subject?.name===candidate.subject.name;
      const next={...old,...candidate,id:old?.id||uid('account'),
+      roleBrief:candidate.subject.type==='npc'?(candidate.roleBrief??(sameSubject?old.roleBrief||'':'')):'',
       avatar:old?.avatar||'',source:'manual'};
      q.accounts=old?q.accounts.map(x=>x.id===old.id?next:x):[...q.accounts,next];
     }
@@ -755,16 +819,24 @@ if(type==='subview'){state.subview=id;state.editing='';render();nodes().weiboMe.
    const wrap=nodes().weiboMe,v=n=>wrap.querySelector('[data-wb-field="'+n+'"]');
    const name=clean(v('accountName')?.value,42);if(!name){feedback('请填写账号名称');return;}
    const edit=state.editing;const avatarDraft=state.avatarDraft;
-   let followers;
-   try{followers=readFollowerField(wrap,'accountFollowers');}catch(error){feedback(error.message);return;}
+   const previous=data().accounts.find(a=>a.id===edit);
+   let followers,subject;
+   try{
+    followers=readFollowerField(wrap,'accountFollowers');
+    subject=readSubject(v('accountSubject')?.value,
+     subjectChoices(previous?.subject?.name?[previous.subject.name]:previous?.name?[previous.name]:[]));
+   }catch(error){feedback(error.message);return;}
    await mutate(q=>{
     const old=q.accounts.find(x=>x.id===edit)||{};
+    const sameSubject=old.subject?.type===subject.type&&old.subject?.name===subject.name;
     const next={...old,id:old.id||uid('account'),name,handle:clean(v('accountHandle')?.value,45),bio:clean(v('accountBio')?.value,450),
-     kind:clean(v('accountKind')?.value,25)||'角色',publicFigure:!!v('accountPublic')?.checked,
+     roleBrief:subject.type==='npc'&&sameSubject?(old.roleBrief||''):'',
+     subject,kind:subject.type==='primary'?'角色':subject.type==='organization'?'组织':'NPC',
+     profession:clean(v('accountProfession')?.value,80),publicFigure:!!v('accountPublic')?.checked,
      followers,avatar:avatarDraft||old.avatar||'',source:'manual'};
     q.accounts=old.id?q.accounts.map(a=>a.id===old.id?next:a):[...q.accounts,next];
    });
-   state.editing='';state.avatarDraft='';feedback('角色账号已保存');render();return;
+   state.editing='';state.avatarDraft='';feedback('群星账号已保存');render();return;
   }
   const p=byId(id);if(!p)return;
   if(type==='share'){api.sharePost?.(p);return;}
@@ -894,7 +966,7 @@ if(type==='subview'){state.subview=id;state.editing='';render();nodes().weiboMe.
   reset();const q=data(),scene=root().storyTime||'';
   const now=Date.parse(scene),every=Math.max(30,Number(q.settings.autoEveryMinutes)||180)*60000;
   if(autoBusy||state.loading||(!force&&!q.settings.autoEnabled)||!Number.isFinite(now)||document.visibilityState==='hidden')return;
-  const accounts=q.accounts.filter(a=>a.source==='manual'&&a.kind!=='网友');if(!accounts.length){if(force)feedback('请先在「我 → 群星设置」添加角色账号');return;}
+  const accounts=q.accounts.filter(a=>a.source==='manual'&&a.kind!=='网友');if(!accounts.length){if(force)feedback('请先在「我 → 群星设置」添加账号');return;}
   if(!force&&q.lastAutoStoryMinute&&now-q.lastAutoStoryMinute<every)return;
   autoBusy=true;
   try{
@@ -902,10 +974,11 @@ if(type==='subview'){state.subview=id;state.editing='';render();nodes().weiboMe.
    // Mark attempted story time before generation to avoid duplicate posts and billing.
    await mutate(s=>{s.lastAutoStoryMinute=now;});
    const photos=api.photosForAccount?.(account.name)||[];
+   const subjectContext=clean(api.accountSubjectContext?.(subjectOfAccount(account))||account.roleBrief||'',1400);
    const albumGuide=photos.slice(0,12).map(p=>p.id+'：'+(p.description||p.title||'照片')).join('；');
-   const raw=await api.phoneGenerate(context(),{task:'autonomy',systemPrompt:'扮演指定角色在故事世界的公开社交账号上自主发帖；只输出正文或 [SKIP]。如有适合的本角色公开相册照片，可以在文末加 [[photo:照片ID]]；不能编造照片ID。',prompt:[{role:'user',
-    content:'故事时间：'+scene+'。群星账号：'+account.name+'，身份 '+account.kind+'，'+account.bio+'，公众人物：'+(account.publicFigure?'是':'否')+
-     '。可用公开相册照片：'+albumGuide+'。近期剧情：'+clean(api.storyContext?.()||'',1400)+'。结合职业、性格、公共活动和时间线决定此时是否发布一条公开动态。不得公开私聊秘密，不得杜撰用户行为、未发生事件或已确定恋情。可以不发，输出 [SKIP]。否则只输出一条 20～180 字的社交动态，不要额外解释。'}]},api.readData(context()));
+   const raw=await api.phoneGenerate(context(),{task:'autonomy',systemPrompt:'扮演指定账号主体（故事人物或组织）在剧情世界的公开社交账号上自主发帖；只输出正文或 [SKIP]。遵守账号绑定人物的职业、已知设定或组织性质，不混淆不同人物身份。如有适合的账号主体公开相册照片，可以在文末加 [[photo:照片ID]]；不能编造照片ID。',prompt:[{role:'user',
+    content:'故事时间：'+scene+'。群星账号：'+account.name+'，职业／公开资料 '+publicAccountDescription(account)+'，账号主体 '+(subjectOfAccount(account).type==='organization'?'组织账号':'故事人物')+'，公众人物：'+(account.publicFigure?'是':'否')+
+     '。绑定人物设定（仅用于保持角色一致，不代表全部内容可公开）：'+subjectContext+'。可用公开相册照片：'+albumGuide+'。近期剧情：'+clean(api.storyContext?.()||'',1400)+'。结合职业、性格、公共活动和时间线决定此时是否发布一条公开动态。不得公开私聊秘密，不得杜撰用户行为、未发生事件或已确定恋情。可以不发，输出 [SKIP]。否则只输出一条 20～180 字的社交动态，不要额外解释。'}]},api.readData(context()));
    if(scope()!==state.scope)return;
    const reply=clean(api.stripModelReasoning(raw),450);
    if(!reply||/^\[SKIP\]$/i.test(reply)){if(force)feedback(account.name+' 选择暂不发布');return;}
