@@ -1193,7 +1193,7 @@ async function loadGroupsController(){
  if(groupsLoadPromise)return groupsLoadPromise;
  groupsLoadPromise=import('./groups.js?v=0.21.0').then(mod=>{
   groupsController=mod.createGroupsModule({context,getNodes:()=>nodes,readRootData,writeData,galleryPeople,
-   isPhoneFriend,contactCharacter,phoneGenerate,stripModelReasoning,notifyInteraction,openSharedPost,
+   isPhoneFriend,contactCharacter,phoneGenerate,stripModelReasoning,notifyInteraction,openSharedPost,encodeAvatarPhoto,
    galleryPhotosForMember:id=>photosForActor(id,'chat')});
   return groupsController;
  }).catch(e=>{recordError('加载群聊',e);groupsLoadPromise=null;if(nodes?.groupsContent)nodes.groupsContent.textContent='群聊加载失败：'+e.message;return null;});
@@ -7253,6 +7253,7 @@ function mount() {
     nodes.messages.addEventListener('click',event=>{const button=event.target.closest('[data-share-message-id]');if(!button)return;const message=readData(context()).messages.find(m=>m.id===button.dataset.shareMessageId);if(message?.sharePost)openSharedPost(message.sharePost,'chat');});
     nodes.albumContent.addEventListener('click',event=>{void albumController?.handleClick(event);});
     nodes.groupsContent.addEventListener('click',event=>{void groupsController?.handleClick(event);});
+    nodes.groupsContent.addEventListener('change',event=>{if(event.target.closest('input[data-group-avatar]'))void groupsController?.handleFile(event);});
     nodes.shareTargets.addEventListener('click',event=>{const b=event.target.closest('[data-share-target]');if(b)void completeQunxingShare(b.dataset.shareType,b.dataset.shareTarget);});
     nodes.weiboPublish.addEventListener('click',()=>void loadWeiboController().then(w=>w?.publish()));
     nodes.weiboDetailBack.addEventListener('click',()=>weiboController?.back());
