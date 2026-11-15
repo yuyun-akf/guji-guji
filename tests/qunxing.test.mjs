@@ -27,17 +27,17 @@ function harness(){
  };
  return {module:make(api),ctx,calls:()=>calls};
 }
-test('世界推荐保留两次请求，周边一次请求生成真实帖子；未互动内容不写进存档',async()=>{
+test('世界推荐保留两次请求；已关注角色公开动态形成主页历史，网友帖子仍限信息流',async()=>{
  const h=harness();
  await h.module.generate('home');
  assert.equal(h.calls(),2);
  assert.equal(h.module.state.posts.home.length,10);
- assert.equal(h.ctx.chatMetadata.st_little_phone_v1.qunxing.posts.length,0);
+ assert.equal(h.ctx.chatMetadata.st_little_phone_v1.qunxing.posts.length,2,'两轮生成的已关注角色公开帖子记录在个人主页');
  assert.equal(h.module.headline(),'话题 0');
  await h.module.generate('nearby');
  assert.equal(h.calls(),3,'周边只发起一次 API 请求');
  assert.equal(h.module.state.posts.nearby.length,5,'模型返回的五条完整帖子均保留');
- assert.equal(h.ctx.chatMetadata.st_little_phone_v1.qunxing.posts.length,0);
+ assert.equal(h.ctx.chatMetadata.st_little_phone_v1.qunxing.posts.length,3,'周边新增的角色帖子也被保留');
  assert.equal(h.ctx.chatMetadata.st_little_phone_v1.qunxing.nearbyTrends.length,0);
  assert.equal(h.ctx.chatMetadata.st_little_phone_v1.qunxing.accounts[0].name,'宁肆锦');
 });
