@@ -3178,9 +3178,10 @@ function buildPrompt(data,ctx=null,char=null) {
                 message.sharePost?'[群星分享 · '+message.sharePost.author+'] '+message.sharePost.text:message.text;
             return ({
             role: message.from === 'character' ? 'assistant' : 'user',
-            content: !message.sticker && (Array.isArray(message.images)&&message.images.length||message.image)
-              ? [{type:'text',text:resolvePhonePlaceholders((message.replyQuote?'[引用：'+message.replyQuote+']\n':'')+(message.text||'')+'（请根据图片中实际可见内容回复，不要虚构看不到的细节）',ctx,char)},
+            content: !message.sticker && (Array.isArray(message.images)&&message.images.length||message.image||message.sharePost?.image)
+              ? [{type:'text',text:resolvePhonePlaceholders((message.replyQuote?'[引用：'+message.replyQuote+']\n':'')+paymentText+'（请根据图片中实际可见内容回复，不要虚构看不到的细节）',ctx,char)},
                  ...(Array.isArray(message.images)&&message.images.length?message.images:[message.image])
+                   .concat(message.sharePost?.image?[message.sharePost.image]:[])
                    .filter(src=>typeof src==='string'&&/^data:image\/(?:jpeg|png|webp);base64,/.test(src))
                    .map(src=>({type:'image_url',image_url:{url:src,detail:'auto'}}))]
               : resolvePhonePlaceholders((message.replyQuote?'[引用：'+message.replyQuote+']\n':'')+paymentText,ctx,char),
@@ -6025,7 +6026,7 @@ async function runReply(ctx, char, data, session, existingJob = null) {
         recordActivity('生成配置','使用当前酒馆连接'+(ctx?.mainApi?' · '+ctx.mainApi:'')+'；手机历史 '+buildPrompt(data).length+' 条；当前手机预设 '+(configuredPhonePreset(data)||'未选择')+'；启用世界书 '+selectedWorldBookNames(data).length+' 本。实际注入数请看「注入预览」，包含自动继承的原版启用条目。');
         const phoneHistory=buildPrompt(data,ctx,char);
         const count=phoneRequestImageCount(phoneHistory);
-        const imageRecords=(data.messages||[]).reduce((sum,msg)=>sum+(!msg?.sticker?(Array.isArray(msg?.images)?msg.images.length:(msg?.image?1:0)):0),0);
+        const imageRecords=(data.messages||[]).reduce((sum,msg)=>sum+(!msg?.sticker?(Array.isArray(msg?.images)?msg.images.length:(msg?.image?1:0))+(msg?.sharePost?.image?1:0):0),0);
         recordActivity('图片上下文',`当前手机记录有 ${imageRecords} 张普通照片；最近 ${CONTEXT_MESSAGE_LIMIT} 条消息内已纳入 ${count} 张；${count?'将使用多模态图片通道':'本轮仅文本，未向模型传图片'}。`);
         const result = await generateWithTimeout(ctx, {
             task:'chat',systemPrompt,
