@@ -3584,8 +3584,7 @@ function goSettingsBack(){
 const MOTION_OPTIONS=new Set(['off','gentle','standard']);
 
 function createInteractionController({getRoot,getNodes,getMode,onError}){
- let boundRoot=null,pressed=null,activeRipple=null,rippleStart=null,toastTimer=null,portal=null,statusObserver=null;
- const lastRippleByTarget=new WeakMap();
+ let boundRoot=null,pressed=null,toastTimer=null,portal=null,statusObserver=null;
  let lastToastText='',lastToastAt=0;
  const configured=()=>MOTION_OPTIONS.has(getMode?.())?getMode():'standard';
  const mode=()=>{
@@ -3618,128 +3617,52 @@ function createInteractionController({getRoot,getNodes,getMode,onError}){
   if(kind!=='pending')toastTimer=setTimeout(()=>{
    if(getNodes()?.interactionFeedback===el){el.hidden=true;el.textContent='';}
    toastTimer=null;
-  },kind==='error'?3600:2300);
+  },kind==='error'?2500:1200);
  }
  function fromStatus(message,kind='info'){
   if(!message)return;
   if(kind==='error'||/失败|错误|无效|无法|不足|超时|未就绪/.test(message)){toast(message,'error');return;}
   if(/保存|导入|导出|重置/.test(message)&&/成功|已保存|完成|已更新|已导入|已导出/.test(message))toast(message,'success');
  }
+ // CSS :active shading works immediately in Android WebView without JS animations.
+ // A post-click flash covers touch environments which omit pointerdown.
  const target=e=>{
-  const hit=e.target?.closest?.('button,summary,[role="button"],a[href],label.lp-entry-option,label.lp-checkline,label.lp-group-choice,input[type="checkbox"],input[type="radio"]');
-  const el=hit?.matches?.('input[type="checkbox"],input[type="radio"]')?(hit.closest('label')||hit.parentElement):hit;
-  return el&&getRoot()?.contains?.(el)&&!hit.disabled&&
-   el.getAttribute?.('aria-disabled')!=='true'?el:null;
+  const hit=e.target?.closest?.('button,summary,[role="button"],a[href],label,input[type="checkbox"],input[type="radio"],[data-lp-open]');
+  if(!hit||!getRoot()?.contains?.(hit)||hit.disabled||hit.getAttribute?.('aria-disabled')==='true')return null;
+  if(hit.matches?.('input[type="checkbox"],input[type="radio"]'))return hit.closest('label')||hit;
+  return hit;
  };
  const primary=el=>el?.matches?.('button,[role="button"]')&&
-  /保存|发送|生成|发布|支付|收款|领取|确认|确定|提交|刷新|建立|结算/.test(el.textContent||el.getAttribute('aria-label')||'');
- function ripple(el,e){
-  if(!el||mode()==='off')return;
-  const rect=el.getBoundingClientRect?.();
-  if(!rect?.width||!rect?.height)return;
-  el.classList.add('lp-ripple-host');
-  try{if(window.getComputedStyle?.(el)?.position==='static'&&el.style)el.style.position='relative';}catch{}
-  const dot=document.createElement('span');
-  dot.className='lp-touch-ripple';
-  const x=Number.isFinite(e.clientX)&&e.clientX>0?e.clientX-rect.left:rect.width/2;
-  const y=Number.isFinite(e.clientY)&&e.clientY>0?e.clientY-rect.top:rect.height/2;
-  const size=Math.max(rect.width,rect.height)*2.4;
-  dot.style.width=size+'px';dot.style.height=size+'px';
-  dot.style.left=x+'px';dot.style.top=y+'px';
-  el.append(dot);activeRipple=dot;lastRippleByTarget.set(el,Date.now());
-  dot.addEventListener('animationend',()=>{if(activeRipple===dot)activeRipple=null;dot.remove();},{once:true});
-  setTimeout(()=>{if(activeRipple===dot)activeRipple=null;dot.remove();},550);
+  /保存|发送|生成|发布|支付|收款|领取|确认|确定|提交|刷新|结算/.test(el.textContent||el.getAttribute('aria-label')||'');
+ function release(){
+  if(pressed?.classList){pressed.classList.remove('lp-press-down','lp-primary-press');}
+  pressed=null;
  }
- function burst(el,small=false){
-  if(mode()==='off')return;
-  const panel=getRoot()?.querySelector?.('.lp-panel'),rect=el.getBoundingClientRect?.(),frame=panel?.getBoundingClientRect?.();
-  if(!panel||!rect||!frame)return;
-  const container=document.createElement('span');
-  container.className='lp-like-burst';
-  container.style.left=(rect.left+rect.width/2-frame.left)+'px';
-  container.style.top=(rect.top+rect.height/2-frame.top)+'px';
-  const center=document.createElement('b');
-  center.className='lp-burst-symbol';center.textContent=small?'★':'♥';
-  container.append(center);
-  if(!small){
-   const count=document.createElement('em');
-   count.className='lp-burst-count';count.textContent='+1';container.append(count);
-  }
-  const subtle=mode()==='gentle';
-  const count=small?(subtle?3:5):(subtle?5:8),radius=small?(subtle?12:19):(subtle?20:31);
-  for(let i=0;i<count;i++){
-   const particle=document.createElement('i');
-   const angle=i*Math.PI*2/count;
-   particle.style.setProperty('--bx',Math.round(Math.cos(angle)*radius)+'px');
-   particle.style.setProperty('--by',Math.round(Math.sin(angle)*radius)+'px');
-   particle.style.background=i%2?'var(--lp-slate)':'var(--lp-rose)';
-   container.append(particle);
-  }
-  container.style.zIndex='2147483100';
-  panel.append(container);
-  // This overlay survives the post card re-render during persistence.
-  if(typeof container.animate==='function') {
-   try{container.animate([{opacity:1},{opacity:1}],{duration:440});}catch{}
-  }
-  setTimeout(()=>container.remove(),540);
- }
- function release(){pressed?.classList?.remove?.('lp-press-down');pressed=null;}
  function bind(root=getRoot()){
   if(!root||root===boundRoot)return;
   boundRoot=root;
   root.addEventListener('pointerdown',e=>{
    if(e.button!==undefined&&e.button!==0)return;
    release();const el=target(e);
-   rippleStart=el&&Number.isFinite(e.clientX)?{x:e.clientX,y:e.clientY}:null;
-   if(el&&mode()!=='off'){
-    pressed=el;
-    if(primary(el))el.classList.add('lp-press-down');
-    ripple(el,e);
+   if(el){
+    pressed=el;el.classList.add('lp-press-down');
+    if(primary(el))el.classList.add('lp-primary-press');
    }
   },true);
-  for(const type of ['pointerup','pointercancel','pointerleave'])
-   root.addEventListener(type,e=>{
-    if(type!=='pointerup'&&activeRipple){activeRipple.remove();activeRipple=null;}
-    rippleStart=null;release();
-   },true);
-  root.addEventListener('pointermove',e=>{
-   if(rippleStart&&Number.isFinite(e.clientX)&&
-      Math.hypot(e.clientX-rippleStart.x,e.clientY-rippleStart.y)>9){
-    activeRipple?.remove?.();activeRipple=null;rippleStart=null;release();
-   }
-   if(e.buttons===0)release();
-  },true);
+  for(const name of ['pointerup','pointercancel','pointerleave'])
+   root.addEventListener(name,release,true);
+  root.addEventListener('pointermove',e=>{if(e.buttons===0)release();},true);
   root.addEventListener('keydown',e=>{
    if(e.key!=='Enter'&&e.key!==' ')return;
-   const el=target(e);
-   if(el&&mode()!=='off'){release();pressed=el;if(primary(el))el.classList.add('lp-press-down');}
+   release();const el=target(e);
+   if(el){pressed=el;el.classList.add('lp-press-down');}
   },true);
   root.addEventListener('keyup',release,true);
   root.addEventListener('click',e=>{
-   const el=target(e);release();
-   if(!el||mode()==='off')return;
-   const last=lastRippleByTarget.get(el)||0;
-   // Android WebView may dispatch click without an observable pointerdown.
-   if(Date.now()-last>480)ripple(el,{clientX:e.clientX||0,clientY:e.clientY||0});
-   el.classList.remove('lp-tap-flash');
-   void el.offsetWidth;
-   el.classList.add('lp-tap-flash');
-   setTimeout(()=>el.classList?.remove?.('lp-tap-flash'),240);
-   const effect=el.dataset?.touchEffect||el.dataset?.wbAction;
-   const isMoment=/^(?:♡\s*点赞|♥\s*已赞)/.test(el.textContent||'')&&Boolean(el.closest?.('.lp-moment'));
-   const enableBurst=(effect==='like'||effect==='favorite')&&!el.classList.contains('active')||
-    isMoment&&el.textContent?.includes('♡');
-   if(enableBurst) {
-    burst(el,effect==='favorite');
-    el.classList.remove('lp-like-pressed');
-    void el.offsetWidth;el.classList.add('lp-like-pressed');
-    setTimeout(()=>el.classList?.remove?.('lp-like-pressed'),380);
-   }else if(primary(el)){
-    el.classList.remove('lp-press-bounce');
-    void el.offsetWidth;
-    el.classList.add('lp-press-bounce');
-    setTimeout(()=>el.classList?.remove?.('lp-press-bounce'),mode()==='gentle'?165:280);
-   }
+   const el=target(e);release();if(!el)return;
+   el.classList.remove('lp-click-feedback');
+   void el.offsetWidth;el.classList.add('lp-click-feedback');
+   setTimeout(()=>el.classList?.remove?.('lp-click-feedback'),140);
   },true);
   const watch=['lockFeedback','lockChangeFeedback','themeFeedback','selectionSaveStatus',
    'stickerStatus','momentFeedback','autonomyFeedback','myAvatarStatus','npcScanState',
@@ -3842,7 +3765,7 @@ function createInteractionController({getRoot,getNodes,getMode,onError}){
   }
   subScreen(screen);
  }
- function pause(){activeRipple?.remove?.();activeRipple=null;rippleStart=null;release();stopPortal();dismiss();}
+ function pause(){release();stopPortal();dismiss();}
  function shutdown(){pause();statusObserver?.disconnect?.();statusObserver=null;boundRoot=null;}
  return {bind,sync,toast,fromStatus,capture,navigate,dismiss,pause,shutdown,mode};
 }
