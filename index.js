@@ -52,6 +52,7 @@ let statusText = '';
 let statusKind = 'info';
 let busyKind = '';
 let activeScreen = 'home';
+let settingsCategory='';
 let lifecycleToken = 0;
 const diagnostics = [];
 let lastMainlinePreview = '';
@@ -126,6 +127,8 @@ let takeoutController=null;
 let takeoutLoadPromise=null;
 let shoppingController=null;
 let shoppingLoadPromise=null;
+let memoryController=null;
+let memoryLoadPromise=null;
 let clockTicker=null;
 let clockTickBusy=false;
 const weiboState={scope:'',posts:[],trending:[],tab:'feed',loading:false,selectedId:'',generationId:0};
@@ -2993,7 +2996,8 @@ async function loadWeiboController(){
  if(weiboLoadPromise)return weiboLoadPromise;
  weiboLoadPromise=import('./weibo.js?v=0.18.0').then(module=>{
   weiboController=module.createWeiboModule({
-   context,getNodes:()=>nodes,readRootData,writeData,readData,phoneGenerate,
+   context,getNodes:()=>nodes,readRootData,writeData,readData,
+   phoneGenerate:(ctx,options,data)=>phoneGenerate(ctx,{...options,task:options?.task||'weibo'},data),
    selectedCharacter,currentPersona,stripModelReasoning,publishPhoneAppEvent,
    recordActivity,recordError,notifyInteraction,updateHomeHotSearch,storyContext:weiboStoryContext,scanAccounts:scanQunxingAccounts
   });return weiboController;
@@ -3024,7 +3028,8 @@ async function loadTakeoutController(){
  takeoutLoadPromise=import('./takeout.js?v=0.18.0').then(module=>{
   takeoutController=module.createTakeoutModule({
    context,getNodes:()=>nodes,readRootData,writeData,readData,currentPersona,
-   walletChargeOrder,walletRefundOrder,walletMoney,phoneGenerate,stripModelReasoning,
+   walletChargeOrder,walletRefundOrder,walletMoney,
+   phoneGenerate:(ctx,options,data)=>phoneGenerate(ctx,{...options,task:options?.task||'takeout'},data),stripModelReasoning,
    storyScenePreview,recordError,notifyInteraction
   });
   return takeoutController;
@@ -3036,6 +3041,45 @@ async function loadTakeoutController(){
  });
  return takeoutLoadPromise;
 }
+
+async function loadPhoneMemoryController(){
+ if(memoryController)return memoryController;
+ if(memoryLoadPromise)return memoryLoadPromise;
+ memoryLoadPromise=import('./memory.js?v=0.19.0').then(module=>{
+  memoryController=module.createPhoneMemoryModule({
+   context,getNodes:()=>nodes,readRootData,writeData,recordError,recordActivity,
+   stripModelReasoning,notifyInteraction,
+   phoneGenerate:(ctx,options,data)=>phoneGenerate(ctx,{...options,task:'memory'},data),
+   isPhoneOpen:()=>!!root?.classList.contains('lp-open')&&document.visibilityState!=='hidden',
+   primaryName:()=>getCharacterName(selectedCharacter(context()))
+  });
+  return memoryController;
+ }).catch(error=>{
+  recordError('加载手机记忆',error);memoryLoadPromise=null;return null;
+ });
+ return memoryLoadPromise;
+}
+const SETTINGS_SECTIONS={system:'系统设置',api:'API 连接',presets:'预设与世界书',
+ chat:'聊天方式',memory:'记忆管理',data:'数据与诊断'};
+function showSettingsCategory(category=''){
+ settingsCategory=Object.prototype.hasOwnProperty.call(SETTINGS_SECTIONS,category)?category:'';
+ const menu=nodes?.settingsMenu;
+ if(!menu)return;
+ menu.hidden=Boolean(settingsCategory);
+ const container=root?.querySelector?.('[data-lp-screen="settings"]');
+ container?.querySelectorAll?.('[data-settings-category]').forEach(el=>{
+  el.hidden=el.dataset.settingsCategory!==settingsCategory;
+ });
+ if(activeScreen==='settings')nodes.title.textContent=SETTINGS_SECTIONS[settingsCategory]||'设置';
+ if(container)container.scrollTop=0;
+ if(settingsCategory==='api')loadPhoneApiUI();
+ if(settingsCategory==='memory')void loadPhoneMemoryController().then(m=>m?.render());
+}
+function goSettingsBack(){
+ if(activeScreen!=='settings'||!settingsCategory)return false;
+ showSettingsCategory('');return true;
+}
+
 /* Shared interaction system for every GujiGuji app. No SillyTavern data is modified here. */
 const MOTION_OPTIONS=new Set(['off','gentle','standard']);
 
@@ -3273,8 +3317,10 @@ function setScreen(screen, options={}) {
     if (['chatList','contacts','discover','me'].includes(screen)) {
         root.querySelectorAll('.lp-tabbar button[data-lp-open]').forEach(button=>button.classList.toggle('lp-tab-active',button.dataset.lpOpen===screen));
     }
-    if (screen === 'settings' && screen !== previous) {
+    if(screen==='settings'&&screen!==previous){
+        if(!['presetPicker','worldPicker'].includes(previous))settingsCategory='';
         loadPhoneApiUI();loadPhoneMessageStyle();loadContextSettings();loadPhoneClockPrefs();void populateConfigLists();
+        showSettingsCategory(settingsCategory);
     }
     if (screen === 'theme') {applyTheme();renderDesktopSort();}
     if (screen === 'discoverNpc' && screen !== previous) {populateNpcWorldSelect();renderNpcCandidates();}
@@ -6864,6 +6910,7 @@ function mount() {
     nodes.testAutonomy.addEventListener('click',()=>void testAutonomousMessage());
 
     nodes.back.addEventListener('click', () => {
+        if(goSettingsBack())return;
         // The phone's fixed header is the universal "one level back" control.
         // App-specific detail pages must not turn a tap into an app exit.
         if(activeScreen==='weibo'&&weiboController?.back())return;
@@ -6915,10 +6962,20 @@ function mount() {
     nodes.savePresetPicker.addEventListener('click',()=>void saveSelectionSettings(true));
     nodes.saveWorldPicker.addEventListener('click',()=>void saveSelectionSettings(true));
 
-    nodes.apiMode.addEventListener('change', () => { nodes.customApiFields.hidden = nodes.apiMode.value !== 'custom'; });
-    nodes.saveApi.addEventListener('click', () => void savePhoneApi());
+    nodes.apiTask.addEventListener('change',loadPhoneApiUI);
+    nodes.apiMode.addEventListener('change',showApiFields);
+    nodes.saveApi.addEventListener('click',()=>void savePhoneApi());
+    nodes.apiTest.addEventListener('click',()=>void testPhoneApi());
     nodes.saveMessageStyle.addEventListener('click', () => void savePhoneMessageStyle());
     nodes.saveContextSettings.addEventListener('click',()=>void saveContextSettings());
+    nodes.settingsMenu.addEventListener('click',e=>{
+     const target=e.target.closest('[data-settings-nav]');
+     if(target)showSettingsCategory(target.dataset.settingsNav);
+    });
+    nodes.settingsOpenDiagnostics.addEventListener('click',()=>setScreen('diagnostics'));
+    nodes.phoneMemorySave.addEventListener('click',()=>void loadPhoneMemoryController().then(m=>m?.saveSettings()));
+    nodes.phoneMemoryRun.addEventListener('click',()=>void loadPhoneMemoryController().then(m=>m?.summarize(true)));
+    nodes.phoneMemoryList.addEventListener('click',e=>void memoryController?.handleClick(e));
     nodes.presetEntries.addEventListener('change', event => { if (event.target?.dataset?.configKind) onConfigChange(event.target); });
     nodes.worldEntries.addEventListener('change', event => { if (event.target?.dataset?.configKind) onConfigChange(event.target); });
     nodes.themeFont.addEventListener('change',()=>editableThemePatch({font:nodes.themeFont.value}));
@@ -7038,6 +7095,7 @@ function mount() {
         if (event.key === 'Escape') {
             event.preventDefault();
             if(filePickerReturning()){event.stopPropagation();finishFilePicker();return;}
+            if(goSettingsBack())return;
             if (activeScreen !== 'home') setScreen('home');
             else {
                 closePhone();
