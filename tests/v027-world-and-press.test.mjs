@@ -67,6 +67,8 @@ test('v0.27 starts with cached posts, simple button press and centered outcomes'
  assert.ok(css.includes('margin:0 13px 14px!important'));
  assert.ok(index.includes("kind==='error'?2500:1200"));
  assert.ok(index.includes('lp-click-feedback'));
+ assert.ok(css.includes('lpSocialTapRebound'));
+ assert.ok(css.includes('[data-wb-action="favorite"]'));
  assert.ok(!index.slice(index.indexOf('function createInteractionController'),index.indexOf('let phoneInteraction=null;')).includes('function burst('));
 });
 test('80万粉丝成熟媒体号拥有刷新前的历史累计数据，而非本帖从零开始',()=>{
