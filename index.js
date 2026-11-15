@@ -85,6 +85,7 @@ const APP_CATALOG=[
  {key:'wallet',screen:'wallet',name:'吱付宝',ready:true},
  {key:'weibo',screen:'weibo',name:'群星',ready:true},
  {key:'calendar',screen:'calendar',name:'日历',ready:true},
+ {key:'album',screen:'album',name:'相册',ready:true},
  {key:'settings',screen:'settings',name:'设置',ready:true},
  {key:'diagnostics',screen:'diagnostics',name:'运行日志',ready:true},
  {key:'shopping',screen:'shopping',name:'购物',ready:true},
@@ -98,6 +99,7 @@ const APP_SHAPES={
  weibo:'<path d="M12 1.5 14.25 9.75 22.5 12l-8.25 2.25L12 22.5l-2.25-8.25L1.5 12l8.25-2.25L12 1.5Z"/><path d="m4 3 .55 1.45L6 5l-1.45.55L4 7l-.55-1.45L2 5l1.45-.55L4 3ZM20 3l.45 1.55L22 5l-1.55.45L20 7l-.45-1.55L18 5l1.55-.45L20 3ZM20 17l.55 1.45L22 19l-1.45.55L20 21l-.55-1.45L18 19l1.45-.55L20 17Z"/>',
  diagnostics:'<path d="m12 3 9.1 16a1.3 1.3 0 0 1-1.1 2H4a1.3 1.3 0 0 1-1.1-2L12 3Z"/><path d="M12 9v5"/><circle cx="12" cy="17.5" r=".85" fill="currentColor" stroke="none"/>',
  settings:'<circle cx="12" cy="12" r="7.3"/><circle cx="12" cy="12" r="3.15"/><path d="M12 1.9v2.3M12 19.8v2.3M1.9 12h2.3M19.8 12h2.3M4.86 4.86l1.63 1.63M17.51 17.51l1.63 1.63M4.86 19.14l1.63-1.63M17.51 6.49l1.63-1.63"/>',
+ album:'<rect x="2.5" y="3" width="19" height="18" rx="2"/><circle cx="8" cy="9" r="2"/><path d="m4 18 6-6 4 3 3-4 4 5"/>',
  calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18M8 14h2M13 14h2M8 18h2"/>',
  theme:'<path d="M12 3a9 9 0 1 0 0 18h2a2 2 0 0 0 1-3.7c-.5-.2-.8-.6-.8-1.1 0-.8.6-1.4 1.4-1.4H18A4 4 0 0 0 22 11c0-4.4-4.3-8-10-8Z"/><circle cx="7.5" cy="10" r=".8" fill="currentColor"/><circle cx="11" cy="7.5" r=".8" fill="currentColor"/><circle cx="16" cy="8.5" r=".8" fill="currentColor"/>',
  shopping:'<path d="M4 8h16l-1 13H5L4 8Z"/><path d="M8 9V6a4 4 0 0 1 8 0v3"/>',
@@ -130,10 +132,12 @@ let shoppingController=null;
 let shoppingLoadPromise=null;
 let memoryController=null;
 let memoryLoadPromise=null;
+let albumController=null,albumLoadPromise=null,groupsController=null,groupsLoadPromise=null;
+let pendingSharedPost=null,sharedPostPreview=null,sharedPostOrigin='chat';
 let clockTicker=null;
 let clockTickBusy=false;
 const weiboState={scope:'',posts:[],trending:[],tab:'feed',loading:false,selectedId:'',generationId:0};
-const SCREENS = new Set(['lock', 'home', 'weibo', 'wallet', 'shopping', 'takeout', 'chat', 'chatList', 'contacts', 'requests', 'profile', 'addNpc', 'discoverNpc', 'discover', 'me', 'chatOptions', 'settings', 'diagnostics', 'calendar', 'theme', 'presetPicker', 'worldPicker']);
+const SCREENS = new Set(['lock', 'home', 'weibo', 'wallet', 'shopping', 'takeout', 'album', 'groups', 'sharePicker', 'shareViewer', 'chat', 'chatList', 'contacts', 'requests', 'profile', 'addNpc', 'discoverNpc', 'discover', 'me', 'chatOptions', 'settings', 'diagnostics', 'calendar', 'theme', 'presetPicker', 'worldPicker']);
 
 function context() {
     try {
@@ -1095,6 +1099,97 @@ async function copyThemeSelectors(){
  ];
  try{await navigator.clipboard.writeText(lines.join('\n'));notifyTheme('已复制常用 CSS 类名');}
  catch{notifyTheme('当前 WebView 不支持复制，请长按指南中的文本',true);}
+}
+
+
+/* 相册随角色卡保存；普通照片不写入每个剧情存档的公共根数据。 */
+function characterPhotos(ctx=context()){
+ const key=qunxingAccountCardKey(ctx);
+ const all=ctx?.extensionSettings?.[SETTINGS_KEY]?.characterPhotoAlbums||{};
+ const photos=key&&all[key];
+ return Array.isArray(photos)?photos.filter(p=>p&&typeof p.id==='string'&&/^data:image\/(?:jpeg|png|webp);base64,/.test(p.image||'')).slice(0,40):[];
+}
+function saveCharacterPhotos(photos,ctx=context()){
+ const key=qunxingAccountCardKey(ctx);
+ if(!key||!ctx?.extensionSettings||typeof ctx.saveSettingsDebounced!=='function')
+  throw Error('无法保存相册：酒馆扩展设置不可用');
+ const selected=Array.isArray(photos)?photos.slice(0,40):[];
+ if(selected.reduce((n,p)=>n+(p.image?.length||0),0)>4000000)
+  throw Error('相册图片合计超过约3MB的存储上限');
+ const settings=ctx.extensionSettings[SETTINGS_KEY]||={};
+ const albums=settings.characterPhotoAlbums||={};
+ const old=albums[key];albums[key]=selected;
+ try{ctx.saveSettingsDebounced();}catch(error){if(old===undefined)delete albums[key];else albums[key]=old;throw error;}
+ return true;
+}
+function galleryPeople(ctx=context()){
+ if(!selectedCharacter(ctx))return [];
+ const r=readRootData(ctx);
+ return [
+  {id:'user',name:currentPersona(ctx)?.name||ctx?.name1||'我'},
+  {id:PRIMARY_CONTACT_ID,name:getCharacterName(selectedCharacter(ctx))},
+  ...r.contacts.map(p=>({id:p.id,name:p.name}))
+ ];
+}
+function photosForActor(actorId,access='chat',ctx=context()){
+ const people=galleryPeople(ctx),person=people.find(p=>p.id===actorId);
+ if(!person)return [];
+ return characterPhotos(ctx).filter(p=>(p.owner===actorId||(p.ownerName===person.name&&p.owner!=='user'))&&
+   (access==='private'||p.access==='public'||(access==='chat'&&p.access==='chat')));
+}
+function albumCatalogPrompt(actorId,access='chat'){
+ const photos=photosForActor(actorId,access).slice(0,12);
+ if(!photos.length)return '';
+ return '【已确认的角色相册资料；仅文字标签，不代表模型已看到照片】'+photos.map(p=>
+   p.id+'：'+(p.title||'照片')+'；'+(p.description||'尚无图片描述')).join('；')+
+   '。角色可在适合的时机选择自己的照片，输出 [[photo:照片ID]] 作为独立图片消息；只能使用列出的ID，不能臆测未描述的细节。';
+}
+function photoByOwnerId(id,actorId,access='chat'){
+ return photosForActor(actorId,access).find(p=>p.id===id)||null;
+}
+function isPhoneFriend(id){
+ const ctx=context();return validContactId(readRootData(ctx),id)&&friendshipState(readData(ctx,id))==='friends';
+}
+async function albumSendToChat(photo){
+ if(photo.access!=='public'&&photo.access!=='chat')throw Error('照片未允许发送');
+ if(!isPhoneFriend(activeContactId))throw Error('当前联系人尚不是好友，不能发送照片');
+ await sendUserMessage('[图片]'+(photo.description?' '+photo.description:''),'',null,{images:[photo.image]});
+ setScreen('chat');
+}
+async function albumPostMoment(photo){
+ if(photo.owner!=='user'||photo.access!=='public')throw Error('只有允许公开的本人照片才能由 user 发布');
+ const caption=window.prompt('朋友圈配文（可留空）','');
+ if(caption===null)return;
+ momentImageDraft=photo.image;nodes.momentsText.value=caption;
+ await postMoment();setScreen('discover');
+}
+async function albumPostWeibo(photo){
+ if(photo.owner!=='user'||photo.access!=='public')throw Error('只有允许公开的本人照片才能由 user 发布');
+ const caption=window.prompt('群星动态配文',photo.title||'分享照片');
+ if(caption===null)return;
+ const controller=await loadWeiboController();
+ if(!controller)throw Error('群星尚未加载');
+ await controller.publishAlbumPhoto(photo,caption);setScreen('weibo');
+}
+async function loadAlbumController(){
+ if(albumController)return albumController;
+ if(albumLoadPromise)return albumLoadPromise;
+ albumLoadPromise=import('./album.js?v=0.21.0').then(mod=>{
+  albumController=mod.createAlbumModule({context,getNodes:()=>nodes,sharedPhotos:()=>characterPhotos(),saveSharedPhotos:saveCharacterPhotos,
+    albumScope:()=>qunxingAccountCardKey(context()),galleryPeople,notifyInteraction,albumSendToChat,albumPostMoment,albumPostWeibo});
+  return albumController;
+ }).catch(e=>{recordError('加载相册',e);albumLoadPromise=null;if(nodes?.albumContent)nodes.albumContent.textContent='相册加载失败：'+e.message;return null;});
+ return albumLoadPromise;
+}
+async function loadGroupsController(){
+ if(groupsController)return groupsController;
+ if(groupsLoadPromise)return groupsLoadPromise;
+ groupsLoadPromise=import('./groups.js?v=0.21.0').then(mod=>{
+  groupsController=mod.createGroupsModule({context,getNodes:()=>nodes,readRootData,writeData,galleryPeople,
+   isPhoneFriend,contactCharacter,phoneGenerate,stripModelReasoning,notifyInteraction,openSharedPost});
+  return groupsController;
+ }).catch(e=>{recordError('加载群聊',e);groupsLoadPromise=null;if(nodes?.groupsContent)nodes.groupsContent.textContent='群聊加载失败：'+e.message;return null;});
+ return groupsLoadPromise;
 }
 
 function apiSessionId(ctx) {
@@ -3148,7 +3243,8 @@ async function loadWeiboController(){
    readSharedAccounts:()=>sharedQunxingAccounts(context()),
    saveSharedAccounts:(accounts,originalCtx)=>saveSharedQunxingAccounts(accounts,originalCtx||context()),
    ensureSharedAccounts:()=>ensureSharedQunxingAccounts(context()),
-   storyContext:weiboStoryContext,scanAccounts:scanQunxingAccounts
+   storyContext:weiboStoryContext,scanAccounts:scanQunxingAccounts,
+    sharePost:openQunxingShare,photosForAccount:name=>{const person=galleryPeople().find(p=>p.name===name);return person?photosForActor(person.id,'public'):[];}
   });return weiboController;
  }).catch(error=>{
   if(nodes?.weiboFeedback)nodes.weiboFeedback.textContent='群星加载失败：'+String(error.message||error);
@@ -3433,7 +3529,7 @@ function setScreen(screen, options={}) {
     }
     nodes.back.hidden = screen === 'home'||screen==='lock';
     if(nodes.close)nodes.close.hidden=true;
-    const titles = {lock:'锁屏',home:'咕叽咕机',weibo:'群星',wallet:'吱付宝',shopping:'购物',takeout:'外卖',chat:'',chatList:'咕叽聊',contacts:'咕叽聊',discover:'咕叽聊',me:'咕叽聊',requests:'新的朋友',profile:'联系人资料',addNpc:'添加 NPC',discoverNpc:'发现故事人物',chatOptions:'聊天设置',settings:'设置',diagnostics:'运行日志',calendar:'日历',theme:'主题',presetPicker:'选择预设条目',worldPicker:'选择世界书条目' };
+    const titles = {album:'相册',groups:'群聊',sharePicker:'分享动态',shareViewer:'动态详情',lock:'锁屏',home:'咕叽咕机',weibo:'群星',wallet:'吱付宝',shopping:'购物',takeout:'外卖',chat:'',chatList:'咕叽聊',contacts:'咕叽聊',discover:'咕叽聊',me:'咕叽聊',requests:'新的朋友',profile:'联系人资料',addNpc:'添加 NPC',discoverNpc:'发现故事人物',chatOptions:'聊天设置',settings:'设置',diagnostics:'运行日志',calendar:'日历',theme:'主题',presetPicker:'选择预设条目',worldPicker:'选择世界书条目' };
     nodes.title.textContent = screen === 'chat' ? contactDisplayName(context()) : titles[screen];
     nodes.chatMenu.hidden = screen !== 'chat';
     if(nodes.homeExit)nodes.homeExit.hidden=screen!=='home';
@@ -3445,6 +3541,10 @@ function setScreen(screen, options={}) {
         else void loadWeiboController().then(w=>{if(w&&activeScreen==='weibo')w.open(options);});
     }
     if (screen === 'diagnostics') renderDiagnostics();
+    if (screen === 'album')void loadAlbumController().then(m=>{if(activeScreen==='album')m?.open();});
+    if (screen === 'groups')void loadGroupsController().then(m=>{if(activeScreen==='groups')m?.render();});
+    if (screen === 'sharePicker')renderQunxingSharePicker();
+    if (screen === 'shareViewer')renderSharedPostViewer();
     if (screen === 'wallet')renderWallet(context());
     if(screen==='shopping'){
       if(shoppingController)shoppingController.open();
@@ -6341,8 +6441,21 @@ function makeUI() {
             <button type="button" data-takeout-tab="me"><span aria-hidden="true">♙</span><small>我</small></button>
           </nav>
         </section>
+        <section class="lp-screen lp-album-screen" data-lp-screen="album" aria-label="故事相册" hidden>
+          <div data-lp="albumContent" class="lp-album-content"></div>
+        </section>
+        <section class="lp-screen lp-group-screen" data-lp-screen="groups" aria-label="群聊" hidden>
+          <div data-lp="groupsContent" class="lp-group-content"></div>
+        </section>
+        <section class="lp-screen lp-share-screen" data-lp-screen="sharePicker" aria-label="分享群星动态" hidden>
+          <div data-lp="shareTargets" class="lp-share-targets"></div>
+        </section>
+        <section class="lp-screen lp-share-screen" data-lp-screen="shareViewer" aria-label="分享详情" hidden>
+          <div data-lp="sharePreview" class="lp-share-preview"></div>
+        </section>
         <section class="lp-screen lp-chatlist" data-lp-screen="chatList" aria-label="消息列表" hidden>
           <div class="lp-list-body">
+            <button type="button" class="lp-list-action" data-lp-open="groups">＋ 创建 / 查看群聊</button>
             <div data-lp="recentChats"></div>
           </div>
           <nav class="lp-tabbar" aria-label="咕叽聊导航">
@@ -6951,6 +7064,7 @@ function mount() {
     nodes = Object.fromEntries(['title', 'subtitle', 'back', 'close', 'time',
         'homeTime','homeDate','homeScene','homePages','homeDots','homeSwipe','homeHotSearch','homeCharacter','homeLogCount','homeUnreadCount',
         'lockTime','lockDate','lockPin','lockRepeat','lockDots','lockKeypad','lockIntro','lockFeedback','lockAction','lockExit','homeExit','lockOldPin','lockNewPin','lockConfirmPin','lockChangePin','lockChangeFeedback',
+        'albumContent','groupsContent','shareTargets','sharePreview',
         'weiboGenerate','weiboFeedback','weiboFeed','weiboHot','weiboNearby','weiboCompose','weiboMe','weiboDetail','weiboTabs','weiboComposeText','weiboPublish','weiboDetailBack','weiboRefreshBox',
         'desktopSortList','clockMode','clockRate','clockContinueClosed','clockCustomFields','clockSave','lockEnabled','lockSaveEnabled','notification','inlineNotification','calendarPrev','calendarNext','calendarHeading','calendarViews','calendarGrid','calendarSelected','calendarSummary','calendarSelectedTime','calendarStoryToday','calendarRealToday','calendarSaveTime','calendarExactSave',
         'momentsPost', 'momentsText', 'momentsFeed', 'momentFeedback','momentsPreview','momentImageUpload','momentRemovePhoto','myAvatarUpload','myAvatarFallback','myAvatarStatus','myIdentity', 'myAvatar', 'myPersona', 'autoMessagesMode','autoMessagesDays','autoMomentsMode','autoMomentsDays','relationAutoSync','phoneInPast','characterRequests','momentInteractions','autonomyStatus','autonomyFeedback','saveAutonomy','rescanRelations','testAutonomy', 'stickerUpload','stickerPackUpload', 'stickerStatus', 'stickerLibrary',
@@ -7006,6 +7120,9 @@ function mount() {
       if(w.state.tab==='discover')return w.generateHot();
       return w.generate(w.state.tab==='nearby'?'nearby':'home');
     }));
+    nodes.albumContent.addEventListener('click',event=>{void albumController?.handleClick(event);});
+    nodes.groupsContent.addEventListener('click',event=>{void groupsController?.handleClick(event);});
+    nodes.shareTargets.addEventListener('click',event=>{const b=event.target.closest('[data-share-target]');if(b)void completeQunxingShare(b.dataset.shareType,b.dataset.shareTarget);});
     nodes.weiboPublish.addEventListener('click',()=>void loadWeiboController().then(w=>w?.publish()));
     nodes.weiboDetailBack.addEventListener('click',()=>weiboController?.back());
     nodes.shoppingTabs.addEventListener('click',event=>{
@@ -7088,8 +7205,10 @@ function mount() {
         if(activeScreen==='weibo'&&weiboController?.back())return;
         if(activeScreen==='shopping'&&shoppingController?.back())return;
         if(activeScreen==='takeout'&&takeoutController?.back())return;
+        if(activeScreen==='groups'&&groupsController?.back())return;
+        if(activeScreen==='shareViewer'){setScreen(sharedPostOrigin||'chat');return;}
         setScreen({
-          wallet:'home',shopping:'home',takeout:'home',weibo:'home',chat:'chatList',
+          wallet:'home',shopping:'home',takeout:'home',weibo:'home',album:'home',groups:'chatList',sharePicker:'weibo',chat:'chatList',
           contacts:'chatList',discover:'chatList',me:'chatList',
           profile:'contacts',requests:'contacts',addNpc:'contacts',
           discoverNpc:'addNpc',chatOptions:'chat',
