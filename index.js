@@ -6146,6 +6146,17 @@ function makeUI() {
             <option value="swiss">01 · 瑞士纸韵（蓝灰玫瑰）</option>
             <option value="custom">02 · 自定义主题</option>
           </select>
+          <div class="lp-theme-library-tools">
+            <label>新主题名称／重命名 <input type="text" data-lp="themeName" maxlength="36" placeholder="例如：琉璃繁缕" /></label>
+            <div class="lp-theme-button-grid">
+              <button type="button" data-lp="themeSaveNamed">另存为新主题</button>
+              <button type="button" data-lp="themeRename">重命名</button>
+              <button type="button" data-lp="themeDelete">删除选中主题</button>
+              <button type="button" data-lp="themeExport">导出 JSON</button>
+            </div>
+            <label>导入主题文件 <input type="file" data-lp="themeImport" accept="application/json,.json" /></label>
+            <p class="lp-settings-hint" data-lp="themeFeedback" role="status">内置瑞士纸韵永久保留；自定义主题可以单独删除。</p>
+          </div>
           <div class="lp-theme-custom-colors" data-lp="themeCustomColors" hidden>
             <p>自定义六色</p>
             <div class="lp-theme-color-grid">
@@ -6167,8 +6178,52 @@ function makeUI() {
           <button type="button" class="lp-settings-link" data-lp="themeResetWallpaper">恢复默认壁纸</button>
           <h2>字体</h2>
           <select data-lp="themeFont" aria-label="选择手机字体">
-            <option value="system">系统字体</option><option value="serif">衬线字体</option><option value="rounded">圆润字体</option>
+            <option value="system">系统字体</option><option value="serif">衬线字体</option><option value="rounded">圆润字体</option><option value="uploaded">我上传的字体</option>
           </select>
+          <label class="lp-theme-field">导入字体文件（TTF / OTF / WOFF / WOFF2，≤400 KB）
+            <input type="file" data-lp="themeFontFile" accept=".ttf,.otf,.woff,.woff2" />
+          </label>
+          <h2>桌面和聊天布局</h2>
+          <label class="lp-theme-field">桌面图标大小（22–52px）
+            <input data-lp="themeDesktopIconSize" type="range" min="22" max="52" value="34" />
+          </label>
+          <label class="lp-theme-field">桌面行距（8–45px）
+            <input data-lp="themeDesktopGap" type="range" min="8" max="45" value="25" />
+          </label>
+          <label class="lp-theme-field">聊天气泡圆角（6–30px）
+            <input data-lp="themeBubbleRadius" type="range" min="6" max="30" value="15" />
+          </label>
+          <h2>自定义应用图标</h2>
+          <select data-lp="themeIconTarget" aria-label="选择要修改的应用">
+            <option value="chat">咕叽聊</option><option value="wallet">吱付宝</option>
+            <option value="weibo">群星</option><option value="calendar">日历</option>
+            <option value="settings">设置</option><option value="diagnostics">运行日志</option>
+            <option value="shopping">购物</option><option value="takeout">外卖</option><option value="theme">主题</option>
+          </select>
+          <input type="file" data-lp="themeIconFile" accept="image/png,image/jpeg,image/webp" />
+          <button type="button" data-lp="themeIconReset" class="lp-settings-link">恢复选中应用默认图标</button>
+          <h2>页面外悬浮按钮图标</h2>
+          <input type="file" data-lp="themeFloatingIconFile" accept="image/png,image/jpeg,image/webp" />
+          <button type="button" data-lp="themeFloatingIconReset" class="lp-settings-link">恢复默认悬浮按钮</button>
+          <h2>高级 CSS 美化</h2>
+          <p class="lp-settings-hint">只允许针对 #st-little-phone-root 的本地 CSS，阻止扩展到酒馆页面。美化异常时可从酒馆扩展设置恢复默认主题。</p>
+          <input type="file" data-lp="themeCssFile" accept=".css,text/css" />
+          <p class="lp-settings-hint" data-lp="themeCssStatus">当前无自定义 CSS</p>
+          <button type="button" data-lp="themeCssReset" class="lp-settings-link">停用当前 CSS 美化</button>
+          <details class="lp-theme-guide"><summary>美化开发指南 · 查看类名</summary>
+            <p>公开稳定类名（样式请加根选择器）：</p>
+            <code>#st-little-phone-root</code>
+            <code>.lp-desktop-grid · 桌面网格</code>
+            <code>.lp-desktop-app-icon · 应用图标</code>
+            <code>.lp-home-widget · 时间卡</code>
+            <code>.lp-bubble · 聊天气泡</code>
+            <code>.lp-mine .lp-bubble · 发出的消息</code>
+            <code>.lp-theirs .lp-bubble · 收到的消息</code>
+            <code>.lp-payment-card · 转账红包</code>
+            <code>.lp-weibo-screen · 群星</code>
+            <code>.lp-takeout-screen · 外卖</code>
+            <button type="button" data-lp="themeCopySelectors">复制常用 CSS 选择器</button>
+          </details>
           <h2>桌面翻页效果</h2>
           <select data-lp="themeDesktopEffect" aria-label="选择桌面翻页动画">
             <option value="slide">平滑滑动</option><option value="fade">淡入淡出</option>
@@ -6238,7 +6293,7 @@ function mount() {
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','avatarUserFile','resetCharAvatar','resetUserAvatar',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
         'takeoutContent','takeoutTabs','walletBalance','walletPending','walletBills','walletAdjustInput','walletSaveBalance','walletToChat','walletStatus',
-        'presetSource','presetInfo','presetEntries','worldBookList','worldSelectionSummary','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','saveSelections','savePresetPicker','saveWorldPicker','selectionSaveStatus','readMainlineMemory','memorySource','phoneToMainline','eventBridge','saveContextSettings','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themePreset','themeCustomColors','themeSaveColors','themeWallpaperPreview','themeDesktopEffect','themeBindWallpaper',
+        'presetSource','presetInfo','presetEntries','worldBookList','worldSelectionSummary','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','saveSelections','savePresetPicker','saveWorldPicker','selectionSaveStatus','readMainlineMemory','memorySource','phoneToMainline','eventBridge','saveContextSettings','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themePreset','themeCustomColors','themeSaveColors','themeWallpaperPreview','themeDesktopEffect','themeBindWallpaper','themeName','themeSaveNamed','themeRename','themeDelete','themeExport','themeImport','themeFeedback','themeCssFile','themeCssReset','themeCssStatus','themeFontFile','themeDesktopIconSize','themeDesktopGap','themeBubbleRadius','themeIconTarget','themeIconFile','themeIconReset','themeFloatingIconFile','themeFloatingIconReset','themeCopySelectors',
         'diagnostics', 'diagnosticState', 'copyDiagnostics', 'clearDiagnostics',
         'messages','messageActions','quotedPreview','quotedText','cancelQuote','emojiPanel','morePanel','chatImageInput','timeJumpPanel','timeJumpHint','timeJumpCurrent','timeJumpAmount','timeJumpUnit','timeJumpApply','timeJumpClose','paymentPanel','paymentTitle','paymentKind','paymentAmount','paymentNote','paymentBalance','paymentClose','paymentSend','input', 'generate', 'send', 'launcher']
         .map(key => [key, key === 'launcher' ? floating : root.querySelector(`[data-lp="${key}"]`)]));
@@ -6393,13 +6448,29 @@ function mount() {
     nodes.saveContextSettings.addEventListener('click',()=>void saveContextSettings());
     nodes.presetEntries.addEventListener('change', event => { if (event.target?.dataset?.configKind) onConfigChange(event.target); });
     nodes.worldEntries.addEventListener('change', event => { if (event.target?.dataset?.configKind) onConfigChange(event.target); });
-    nodes.themeFont.addEventListener('change', () => changeTheme({font:nodes.themeFont.value}));
+    nodes.themeFont.addEventListener('change',()=>editableThemePatch({font:nodes.themeFont.value}));
     nodes.themeWallpaper.addEventListener('change', e => loadWallpaper(e.target.files?.[0]));
     nodes.themeResetWallpaper.addEventListener('click',resetWallpaper);
-    nodes.themePreset.addEventListener('change',()=>changeTheme({palette:nodes.themePreset.value}));
+    nodes.themePreset.addEventListener('change',()=>{changeTheme({palette:nodes.themePreset.value});desktopLayoutSignature='';renderDesktop();});
     nodes.themeSaveColors.addEventListener('click',saveThemeColors);
     nodes.themeBindWallpaper.addEventListener('change',()=>toggleThemeWallpaperBinding(nodes.themeBindWallpaper.checked));
-    nodes.themeDesktopEffect.addEventListener('change',()=>{changeTheme({desktopEffect:nodes.themeDesktopEffect.value});desktopVisual(desktopPage);});
+    nodes.themeDesktopEffect.addEventListener('change',()=>{editableThemePatch({desktopEffect:nodes.themeDesktopEffect.value});desktopVisual(desktopPage);});
+    nodes.themeSaveNamed.addEventListener('click',saveNamedTheme);
+    nodes.themeRename.addEventListener('click',renameNamedTheme);
+    nodes.themeDelete.addEventListener('click',deleteSelectedTheme);
+    nodes.themeExport.addEventListener('click',exportNamedTheme);
+    nodes.themeImport.addEventListener('change',event=>{void importNamedTheme(event.target.files?.[0]);event.target.value='';});
+    nodes.themeCssFile.addEventListener('change',event=>{void importThemeCssFile(event.target.files?.[0]);event.target.value='';});
+    nodes.themeCssReset.addEventListener('click',()=>{editableThemePatch({customCss:''});notifyTheme('已停用自定义 CSS');});
+    nodes.themeFontFile.addEventListener('change',event=>{importThemeFont(event.target.files?.[0]);event.target.value='';});
+    nodes.themeIconFile.addEventListener('change',event=>{importThemeIcon(event.target.files?.[0]);event.target.value='';});
+    nodes.themeIconReset.addEventListener('click',()=>resetThemeIcon(false));
+    nodes.themeFloatingIconFile.addEventListener('change',event=>{importThemeIcon(event.target.files?.[0],true);event.target.value='';});
+    nodes.themeFloatingIconReset.addEventListener('click',()=>resetThemeIcon(true));
+    nodes.themeDesktopIconSize.addEventListener('change',()=>editableThemePatch({desktopIconSize:Number(nodes.themeDesktopIconSize.value)}));
+    nodes.themeDesktopGap.addEventListener('change',()=>editableThemePatch({desktopGap:Number(nodes.themeDesktopGap.value)}));
+    nodes.themeBubbleRadius.addEventListener('change',()=>editableThemePatch({chatBubbleRadius:Number(nodes.themeBubbleRadius.value)}));
+    nodes.themeCopySelectors.addEventListener('click',()=>void copyThemeSelectors());
     // All default icons use the same single-color line style.
     nodes.floatingLauncher.addEventListener('change', event => setFloatLauncherEnabled(event.target.checked));
     nodes.send.addEventListener('click',send);
