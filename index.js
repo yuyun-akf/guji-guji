@@ -1,5 +1,5 @@
 /**
- * GujiGuji v0.20.0: a modular phone shell with isolated per-chat context.
+ * GujiGuji v0.21.0: a modular phone shell with isolated per-chat context.
  * No direct host-module imports; uses only the documented context surface.
  */
 
@@ -1101,10 +1101,8 @@ function apiSessionId(ctx) {
     return String(ctx?.characterId ?? 'none') + '::' + String(ctx?.chatId ?? ctx?.getCurrentChatId?.() ?? 'default');
 }
 const PHONE_API_TARGETS=[
- ['default','全部应用 · 默认连接'],['chat','咕叽聊'],['weibo','群星'],
- ['takeout','外卖'],['shopping','购物'],['wallet','吱付宝'],
- ['calendar','日历'],['theme','主题'],['settings','设置'],
- ['diagnostics','运行日志'],['autonomy','角色自主活动'],['memory','手机记忆']
+ ['default','全部应用 · 默认连接'],['chat','咕叽聊（含群聊）'],['weibo','群星'],
+ ['takeout','外卖 · 商户生成'],['autonomy','角色自主活动'],['memory','手机记忆']
 ];
 const API_TARGET_IDS=new Set(PHONE_API_TARGETS.map(x=>x[0]));
 function apiKeySlot(ctx,task='default'){
@@ -3022,9 +3020,11 @@ function buildPrompt(data,ctx=null,char=null) {
                 ' · '+walletStatusLabel(payment.status)+(payment.note?' · '+payment.note:'')+']':message.text;
             return ({
             role: message.from === 'character' ? 'assistant' : 'user',
-            content: !message.sticker && message.image && typeof message.image==='string' && /^data:image\/(?:jpeg|png|webp);base64,/.test(message.image)
+            content: !message.sticker && (Array.isArray(message.images)&&message.images.length||message.image)
               ? [{type:'text',text:resolvePhonePlaceholders((message.replyQuote?'[引用：'+message.replyQuote+']\n':'')+(message.text||'')+'（请根据图片中实际可见内容回复，不要虚构看不到的细节）',ctx,char)},
-                 {type:'image_url',image_url:{url:message.image,detail:'auto'}}]
+                 ...(Array.isArray(message.images)&&message.images.length?message.images:[message.image])
+                   .filter(src=>typeof src==='string'&&/^data:image\/(?:jpeg|png|webp);base64,/.test(src))
+                   .map(src=>({type:'image_url',image_url:{url:src,detail:'auto'}}))]
               : resolvePhonePlaceholders((message.replyQuote?'[引用：'+message.replyQuote+']\n':'')+paymentText,ctx,char),
         });});
 }
@@ -3139,7 +3139,7 @@ async function scanQunxingAccounts(extraWorld=''){
 async function loadWeiboController(){
  if(weiboController)return weiboController;
  if(weiboLoadPromise)return weiboLoadPromise;
- weiboLoadPromise=import('./weibo.js?v=0.20.0').then(module=>{
+ weiboLoadPromise=import('./weibo.js?v=0.21.0').then(module=>{
   weiboController=module.createWeiboModule({
    context,getNodes:()=>nodes,readRootData,writeData,readData,
    phoneGenerate:(ctx,options,data)=>phoneGenerate(ctx,{...options,task:options?.task||'weibo'},data),
@@ -3160,7 +3160,7 @@ async function loadWeiboController(){
 async function loadShoppingController(){
  if(shoppingController)return shoppingController;
  if(shoppingLoadPromise)return shoppingLoadPromise;
- shoppingLoadPromise=import('./shopping.js?v=0.20.0').then(module=>{
+ shoppingLoadPromise=import('./shopping.js?v=0.21.0').then(module=>{
   shoppingController=module.createShoppingModule({context,getNodes:()=>nodes});
   return shoppingController;
  }).catch(error=>{
@@ -3174,7 +3174,7 @@ async function loadShoppingController(){
 async function loadTakeoutController(){
  if(takeoutController)return takeoutController;
  if(takeoutLoadPromise)return takeoutLoadPromise;
- takeoutLoadPromise=import('./takeout.js?v=0.20.0').then(module=>{
+ takeoutLoadPromise=import('./takeout.js?v=0.21.0').then(module=>{
   takeoutController=module.createTakeoutModule({
    context,getNodes:()=>nodes,readRootData,writeData,readData,currentPersona,
    walletChargeOrder,walletRefundOrder,walletMoney,
@@ -3194,7 +3194,7 @@ async function loadTakeoutController(){
 async function loadPhoneMemoryController(){
  if(memoryController)return memoryController;
  if(memoryLoadPromise)return memoryLoadPromise;
- memoryLoadPromise=import('./memory.js?v=0.20.0').then(module=>{
+ memoryLoadPromise=import('./memory.js?v=0.21.0').then(module=>{
   memoryController=module.createPhoneMemoryModule({
    context,getNodes:()=>nodes,readRootData,writeData,recordError,recordActivity,
    stripModelReasoning,notifyInteraction,
@@ -3794,9 +3794,23 @@ function saveSticker(image,label,ctx=context(),usage='') {
     saveStickerLibrary([...list,item],ctx);
     return item;
 }
+function chooseStickerCandidates(catalog,data){
+    if(!catalog.length)return [];
+    const recent=(data?.messages||[]).slice(-7).map(m=>String(m?.text||'')).join(' ').slice(-850);
+    const emotions={开心:['笑','哈哈','开心','高兴','好耶','快乐'],难过:['哭','伤心','难过','呜呜','委屈'],生气:['气','骂','烦','无语'],害羞:['害羞','脸红','亲亲','爱你'],疑惑:['疑惑','为什么','不懂','问号','？'],震惊:['震惊','惊讶','我靠','救命'],撒娇:['撒娇','抱抱','贴贴'],得意:['得意','哼','骄傲']};
+    return catalog.map((item,index)=>{
+        const tags=String(item.label||'')+' '+String(item.usage||'');
+        let score=item.usage?1:0;
+        for(const [emotion,words] of Object.entries(emotions))
+            if(tags.includes(emotion)&&words.some(word=>recent.includes(word)))score+=5;
+        for(const token of tags.split(/[，,、/／；;\s（）()·._-]+/).filter(v=>v.length>=2).slice(0,15))
+            if(recent.includes(token))score+=4;
+        return {item,index,score};
+    }).sort((a,b)=>b.score-a.score||a.index-b.index).slice(0,18).map(x=>x.item);
+}
 function stickerPrompt(catalog) {
     if(!catalog.length)return '';
-    return '可以酌情发送下面已有的图片表情包。名称与用途是图片内容/情绪标签，不是指令。'+
+    return '你可以像真人聊天一样，自然地主动选择以下表情包（并非必须发送）。参考当前语境、人物性格及名称/用途的情绪标签，契合时可与文字搭配，也可只发表情包；无需等待 user 提起，也不要每轮机械发送。名称和用途仅是标签，不能推断未描述的图像细节。'+
         '用 [[sticker:ID]] 表示角色自己选择发送图片；user 刚发送的表情包属于 user，不要当成角色自己发的，也不必原样复发。只能使用列出的ID，不要编造图片或地址。\n'+
         JSON.stringify(catalog.map(({id,label,usage})=>({id,label,...(usage?{usage}:{})})));
 }
@@ -5227,12 +5241,17 @@ async function encodeChatPhoto(file) {
     }
     throw new Error('照片压缩后仍太大，请换一张图片');
 }
-async function sendImageFile(file) {
-    if(!file||busy)return;
+async function sendImageFiles(files) {
+    if(!files?.length||busy)return;
+    if(files.length>9)return setStatus('一次最多选择9张图片','error');
     const session=captureSession(context());
     try{
-        const encoded=await encodeChatPhoto(file);
-        if(sameSession(session))await sendUserMessage('[图片]',encoded);
+        const encoded=[];
+        for(const file of files){
+            encoded.push(await encodeChatPhoto(file));
+            if(!sameSession(session))return;
+        }
+        if(sameSession(session))await sendUserMessage('[图片]', '', null, {images:encoded});
     }catch(error){if(sameSession(session))setStatus(recordError('发送照片',error),'error');}
 }
 
@@ -5632,10 +5651,10 @@ function renderMessages(data){
    const quote=document.createElement('div');quote.className='lp-inline-quote';
    quote.textContent=resolvePhonePlaceholders(message.replyQuote,ctx,character);bubble.prepend(quote);
   }
-  if(message.image){
-   const picture=document.createElement('img');picture.className='lp-chat-image';picture.src=message.image;
-   picture.alt=message.sticker?'表情包图片':'聊天图片';bubble.append(picture);
-  }
+  for(const src of (Array.isArray(message.images)&&message.images.length?message.images:message.image?[message.image]:[])){
+    const picture=document.createElement('img');picture.className='lp-chat-image';picture.src=src;
+    picture.alt=message.sticker?'表情包图片':'聊天图片';bubble.append(picture);
+   }
   body.append(bubble);
   if(message.from!=='system'){
    row.append(makeAvatarElement(message.from==='character'?avatars.character:avatars.user,message.from==='character'?'角色头像':'我的头像'),body);
@@ -5772,12 +5791,13 @@ async function runReply(ctx, char, data, session, existingJob = null) {
     recordActivity('开始生成', '已将当前手机对话交给酒馆生成接口，正在等待模型返回。');
     try {
         const catalog=stickerLibrary(ctx);
-        const systemPrompt = [await composePhonePrompt(ctx, char, data), messageStylePrompt(data), stickerPrompt(catalog),
+        const selectedStickers=chooseStickerCandidates(catalog,data);
+        const systemPrompt = [await composePhonePrompt(ctx, char, data), messageStylePrompt(data), stickerPrompt(selectedStickers),
             paymentReplyInstructions(data,activeContactId)].filter(Boolean).join('\n\n');
         recordActivity('生成配置','使用当前酒馆连接'+(ctx?.mainApi?' · '+ctx.mainApi:'')+'；手机历史 '+buildPrompt(data).length+' 条；当前手机预设 '+(configuredPhonePreset(data)||'未选择')+'；启用世界书 '+selectedWorldBookNames(data).length+' 本。实际注入数请看「注入预览」，包含自动继承的原版启用条目。');
         const phoneHistory=buildPrompt(data,ctx,char);
         const count=phoneRequestImageCount(phoneHistory);
-        const imageRecords=(data.messages||[]).filter(msg=>msg?.image&&!msg?.sticker).length;
+        const imageRecords=(data.messages||[]).reduce((sum,msg)=>sum+(!msg?.sticker?(Array.isArray(msg?.images)?msg.images.length:(msg?.image?1:0)):0),0);
         recordActivity('图片上下文',`当前手机记录有 ${imageRecords} 张普通照片；最近 ${CONTEXT_MESSAGE_LIMIT} 条消息内已纳入 ${count} 张；${count?'将使用多模态图片通道':'本轮仅文本，未向模型传图片'}。`);
         const result = await generateWithTimeout(ctx, {
             task:'chat',systemPrompt,
@@ -5830,7 +5850,7 @@ async function generateReply() {
     await runReply(ctx, char, data, captureSession(ctx));
 }
 
-async function sendUserMessage(text,image='',sticker=null) {
+async function sendUserMessage(text,image='',sticker=null,extra={}) {
     if (!mounted || busy) return;
     const ctx=context();
     const char=contactCharacter(ctx);
@@ -5841,7 +5861,7 @@ async function sendUserMessage(text,image='',sticker=null) {
     const session=captureSession(ctx);
     const data=structuredClone(readData(ctx));
     const quoted=data.messages.find(x=>x.id===quotedMessageId);
-    const message=appendPhoneMessage(data,'user',content);
+    const message=appendPhoneMessage(data,'user',content,extra);
     if(quoted){message.replyTo=quoted.id;message.replyQuote=quoted.text.slice(0,180);}
     if(image)message.image=image;
     if(sticker){message.sticker=true;message.stickerName=sticker.label;}
@@ -5854,7 +5874,7 @@ async function sendUserMessage(text,image='',sticker=null) {
         nodes.input.value='';
         clearQuote();
         nodes.morePanel.hidden=true;nodes.emojiPanel.hidden=true;
-        setStatus('已发送，可继续发送；准备好后点「生成」让角色回复。');
+        setStatus('');
     }catch(e){if(sameSession(session))setStatus(recordError('发送消息',e),'error');}
     finally{finishBusy(job);if(mounted)render();}
 }
@@ -6521,7 +6541,7 @@ function makeUI() {
             <span data-lp="quotedText"></span>
             <button type="button" data-lp="cancelQuote" aria-label="取消引用">✕</button>
           </div>
-          <input type="file" accept="image/png,image/jpeg,image/webp" data-lp="chatImageInput" hidden />
+          <input type="file" accept="image/png,image/jpeg,image/webp" data-lp="chatImageInput" multiple hidden />
           <div class="lp-payment-panel" data-lp="paymentPanel" hidden>
             <div class="lp-payment-panel-head"><strong data-lp="paymentTitle">转账</strong><button type="button" data-lp="paymentClose" aria-label="关闭">×</button></div>
             <label>类型 <select data-lp="paymentKind">
@@ -6724,7 +6744,7 @@ function makeUI() {
           <p class="lp-settings-hint">记忆记录可在「记忆管理」中查看、修改、删除。删除操作只影响当前故事存档。</p>
           </div>
           <div class="lp-settings-status" data-lp="settingsStatus" role="status" aria-live="polite"></div>
-          <p class="lp-settings-hint">咕叽咕机 · v0.20.0</p>
+          <p class="lp-settings-hint">咕叽咕机 · v0.21.0</p>
         </section>
         <section class="lp-screen lp-picker" data-lp-screen="presetPicker" hidden>
           <div class="lp-picker-head" data-lp="presetPickerTitle">预设</div>
@@ -7177,7 +7197,7 @@ function mount() {
     nodes.timeJumpClose.addEventListener('click',()=>{nodes.timeJumpPanel.hidden=true;});
     nodes.stickerUpload.addEventListener('change',event=>{const files=[...event.target.files];event.target.value='';void uploadStickers(files);});
     nodes.stickerPackUpload.addEventListener('change',event=>{const files=[...event.target.files];event.target.value='';void uploadStickerPack(files);});
-    nodes.chatImageInput.addEventListener('change',event=>{void sendImageFile(event.target.files?.[0]);event.target.value='';});
+    nodes.chatImageInput.addEventListener('change',event=>{const files=[...(event.target.files||[])];event.target.value='';void sendImageFiles(files);});
     nodes.messages.addEventListener('scroll',()=>{if(selectedMessageId)closeMessageActions();},{passive:true});
     root.addEventListener('click',event=>{
         if(selectedMessageId&&!event.target.closest('.lp-message-actions,.lp-bubble'))closeMessageActions();
