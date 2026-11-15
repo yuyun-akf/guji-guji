@@ -2175,6 +2175,9 @@ async function writeData(ctx,data) {
         throw error;
     }
     syncMainlinePrompt(ctx);
+    if(previous?.storyTime?.slice(0,10)!==payload.storyTime?.slice(0,10)&&
+       payload?.config?.phoneMemory?.enabled===true&&root?.classList.contains('lp-open'))
+      void loadPhoneMemoryController().then(module=>module?.tick());
 }
 
 function captureSession(ctx) {
@@ -2567,6 +2570,16 @@ function mainlineHistory(rootData) {
     return clipContext('【咕叽咕机手机经历（独立于正文消息）】\n以下仅为玩家选择同步的手机聊天记录。请根据正文时间线与已知关系判断是否适用；不可改写 user 的正文行为，也不能把手机事件当作正文里已经表演过的情节。\n'+lines.join('\n'),4200);
 }
 
+
+function phoneMemoryText(data,contactId='',maxChars=2200){
+ const entries=Array.isArray(data?.phoneMemory?.entries)?data.phoneMemory.entries:[];
+ const target=contactId===PRIMARY_CONTACT_ID?'main':contactId;
+ const relevant=target?entries.filter(e=>e.contactId===target):entries;
+ const lines=relevant.slice(-8).map(e=>
+  String(e.to||'')+' · '+String(e.text||'').slice(0,800)).filter(Boolean);
+ return lines.length?'【咕叽咕机已保存的独立记忆；仅为确实发生过的事件，不得当作对方知晓其他私聊】\n'+
+  clipContext(lines.join('\n\n'),maxChars):'';
+}
 function syncMainlinePrompt(ctx) {
     if(typeof ctx?.setExtensionPrompt!=='function')return false;
     const data=readRootData(ctx);
@@ -2574,6 +2587,8 @@ function syncMainlinePrompt(ctx) {
     const cfg=contextSettings(data);
     const segments=[];
     if(enabled&&cfg.phoneToMainline)segments.push(mainlineHistory(data));
+    if(enabled&&!socialConfig(data).phoneInPast&&data?.config?.phoneMemory?.injectMainline===true)
+      segments.push(phoneMemoryText(data,'',3800));
     if(enabled)segments.push(mainlineStructuredEvents(data));
     const prompt=segments.filter(Boolean).join('\n\n');
     try {
@@ -2760,6 +2775,8 @@ async function composePhonePrompt(ctx, char, data) {
     }
     const memory=readExternalMemory(ctx,data);
     if(memory.text)parts.push('[从已安装插件只读获取的正文既有记忆；不代表手机聊天已发生]\n'+memory.text);
+    const storedPhoneMemory=phoneMemoryText(data,data?.__contactId||activeContactId,2200);
+    if(storedPhoneMemory)parts.push(storedPhoneMemory);
     const prompt=parts.join('\n\n');
     summary.characters=prompt.length;
     recordActivity('注入预览',`人设：${getCharacterName(char)} / ${persona.name}；预设 ${summary.preset} 条；世界书选中 ${summary.selected} 条、触发 ${summary.world} 条、未注入 ${summary.skipped} 条；正文记忆：${memory.source}${memory.status?'（'+memory.status+'）':''}；约 ${Math.ceil(prompt.length/2.5)} tokens（粗估）。`);
@@ -5884,6 +5901,7 @@ function openPhone() {
         void syncStoryRelationships(context());
         void tickAutonomousActivity();
         void maybeAutoFriendRequest(context());
+        void loadPhoneMemoryController().then(module=>module?.tick());
         setTimeout(() => {
             if (!root?.classList.contains('lp-open')) return;
             const bounds = panel.getBoundingClientRect();
@@ -7112,6 +7130,7 @@ function mount() {
         void (async()=>{await syncMainlinePayments(context());await syncStoryRelationships(context());})();
         void tickAutonomousActivity();void tickMomentInteractions();void maybeAutoFriendRequest(context());
         void weiboController?.tick();
+        void memoryController?.tick();
     },60000);
     renderDiagnostics();
     const ctx = context();
@@ -7131,6 +7150,7 @@ function mount() {
             void (async()=>{await syncMainlinePayments(context());await syncStoryRelationships(context());})();
             void tickAutonomousActivity();
             void tickMomentInteractions();
+            void loadPhoneMemoryController().then(module=>module?.tick());
         };
         listeningSource.on(listeningEvent, chatChangedHandler);
     }
