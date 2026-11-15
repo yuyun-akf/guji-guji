@@ -227,14 +227,14 @@ export function createWeiboModule(api) {
  const accountForPost=(p,accounts=data().accounts)=>{
   if(p.authorId){const match=accounts.find(a=>a.id===p.authorId);if(match)return match;}
   if(p.handle){const match=accounts.find(a=>a.handle&&a.handle===p.handle);if(match)return match;}
-  const names=accounts.filter(a=>p.author&&a.name===p.author);return names.length===1?names[0]:null;
+  const names=accounts.filter(a=>p.author&&a.name===p.author&&(!p.handle||!a.handle));return names.length===1?names[0]:null;
  };
  const isPermanentPost=(p,q=data())=>{
   const account=accountForPost(p,q.accounts);
   return Boolean(p?.actions?.owned||p?.autoPublished||p?.manuallyCurated||p?.backfilled||p?.repostOf||
    account&&(account.source==='manual'||q.following.includes(account.id)));
  };
- const actor=p=>{const list=data().accounts;if(p.authorId){const a=list.find(x=>x.id===p.authorId);if(a)return a;}if(p.handle){const a=list.find(x=>x.handle&&x.handle===p.handle);if(a)return a;}const found=list.filter(x=>p.author&&x.name===p.author);return found.length===1?found[0]:null;};
+ const actor=p=>{const list=data().accounts;if(p.authorId){const a=list.find(x=>x.id===p.authorId);if(a)return a;}if(p.handle){const a=list.find(x=>x.handle&&x.handle===p.handle);if(a)return a;}const found=list.filter(x=>p.author&&x.name===p.author&&(!p.handle||!x.handle));return found.length===1?found[0]:null;};
  function allPosts(){
   const q=data();
   const legacy=(Array.isArray(root().weiboSaved)?root().weiboSaved:[]).filter(p=>p?.id).map(p=>({...p,zone:p.zone||'world'}));
@@ -256,7 +256,7 @@ export function createWeiboModule(api) {
   if(!author||!text)return null;
   const handle=clean(p.handle,50);
   const accounts=data().accounts,matching=accounts.filter(a=>a.name===author);
-  const acct=accounts.find(a=>handle&&a.handle&&a.handle===handle)||(matching.length===1?matching[0]:null);
+  const acct=accounts.find(a=>handle&&a.handle&&a.handle===handle)||(matching.length===1&&(!handle||!matching[0].handle)?matching[0]:null);
   const comments=(Array.isArray(p.comments)?p.comments:[]).map(c=>
    typeof c==='string'?{id:uid('c'),name:'网友',text:clean(c,350)}:
    {id:uid('c'),name:clean(c?.name||c?.author||'网友',40),text:clean(c?.text||c?.content,350)}
