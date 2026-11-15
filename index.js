@@ -115,6 +115,7 @@ let desktopLayoutSignature='';
 let desktopTouchY=null;
 let securityUnlocked=false;
 let lockSetupStep=0;
+let lockVerifyAttempt=0;
 let desktopSwipedAt=0;
 let weiboController=null;
 let weiboLoadPromise=null;
@@ -324,7 +325,7 @@ function phoneSettings(ctx=context()) {
 }
 function phoneLockSettings(ctx=context()) {
  const value=phoneSettings(ctx).lock;
- return {enabled:value?.enabled!==false,salt:value?.salt||'',hash:value?.hash||''};
+ return {enabled:value?.enabled!==false,salt:value?.salt||'',hash:value?.hash||'',pinLength:Number(value?.pinLength)||0};
 }
 async function phonePinDigest(pin,salt){
  if(!/^\d{4,6}$/.test(String(pin||'')))throw new Error('密码须为 4～6 位数字');
@@ -350,11 +351,12 @@ async function phoneUnlock(){
    const salt=random?Array.from(random,b=>b.toString(16).padStart(2,'0')).join(''):Date.now().toString(36);
    const hash=await phonePinDigest(pin,salt);
    if(!ctx?.extensionSettings||typeof ctx.saveSettingsDebounced!=='function')throw Error('无法保存密码');
-   (ctx.extensionSettings[SETTINGS_KEY]||={}).lock={enabled:true,salt,hash};
+   (ctx.extensionSettings[SETTINGS_KEY]||={}).lock={enabled:true,salt,hash,pinLength:pin.length};
    ctx.saveSettingsDebounced();
   }else{
    if(await phonePinDigest(pin,lock.salt)!==lock.hash)throw Error('密码不正确');
   }
+  lockVerifyAttempt++;
   nodes.lockPin.value='';nodes.lockRepeat.value='';
   lockSetupStep=0;securityUnlocked=true;nodes.lockFeedback.textContent='';
   setScreen('home');
@@ -365,6 +367,38 @@ async function phoneUnlock(){
   updateLockDots();
  }
 }
+
+async function tryAutoUnlock(){
+ if(!nodes||activeScreen!=='lock'||securityUnlocked)return;
+ const lock=phoneLockSettings(),pin=String(nodes.lockPin.value||'');
+ if(!lock.hash||pin.length<4)return; // setup/confirmation remains manual
+ const serial=++lockVerifyAttempt;
+ const knownLength=lock.pinLength>=4&&lock.pinLength<=6?lock.pinLength:0;
+ if(knownLength&&pin.length<knownLength)return;
+ const attempts=knownLength?[pin.slice(0,knownLength)]:
+  Array.from({length:pin.length-3},(_,i)=>pin.slice(0,i+4));
+ try{
+  for(const candidate of attempts){
+   const digest=await phonePinDigest(candidate,lock.salt);
+   if(serial!==lockVerifyAttempt||securityUnlocked||activeScreen!=='lock')return;
+   if(digest===lock.hash){
+    lockVerifyAttempt++;
+    nodes.lockPin.value='';nodes.lockFeedback.textContent='';
+    securityUnlocked=true;setScreen('home');return;
+   }
+  }
+  // Legacy passwords have no saved length. Try the 4/5-digit prefixes too.
+  if(pin.length===6||(knownLength&&pin.length===knownLength)){
+   if(serial!==lockVerifyAttempt||activeScreen!=='lock')return;
+   nodes.lockFeedback.textContent='密码不正确，请重新输入';
+   nodes.lockPin.value='';updateLockDots();
+  }
+ }catch(error){
+  if(serial!==lockVerifyAttempt||activeScreen!=='lock')return;
+  nodes.lockFeedback.textContent=String(error?.message||error);
+  nodes.lockPin.value='';updateLockDots();
+ }
+}
 function updateLockDots(){
  if(!nodes?.lockDots)return;
  const input=(!phoneLockSettings().hash&&lockSetupStep===1)?nodes.lockRepeat:nodes.lockPin;
@@ -372,10 +406,16 @@ function updateLockDots(){
  nodes.lockDots.querySelectorAll('i').forEach((dot,i)=>dot.classList.toggle('filled',i<count));
 }
 function lockDigit(value){
- const field=(!phoneLockSettings().hash&&lockSetupStep===1)?nodes.lockRepeat:nodes.lockPin;
+ if(!nodes||securityUnlocked)return;
+ const lock=phoneLockSettings();
+ const field=(!lock.hash&&lockSetupStep===1)?nodes.lockRepeat:nodes.lockPin;
+ const length=lock.hash&&lock.pinLength>=4&&lock.pinLength<=6?lock.pinLength:6;
  if(value==='del')field.value=field.value.slice(0,-1);
- else if(/^\d$/.test(value)&&field.value.length<6)field.value+=value;
+ else if(/^\d$/.test(value)&&field.value.length<length)field.value+=value;
+ else return;
+ lockVerifyAttempt++;
  nodes.lockFeedback.textContent='';updateLockDots();
+ if(lock.hash&&value!=='del')void tryAutoUnlock();
 }
 function renderLock(){
  if(!nodes?.lockPin)return;
@@ -383,7 +423,8 @@ function renderLock(){
  nodes.lockTime.textContent=String(data.storyTime||localDateTime()).slice(11,16);
  nodes.lockDate.textContent=String(data.storyTime||localDateTime()).slice(0,10);
  nodes.lockIntro.textContent=lock.hash?'输入密码':lockSetupStep?'再次输入新密码':'设置 4～6 位密码';
- nodes.lockAction.textContent=lock.hash?'解锁':lockSetupStep?'确认并解锁':'下一步';
+ nodes.lockAction.textContent=lockSetupStep?'确认并解锁':'下一步';
+ nodes.lockAction.hidden=Boolean(lock.hash);
  updateLockDots();
 }
 async function changePhonePin(){
@@ -396,7 +437,7 @@ async function changePhonePin(){
   const random=globalThis.crypto?.getRandomValues?.(new Uint8Array(12));
   const salt=random?Array.from(random,b=>b.toString(16).padStart(2,'0')).join(''):Date.now().toString(36);
   if(!ctx?.extensionSettings||typeof ctx.saveSettingsDebounced!=='function')throw Error('当前无法保存密码');
-  (ctx.extensionSettings[SETTINGS_KEY]||={}).lock={enabled:true,salt,hash:await phonePinDigest(newPin,salt)};
+  (ctx.extensionSettings[SETTINGS_KEY]||={}).lock={enabled:true,salt,hash:await phonePinDigest(newPin,salt),pinLength:newPin.length};
   ctx.saveSettingsDebounced();
   nodes.lockOldPin.value='';nodes.lockNewPin.value='';nodes.lockConfirmPin.value='';
   nodes.lockChangeFeedback.textContent='新密码已保存';
@@ -5162,7 +5203,7 @@ function openPhone() {
         syncPhoneViewport();
         nodes.launcher.setAttribute('aria-label', '隐藏咕叽咕机');
         securityUnlocked=!phoneLockSettings().enabled;
-        lockSetupStep=0;
+        lockSetupStep=0;lockVerifyAttempt++;
         if(nodes?.lockPin){nodes.lockPin.value='';nodes.lockRepeat.value='';}
         setScreen(securityUnlocked?'home':'lock');
         render();
@@ -5195,7 +5236,7 @@ function openPhone() {
 function closePhone() {
     if (!mounted || !root) return;
     root.classList.remove('lp-open');
-    securityUnlocked=false;
+    securityUnlocked=false;lockVerifyAttempt++;
     void tickStoryClock({onClose:true});
     const panel = root.querySelector('.lp-panel');
     if (panel?.open && typeof panel.close === 'function') panel.close();
