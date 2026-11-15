@@ -85,10 +85,13 @@ export function createWeiboModule(api) {
   const media=/媒体|新闻|日报|观察|资讯|传媒|官方|工作室|报社|平台/.test([account?.name,account?.profession,account?.kind].join(' '));
   const base=fans?Math.round(fans*(media?2.1+seed*7.0:.9+seed*5.1)):0;
   const reportedLikes=countValue(account?.likesTotal);
-  const likesTotal=reportedLikes!=null&&!correctImplausible?reportedLikes:Math.max(reportedLikes??0,base);
+  const implausibleLikes=media?fans*.5:fans*.15;
+  const likesTotal=reportedLikes!=null&&(!correctImplausible||reportedLikes>=implausibleLikes)
+   ?reportedLikes:Math.max(reportedLikes??0,base);
   const reportedComments=countValue(account?.commentsTotal);
-  const commentsTotal=reportedComments!=null&&!correctImplausible?reportedComments:
-   Math.max(reportedComments??0,likesTotal?Math.round(likesTotal*(.014+seed*.045)):0);
+  const implausibleComments=likesTotal*.002;
+  const commentsTotal=reportedComments!=null&&(!correctImplausible||reportedComments>=implausibleComments)
+   ?reportedComments:Math.max(reportedComments??0,likesTotal?Math.round(likesTotal*(.014+seed*.045)):0);
   return {likesTotal,commentsTotal,followingCount:countValue(account?.followingCount)??(fans?Math.round(35+seed*410):0)};
  };
  const operatorMode=account=>['self','team','joint','other'].includes(account?.operatorMode)?account.operatorMode:'self';
