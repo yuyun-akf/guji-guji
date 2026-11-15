@@ -77,7 +77,7 @@ test('theme controls are wired and external recovery remains independent',()=>{
  }
  assert.match(index,/function restoreDefaultThemeFromHost/);
  assert.match(index,/function resetPhonePasswordFromHost/);
- assert.match(index,/瑞士纸韵是内置恢复主题，不能删除/);
+ assert.match(index,/内置主题不可删除/);
  assert.match(css,/\.lp-theme-library-tools/);
 });
 test('wallet diamonds stay inside icon canvas and settings gear uses concentric circles',()=>{
