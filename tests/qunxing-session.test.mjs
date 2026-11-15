@@ -54,20 +54,24 @@ test('within a phone session re-entering Qunxing preserves every un-interacted p
  assert.equal(h.app.state.posts.home.length,10);
  assert.notEqual(h.app.state.posts.home[0].id,ids[0]);
 });
-test('closing the entire phone discards generated items while preserving authored posts',async()=>{
+test('closing and reopening phone retains all generated posts, nearby and hot discussion',async()=>{
  const h=harness();
  await h.app.generate('home');
  await h.app.generate('nearby');
  await h.app.generateHot();
+ const counts={home:h.app.state.posts.home.length,nearby:h.app.state.posts.nearby.length,
+  hot:h.app.state.trends.length,requests:h.calls()};
+ assert.deepEqual(counts,{home:10,nearby:12,hot:15,requests:4});
+ h.app.endPhoneSession();
  assert.equal(h.app.state.posts.home.length,10);
  assert.equal(h.app.state.posts.nearby.length,12);
  assert.equal(h.app.state.trends.length,15);
- h.app.endPhoneSession();
- assert.equal(h.app.state.posts.home.length,0);
- assert.equal(h.app.state.posts.nearby.length,0);
- assert.equal(h.app.state.trends.length,0);
- assert.ok(h.ctx.chatMetadata.db.qunxing.posts.some(p=>p.id==='original'));
- assert.equal(h.ctx.chatMetadata.db.qunxing.posts.length,1);
+ assert.equal(h.ctx.chatMetadata.db.qunxing.generated.feeds.home.length,10);
+ assert.equal(h.ctx.chatMetadata.db.qunxing.generated.feeds.nearby.length,12);
+ assert.equal(h.ctx.chatMetadata.db.qunxing.generated.trends.length,15);
+ h.app.open();
+ assert.equal(h.calls(),counts.requests,'reopening phone cannot auto-refresh existing posts');
+ assert.equal(h.ctx.chatMetadata.db.qunxing.posts.length,1,'owned posts remain separate');
 });
 test('nearby generation is one API invocation for complete posts and comments',async()=>{
  const h=harness();
