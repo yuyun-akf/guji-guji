@@ -969,6 +969,66 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
    }else await mutate(q=>{if(q.accounts.some(a=>a.id===id))q.following=[...new Set([...q.following,id])];});
    render();return;
   }
+  if(type==='editHistoryPost'){
+   const found=byId(id);
+   const owner=data().accounts.find(a=>a.id===state.profileAccount);
+   if(!found||!owner||!accountMatches(found,owner)||owner.source!=='manual')return;
+   state.historyEditingId=id;state.historyFormOpen=true;render();return;
+  }
+  if(type==='cancelHistoryEdit'){
+   state.historyEditingId='';state.historyFormOpen=true;render();return;
+  }
+  if(type==='saveHistoryPost'){
+   const owner=data().accounts.find(a=>a.id===id);
+   if(!owner||owner.source!=='manual'||state.profileAccount!==id)return;
+   const form=nodes()?.weiboDetail;
+   const get=name=>form?.querySelector('[data-wb-history-field="'+name+'"]')?.value||'';
+   const text=clean(get('text'),1000),time=get('time').trim();
+   if(!text){feedback('请填写历史帖子正文');return;}
+   const story=Date.parse(root().storyTime||''),stamp=Date.parse(time);
+   if(time&&(!Number.isFinite(stamp)||(Number.isFinite(story)&&stamp>story))){
+    feedback('历史帖发布时间必须是有效的故事时间，且不能晚于当前剧情');return;
+   }
+   const rawLikes=get('likes').trim();
+   if(rawLikes&&!/^\d+$/.test(rawLikes)){feedback('点赞数必须为非负整数');return;}
+   const likes=rawLikes?Number(rawLikes):0;
+   if(!Number.isSafeInteger(likes)||likes>9999999999){feedback('点赞数超出允许范围');return;}
+   const comments=parseCommentLines(get('comments'));
+   const selected=state.historyEditingId,original=selected?byId(selected):null;
+   if(selected&&(!original||!accountMatches(original,owner)))return;
+   const post={...(original||{}),id:original?.id||uid('post'),
+    author:owner.name,authorId:owner.id,handle:owner.handle,avatar:owner.avatar,
+    category:original?.category||'历史公开动态',text,likes,comments,
+    time:time||original?.time||'历史动态',zone:'world',actions:original?.actions||{},
+    manuallyCurated:true,backfilled:original?.backfilled??true};
+   await mutate(q=>{
+    const index=q.posts.findIndex(x=>x.id===post.id);
+    if(index>=0)q.posts[index]=post;else q.posts.push(post);
+    for(const feed of Object.values(q.generated?.feeds||{})){
+     if(Array.isArray(feed)){const position=feed.findIndex(x=>x.id===post.id);if(position>=0)feed[position]=post;}
+    }
+    q.posts=q.posts.slice(-300);
+   });
+   for(const feed of [state.posts.home,state.posts.nearby]){
+    const i=feed.findIndex(x=>x.id===post.id);if(i>=0)feed[i]=post;
+   }
+   state.historyEditingId='';state.historyFormOpen=false;
+   feedback(original?'历史帖子已更新':'已代该角色保存历史帖子');render();return;
+  }
+  if(type==='deleteHistoryPost'){
+   const post=byId(id),owner=data().accounts.find(a=>a.id===state.profileAccount);
+   if(!post||!owner||!accountMatches(post,owner)||owner.source!=='manual')return;
+   if(typeof window!=='undefined'&&typeof window.confirm==='function'&&!window.confirm('删除这条角色历史帖？此操作只影响当前剧情存档。'))return;
+   await mutate(q=>{
+    q.posts=q.posts.filter(p=>p.id!==id);
+    for(const feed of Object.values(q.generated?.feeds||{}))
+     if(Array.isArray(feed)){const index=feed.findIndex(p=>p.id===id);if(index>=0)feed.splice(index,1);}
+   });
+   state.posts.home=state.posts.home.filter(x=>x.id!==id);
+   state.posts.nearby=state.posts.nearby.filter(x=>x.id!==id);
+   state.historyEditingId='';state.historyFormOpen=false;
+   feedback('历史帖已删除');render();return;
+  }
   if(type==='generateAccountHistory'){
    const account=data().accounts.find(a=>a.id===id);
    if(!account||account.source!=='manual')return;
