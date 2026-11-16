@@ -7,10 +7,10 @@ const index=read('index.js'),weibo=read('weibo.js'),album=read('album.js'),
  css=read('style.css'),bootstrap=read('bootstrap.js');
 const manifest=JSON.parse(read('manifest.json'));
 
-test('v0.36.1 release and navigational entrypoints',()=>{
- assert.equal(manifest.version,'0.36.1');
+test('v0.36.2 release and navigational entrypoints',()=>{
+ assert.equal(manifest.version,'0.36.2');
  assert.match(bootstrap,/index\.js\?v=0\.35\.0/);
- for(const item of ['album','groups','weibo'])assert.ok(index.includes(item+'.js?v=0.36.1'));
+ for(const item of ['album','groups','weibo'])assert.ok(index.includes(item+'.js?v=0.36.2'));
  for(const path of ['index.js','weibo.js','album.js','groups.js','bootstrap.js'])
   assert.doesNotThrow(()=>new Function(read(path).replace(/^export /gm,'')));
  assert.match(weibo,/\['新建账号','settingsScan'\]/);
