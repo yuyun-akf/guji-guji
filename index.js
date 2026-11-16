@@ -2555,8 +2555,9 @@ function contactDisplayName(ctx,id=activeContactId) {
 // A person's own contacts are not the user's phone contacts. These selections
 // are keyed by character name and shared across saves of the same role card.
 function roleFriendCatalog(ctx=context()){
- const people=galleryPeople(ctx).filter(p=>p.id!=='user');
- const names=new Set(people.map(p=>p.name));
+ const existing=galleryPeople(ctx);
+ const people=existing.filter(p=>p.id!=='user');
+ const names=new Set(existing.map(p=>p.name));
  for(const character of readSharedNpcScan(ctx)){
   const name=String(character?.name||'').trim();
   if(!name||names.has(name))continue;
@@ -2618,15 +2619,28 @@ function renderRoleFriends(){
  intro.textContent='这里记录的是「'+owner.name+'」自己的好友，不要求你与这些人互加好友；没有写出的其他熟人也允许在生成朋友圈时自然出现。';
  container.append(intro);
  const heading=document.createElement('strong');heading.textContent='绑定已知故事人物';container.append(heading);
+ const filter=document.createElement('input');filter.type='search';
+ filter.className='lp-role-friend-filter';filter.placeholder='搜索已扫描人物或通讯录联系人';
+ filter.setAttribute('aria-label','搜索可绑定的故事人物');
+ container.append(filter);
  const known=document.createElement('div');known.className='lp-role-friend-known';
  for(const person of owners.filter(p=>p.id!==owner.id)){
   const label=document.createElement('label');label.className='lp-checkline';
+  label.dataset.personName=person.name.toLowerCase();
   const input=document.createElement('input');input.type='checkbox';input.dataset.roleFriendKnown=person.name;
   input.checked=saved.known.includes(person.name);
-  label.append(input,document.createTextNode(person.name));known.append(label);
+  const name=document.createElement('span');name.textContent=person.name;
+  label.append(input,name);
+  if(person.scanned){const tag=document.createElement('small');tag.textContent='已扫描';tag.className='lp-role-friend-source';label.append(tag);}
+  known.append(label);
  }
  if(!known.children.length)known.textContent='暂未导入其他人物，可直接添加好友姓名。';
  container.append(known);
+ filter.addEventListener('input',()=>{
+  const query=filter.value.trim().toLowerCase();
+  for(const label of known.querySelectorAll('[data-person-name]'))
+   label.hidden=Boolean(query&&!label.dataset.personName.includes(query));
+ });
  const save=document.createElement('button');save.type='button';save.dataset.roleFriendAction='saveKnown';
  save.textContent='保存已绑定好友';container.append(save);
  const sub=document.createElement('strong');sub.textContent='添加尚未导入咕叽聊的角色好友';container.append(sub);
