@@ -151,14 +151,14 @@ export function createAlbumModule(api){
   }else if(data.type==='options'){
    note('相册素材只在情境相关时调用；不同子相册的使用范围如下：');
    for(const [label,description] of [
-    ['世界相册','现代世界跨角色卡共享，风景、家居、美食、游戏及角色图等素材可供相关角色使用'],
-    ['公开相册','其他角色可在相关聊天或动态中引用'],
+    ['世界相册','现代世界跨角色卡共享，所有角色（含 char、固定 NPC、临时 NPC）均可按内容使用'],
+    ['公开相册','其他角色提及照片所属人物且内容相关时可以引用，包括网友、粉丝和黑粉'],
     ['日常相册','仅相册所属角色可在聊天或动态中使用'],
-    ['私密相册','仅在所属角色与 user 私聊时使用'],
+    ['私密相册','仅在所属角色与 {{user}} 私聊时使用'],
     ['表情包','作为表情图片资源使用，不按普通照片调用']
-   ]){const p=el('p','lp-album-access-note');p.append(el('strong','',label+'：'),document.createTextNode(description));dialog.append(p);}
+   ]){const p=el('p','lp-album-access-note');p.append(el('strong','',label+'：'),document.createTextNode(api.resolveAlbumText?.(description)||description));dialog.append(p);}
    const toggle=field('disableWarning','永久关闭导入前安全提醒');toggle.type='checkbox';toggle.checked=safetyDisabled();
-   note('此设置只影响导入前弹窗；相册主页的安全提醒始终保留。');
+   
    actions.append(button('dialogClose','取消'));finish('保存设置');
   }else{
    const photo=ownerPhotos().find(p=>p.id===data.photoId);if(!photo){state.dialog=null;return;}
