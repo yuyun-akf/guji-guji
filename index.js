@@ -4059,7 +4059,11 @@ function setScreen(screen, options={}) {
     }
     if (screen === 'diagnostics') renderDiagnostics();
     if (screen === 'chatList' && previous !== 'chatList') renderChatLists(context(),selectedCharacter(context()),readData(context()));
-    if (screen === 'album')void loadAlbumController().then(m=>{if(activeScreen==='album')m?.open();});
+    if (screen === 'album'){
+        try{migrateLegacyStickers(context());}
+        catch(error){notifyInteraction('旧版表情包迁移失败：'+String(error.message||error),'error');}
+        void loadAlbumController().then(m=>{if(activeScreen==='album')m?.open();});
+    }
     if (screen === 'groups')void loadGroupsController().then(m=>{
       if(activeScreen!=='groups'||!m)return;
       if(previous!=='groups'&&!options.preserveGroup)m.open({origin:'directory'});
@@ -4446,6 +4450,16 @@ function stickerLibrary(ctx=context()) {
  const seen=new Set(saved.map(p=>p.image));
  return [...saved,...old.filter(p=>!seen.has(p.image))].slice(0,STICKER_LIMIT);
 }
+function migrateLegacyStickers(ctx=context()){
+ const legacy=ctx?.extensionSettings?.[SETTINGS_KEY]?.stickers;
+ if(!Array.isArray(legacy)||!legacy.length)return false;
+ const library=stickerLibrary(ctx),existing=worldPhotos(ctx);
+ if(library.length+existing.filter(p=>p.folder!=='表情包').length>150)
+  throw Error('世界相册空间不足，请先清理相册');
+ // Only clear legacy storage after successfully persisting the migrated images.
+ saveStickerLibrary(library,ctx);
+ return true;
+}
 function saveStickerLibrary(list,ctx=context()){
  if(!ctx?.extensionSettings||typeof ctx.saveSettingsDebounced!=='function')
   throw Error('酒馆设置尚未就绪');
@@ -4534,7 +4548,9 @@ function renderStickerLibrary() {
             const label=document.createElement('span');label.textContent=item.label;
             const button=document.createElement('button');button.type='button';button.dataset.stickerId=item.id;
             button.dataset.stickerAction=manage?'rename':'send';button.setAttribute('aria-label',(manage?'修改名称：':'发送表情包：')+item.label);
-            button.append(picture,label);card.append(button);
+            button.append(picture);
+            if(manage)button.append(label); // Names/usage are model metadata, not visible picker captions.
+            card.append(button);
             if(manage){const remove=document.createElement('button');remove.type='button';remove.textContent='删除';remove.dataset.stickerId=item.id;remove.dataset.stickerAction='delete';card.append(remove);}
             container.append(card);
         }
@@ -7191,6 +7207,7 @@ function renderMessages(data){
   row.dataset.messageId=message.id;
   const body=document.createElement('div');body.className='lp-message-body';
   const bubble=document.createElement('div');bubble.className='lp-bubble'+(message.paymentId?' lp-payment-shell':'');
+  if(message.sticker&&(message.image||message.images?.length))bubble.classList.add('lp-sticker-only');
   const located=!message.paymentId?locationCard(message.text):null;
   if(located){bubble.classList.add('lp-location-shell');bubble.append(located);}
   else bubble.textContent=visibleStickerText(message,ctx,character);
