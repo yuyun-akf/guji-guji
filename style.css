@@ -1386,6 +1386,7 @@
   font:inherit;
 }
 #st-little-phone-root .lp-npc-discovery button:disabled {opacity:.5;}
+#st-little-phone-root .lp-npc-discovery .lp-npc-clear-scan {background:transparent;color:var(--lp-slate);border:1px solid var(--lp-ice);font-size:12px;}
 #st-little-phone-root .lp-npc-candidates {
   display:flex;
   flex-direction:column;
