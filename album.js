@@ -136,10 +136,14 @@ export function createAlbumModule(api){
   if(state.message)wrap.append(el('p','lp-album-feedback',state.message));
   wrap.scrollTop=state.navReset?0:oldTop;state.navReset=false;
  }
- async function encode(file){
+ async function encode(file,sticker=false){
   if(!['image/jpeg','image/png','image/webp','image/gif'].includes(file?.type)||file.size>12*1024*1024)
    throw Error('仅支持12MB以内的 JPG、PNG、WebP 或 GIF 图片');
   const raw=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(Error('图片读取失败'));r.readAsDataURL(file);});
+  // Keep the original bytes for small stickers: GIF animation and transparent
+  // PNG/WebP reactions must not silently turn into flattened JPEG stills.
+  if(sticker&&raw.length<=500000)return raw;
+  if(sticker&&file.type==='image/gif')throw Error('动态图超过表情包容量限制，请选择350KB以内的GIF');
   const img=await new Promise((resolve,reject)=>{const i=new Image();i.onload=()=>resolve(i);i.onerror=()=>reject(Error('无法解码图片'));i.src=raw;});
   const canvas=document.createElement('canvas'),scale=Math.min(1,900/Math.max(img.width,img.height));
   canvas.width=Math.max(1,Math.round(img.width*scale));canvas.height=Math.max(1,Math.round(img.height*scale));
@@ -164,7 +168,7 @@ export function createAlbumModule(api){
   // remain in state across render and asynchronous model requests.
   try{
    const images=[];
-   for(const f of files){images.push(await encode(f));if(signature!==api.albumScope?.())throw Error('角色卡已切换，停止导入');}
+   for(const f of files){images.push(await encode(f,folder==='表情包'));if(signature!==api.albumScope?.())throw Error('角色卡已切换，停止导入');}
    let labels=[];
    if(state.mode==='ai'){
     state.message='正在一次识别 '+images.length+' 张图片…';render();
@@ -184,6 +188,8 @@ export function createAlbumModule(api){
      access:world()?'public':folder==='public'?'public':folder==='private'?'private':'chat',image};
     return result;
    });
+   if(folder==='表情包'&&old.filter(p=>p.folder==='表情包').length+added.length>100)
+    throw Error('世界相册表情包最多100张，请删除或分批整理');
    if(owner===worldId)await api.saveWorldPhotos([...old,...added]);
    else await api.saveSharedPhotos([...old,...added]);
    state.selectedFiles=[];state.folder=folder;state.level='folder';state.editing='';
@@ -234,6 +240,8 @@ export function createAlbumModule(api){
   });
   state.busy=true;
   try{
+   if(pending.folder==='表情包'&&(api.worldPhotos?.()||[]).filter(p=>p.folder==='表情包').length+pictures.length>100)
+    throw Error('世界相册表情包最多100张');
    if(world())await api.saveWorldPhotos([...(api.worldPhotos?.()||[]),...pictures]);
    else await api.saveSharedPhotos([...(api.sharedPhotos?.()||[]),...pictures]);
    state.pending=null;state.selectedFiles=[];state.folder=pending.folder;
