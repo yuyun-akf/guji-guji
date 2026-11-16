@@ -3876,7 +3876,7 @@ function setScreen(screen, options={}) {
     if (!SCREENS.has(screen) || !nodes) return;
     if(root?.classList.contains('lp-open')&&phoneLockSettings().enabled&&!securityUnlocked&&screen!=='lock')screen='lock';
     const previous = activeScreen;
-    if(previous!==screen){saveScreenScroll(previous);closePhoneThreadMenu();}
+    if(previous!==screen){saveScreenScroll(previous);closePhoneThreadMenu();if(nodes?.momentComposer)nodes.momentComposer.hidden=true;const mask=root?.querySelector('.lp-moments-overlay');if(mask)mask.hidden=true;}
     if(screen!=='profile'&&nodes.profileRoleDialog){nodes.profileRoleDialog.hidden=true;nodes.profileAvatarSheet.hidden=true;}
     if(screen==='groups'&&previous!=='groups')groupsReturnScreen=options.groupReturn||(['contacts','home','chatList'].includes(previous)?previous:'chatList');
     if(previous!==screen)phoneInteraction?.dismiss();
@@ -5268,6 +5268,7 @@ async function postMoment() {
         await writeData(ctx,{...data,__contactId:PRIMARY_CONTACT_ID});
         if(!sameSession(session))return;
         nodes.momentsText.value='';momentImageDraft='';nodes?.momentsPreview?.replaceChildren();if(nodes?.momentComposer)nodes.momentComposer.hidden=true;
+        const mask=root?.querySelector('.lp-moments-overlay');if(mask)mask.hidden=true;
         renderMoments(ctx);
         void tickMomentInteractions();
     }catch(e){setStatus(recordError('发布动态',e),'error');}
@@ -7269,7 +7270,7 @@ function makeUI() {
     container.innerHTML = `
       <dialog class="lp-panel" aria-label="咕叽咕机" aria-modal="true">
         <header class="lp-header">
-          <button type="button" class="lp-back" data-lp="back" aria-label="返回手机桌面" hidden>‹</button>
+          <button type="button" class="lp-back" data-lp="back" aria-label="返回上一层" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
           <div class="lp-heading"><div class="lp-title" data-lp="title">咕叽咕机</div>
                <div class="lp-subtitle" data-lp="subtitle">故事中的小手机</div></div>
           <button type="button" class="lp-header-menu" data-lp="chatMenu" aria-label="聊天设置" hidden>···</button>
@@ -8103,6 +8104,20 @@ function mount() {
         'messages','messageActions','chatPhotoPreview','quotedPreview','quotedText','cancelQuote','emojiPanel','morePanel','chatImageInput','timeJumpPanel','timeJumpHint','timeJumpCurrent','timeJumpAmount','timeJumpUnit','timeJumpApply','timeJumpClose','paymentPanel','paymentTitle','paymentKind','paymentAmount','paymentNote','paymentBalance','paymentClose','paymentSend','input', 'generate', 'send', 'launcher']
         .map(key => [key, key === 'launcher' ? floating : root.querySelector(`[data-lp="${key}"]`)]));
 
+    // The Moments composer belongs to the discover screen, not the scrolling feed.
+    // Moving the existing form into a screen-level modal preserves its form data
+    // and avoids a long inline editor that vanishes while scrolling.
+    const momentsScreen=root.querySelector('[data-lp-screen="discover"]');
+    const momentsBackdrop=document.createElement('div');
+    momentsBackdrop.className='lp-moments-overlay';momentsBackdrop.hidden=true;
+    momentsBackdrop.addEventListener('click',()=>{nodes.momentComposer.hidden=true;momentsBackdrop.hidden=true;});
+    const composerClose=document.createElement('button');composerClose.type='button';
+    composerClose.className='lp-moment-composer-close';composerClose.textContent='×';
+    composerClose.setAttribute('aria-label','取消发布');
+    composerClose.addEventListener('click',()=>{nodes.momentComposer.hidden=true;momentsBackdrop.hidden=true;});
+    nodes.momentComposer.classList.add('lp-moments-modal');
+    nodes.momentComposer.prepend(composerClose);
+    momentsScreen.append(momentsBackdrop,nodes.momentComposer);
     const draggedClick=enableLauncherDragging(nodes.launcher);
     phoneInteraction=createInteractionController({
      getRoot:()=>root,getNodes:()=>nodes,
@@ -8218,6 +8233,7 @@ function mount() {
     nodes.momentsPost.addEventListener('click',()=>void postMoment());
     nodes.momentCamera.addEventListener('click',()=>{
       nodes.momentComposer.hidden=!nodes.momentComposer.hidden;
+      momentsBackdrop.hidden=nodes.momentComposer.hidden;
       if(!nodes.momentComposer.hidden)nodes.momentsText.focus();
     });
     nodes.momentHistoryOpen.addEventListener('click',()=>setScreen('momentHistory'));
@@ -8470,12 +8486,8 @@ function mount() {
         if (event.key === 'Escape') {
             event.preventDefault();
             if(filePickerReturning()){event.stopPropagation();finishFilePicker();return;}
-            if(goSettingsBack())return;
-            if (activeScreen !== 'home') setScreen('home');
-            else {
-                closePhone();
-                nodes.launcher.focus();
-            }
+            if(activeScreen!=='home'&&activeScreen!=='lock')nodes.back.click();
+            else {closePhone();nodes.launcher.focus();}
         }
     });
 
