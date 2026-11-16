@@ -4683,7 +4683,7 @@ function confirmPhoneManualRelationship(relation,custom,details){
   b('保存并开启自动更新',()=>{overlay.remove();void savePhoneRelationship('auto',relation,custom,details,'用户指定的初始关系');})
  );
  dialog.append(title,text,actions,b('取消',()=>overlay.remove()));
- overlay.append(dialog);root.append(overlay);
+ overlay.append(dialog);root.querySelector('.lp-panel')?.append(overlay);
 }
 async function savePhoneRelationship(mode,relation,custom='',details='',source=''){
  const ctx=context(),id=activeContactId,session=captureSession(ctx),data=structuredClone(readRootData(ctx));
@@ -5158,7 +5158,7 @@ function showMomentImageUnavailable(message=''){
  const album=momentButton('前往相册',()=>{overlay.remove();setScreen('album');});
  actions.append(cancel,album);dialog.append(title,body,actions);
  if(message){const note=document.createElement('small');note.textContent=String(message).slice(0,140);dialog.append(note);}
- overlay.append(dialog);root.append(overlay);
+ overlay.append(dialog);root.querySelector('.lp-panel')?.append(overlay);
 }
 function renderMoments(ctx){
  if(!nodes?.momentsFeed)return;
@@ -5268,7 +5268,7 @@ function openMomentEditDialog(ctx,post,action='edit'){
   });
   if(result)overlay.remove();
  }));
- dialog.append(actions);overlay.append(dialog);root.append(overlay);
+ dialog.append(actions);overlay.append(dialog);root.querySelector('.lp-panel')?.append(overlay);
 }
 async function editMoments(ctx,edit) {
     if(busy||autonomousWorking)return false;
