@@ -10,6 +10,44 @@ export function createWeiboModule(api) {
  const el=(tag,cls='',value='')=>{const x=document.createElement(tag);if(cls)x.className=cls;if(value)x.textContent=value;return x;};
  const defaults={autoEnabled:false,autoEveryMinutes:180,nearbyHint:''};
  const clean=(s,n=100)=>String(s||'').trim().slice(0,n);
+
+ // Fictional story time is authoritative; never substitute the device clock.
+ // Accept ISO, dotted and Chinese calendar timestamps without timezone shifts.
+ function storyMoment(value){
+  const text=String(value||'').trim();
+  const m=text.match(/(\d{4})\s*(?:[-./]|年)\s*(\d{1,2})\s*(?:[-./]|月)\s*(\d{1,2})\s*(?:日)?(?:[T\s日，,]*([01]?\d|2[0-3])\s*(?:[:：时])\s*([0-5]?\d)\s*(?:分)?)?/);
+  if(!m)return null;
+  const year=Number(m[1]),month=Number(m[2]),day=Number(m[3]);
+  const hour=m[4]!==undefined?Number(m[4]):null;
+  const minute=m[5]!==undefined?Number(m[5]):null;
+  if(year<100||month<1||month>12||day<1||day>31)return null;
+  const date=new Date(Date.UTC(year,month-1,day,hour??0,minute??0));
+  if(date.getUTCFullYear()!==year||date.getUTCMonth()!==month-1||date.getUTCDate()!==day)return null;
+  const pad=n=>String(n).padStart(2,'0');
+  const dateText=year+'-'+pad(month)+'-'+pad(day);
+  const fullTime=hour===null?dateText:dateText+' '+pad(hour)+':'+pad(minute);
+  return {stamp:date.getTime(),date:dateText,time:fullTime,hasClock:hour!==null,
+   display:year+'年'+pad(month)+'月'+pad(day)+'日'+(hour===null?' · 时间未记录':' '+pad(hour)+':'+pad(minute))};
+ }
+ function postTimestamp(post){
+  return storyMoment(post?.time||post?.publishedAt)?.display||'发布时间未记录';
+ }
+ function historyMomentFor(raw,scene,daysAgo,index){
+  const moment=storyMoment(scene);
+  if(!moment)return null;
+  // If only the story date is known, midnight of the following day is
+  // a safe exclusive upper bound. Never store a future publication date.
+  const upper=moment.stamp+(moment.hasClock?0:86400000);
+  const requested=storyMoment(raw);
+  if(requested?.hasClock&&requested.stamp<upper)return requested.time;
+  const ago=Number.isFinite(Number(daysAgo))&&Number(daysAgo)>=1?
+   Math.max(1,Math.min(3650,Math.floor(Number(daysAgo)))):index+1;
+  const date=new Date(moment.stamp-ago*86400000);
+  const pad=n=>String(n).padStart(2,'0');
+  return date.getUTCFullYear()+'-'+pad(date.getUTCMonth()+1)+'-'+pad(date.getUTCDate())+
+   ' '+(moment.hasClock?pad(date.getUTCHours())+':'+pad(date.getUTCMinutes()):'12:00');
+ }
+
  // Persist integer followers only; the chosen unit only affects entry/display.
  const FOLLOWER_FACTORS={person:1,wan:10000,yi:100000000};
  const followerParts=count=>{
@@ -291,7 +329,7 @@ export function createWeiboModule(api) {
   return {id:uid('post'),author,handle:acct?.handle||handle,authorId:acct?.id||'',avatar:acct?.avatar||'',category:clean(p.category||'日常',24),
    text,comments,likes:Math.min(9999999999,likes),commentCount,
    followers,accountLikes:baseline.likesTotal,accountComments:baseline.commentsTotal,followingCount:baseline.followingCount,
-   zone,time:root().storyTime||'',actions:{}};
+   zone,time:storyMoment(p.publishedAt||p.time||root().storyTime)?.time||'',actions:{}};
  }
  function prompt(count,zone,topic='',withTrend=false){
   const q=data(),r=root(),char=api.selectedCharacter(context()),nearby=zone==='nearby';
@@ -587,9 +625,9 @@ export function createWeiboModule(api) {
    input.dataset.wbHistoryField=name;input.value=String(value??'');
    label.append(input);form.append(label);return input;
   };
-  const base=root().storyTime||'';
-  const fallback=Number.isFinite(Date.parse(base))?new Date(Date.parse(base)-86400000).toISOString().slice(0,16):'';
-  field('time','发布时间（故事时间）',(record?.time&&record.time!=='历史动态'?record.time:fallback).slice(0,16),'datetime-local');
+  const base=storyMoment(root().storyTime);
+  const fallback=base?historyMomentFor('',base.time,1,0).replace(' ','T'):'';
+  field('time','发布时间（故事时间）',(storyMoment(record?.time)?.time.replace(' ','T')||fallback).slice(0,16),'datetime-local');
   field('text','帖子正文（以该角色账号发布）',record?.text||'','textarea');
   field('likes','点赞数（留空自动估算）',record?.likes??'','number');
   field('commentCount','评论总数（留空自动估算）',record?.commentCount??'','number');
@@ -677,7 +715,8 @@ export function createWeiboModule(api) {
  function card(p,detailed=false){
   const box=el('article','lp-wb-card');box.dataset.wbCardId=p.id;
   const acct=actor(p),top=el('div','lp-wb-head'),author=el('div','lp-wb-author');
-  author.append(authorButton(acct,p),el('small','',((acct?.handle||p.handle)||'@群星用户')+' · '+(p.category||'日常')));
+  author.append(authorButton(acct,p),el('small','',((acct?.handle||p.handle)||'@群星用户')+
+   (p.category&&p.category!=='历史公开动态'?' · '+p.category:'')+' · '+postTimestamp(p)));
   const avatarLink=control('',acct?'openAccount':'openPostAuthor',acct?.id||p.id);avatarLink.classList.add('lp-wb-avatar-button');avatarLink.append(avatar(acct?.avatar||p.avatar,p.author));
   top.append(avatarLink,author);
   const q=data(),stableId=acct?.id||p.authorId;
