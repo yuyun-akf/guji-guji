@@ -15,7 +15,7 @@ export function createGroupsModule(api){
  const groupTitle=g=>g.remark||g.name||'群聊';
  function groupRecords(g){return (g.messages||[]).map(m=>who(m.from)+'：'+String(m.text||'[图片]')).join('\n');}
  function groupHeader(t){api.setGroupTitle?.(t||'群聊');}
- function status(text,error=false){state.status=text;api.notifyInteraction?.(text,error?'error':'success');render();}
+ function status(text,error=false){state.status='';api.notifyInteraction?.(text,error?'error':'success');render();}
  function render(){
   const target=host();if(!target)return;
   const view=state.active?(state.manage?'manage:':'chat:')+state.active:'directory';
@@ -58,7 +58,7 @@ export function createGroupsModule(api){
      button('导出聊天记录','export-records'),button('清空聊天记录','clear-records'),
      button('删除群聊','delete-group'),button('返回聊天','manage'));
     form.append(records);target.append(form);
-    if(state.status)target.append(el('p','lp-group-feedback',state.status));
+    
     target.scrollTop=top;return;
    }
    const feed=el('div','lp-group-messages lp-group-chat-feed'),messageMap=new Map((group.messages||[]).map(m=>[m.id,m]));
@@ -89,7 +89,7 @@ export function createGroupsModule(api){
    const actions=el('div','lp-group-send-actions');
    actions.append(button('发送','send'),button(state.busy?'正在生成…':'生成成员回复','generate'));
    compose.append(input,actions);target.append(compose);
-   if(state.status)target.append(el('p','lp-group-feedback',state.status));
+   
    feed.scrollTop=feed.scrollHeight;
    target.scrollTop=top;return;
   }
@@ -109,7 +109,7 @@ export function createGroupsModule(api){
    label.append(check,document.createTextNode(person.name));create.append(label);
   }
   create.append(button('建立群聊','create'));target.append(create);
-  if(state.status)target.append(el('p','lp-group-feedback',state.status));
+  
   target.scrollTop=top;
  }
  async function mutate(fn){
