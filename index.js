@@ -5418,7 +5418,10 @@ function renderMoments(ctx){
      momentButton('删除动态',()=>{menu.hidden=true;openMomentEditDialog(ctx,post,'delete');}));
   }
   const candidates=momentCandidates(ctx,post);
-  if(candidates.length)menu.append(momentButton('生成角色互动',()=>{menu.hidden=true;void runMomentBatch(post.id,true);}));
+  if(candidates.length)menu.append(momentButton(
+   (Array.isArray(post.comments)?post.comments.length:0)<5?'补齐评论（至少5句）':'生成角色互动',
+   ()=>{menu.hidden=true;void runMomentBatch(post.id,true);}));
+
   head.append(menu);
   item.append(head);
   if(post.text){const body=document.createElement('p');body.textContent=resolvePhonePlaceholders(post.text,ctx,contactCharacter(ctx));item.append(body);}
