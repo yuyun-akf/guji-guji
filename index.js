@@ -1276,6 +1276,7 @@ async function loadGroupsController(){
    isPhoneFriend,contactCharacter,phoneGenerate,stripModelReasoning,notifyInteraction,openSharedPost,encodeAvatarPhoto,
    refreshChatList:()=>{if(mounted&&nodes&&selectedCharacter(context()))renderChatLists(context(),contactCharacter(context()),readData(context()));},
    userPhoneName:()=>phoneUserDisplayName(context()),
+   memberRelationship:id=>phoneRelationshipPrompt(context(),id),
    memberAvatar:id=>{const ctx=context();return id==='user'?avatarSources(ctx,readRootData(ctx)).user:avatarSources(ctx,readData(ctx,id)).character;},
    setGroupTitle:title=>{if(activeScreen==='groups'&&nodes?.title)nodes.title.textContent=title;},
    setGroupOptionsVisible:visible=>{if(nodes?.groupOptions)nodes.groupOptions.hidden=!visible;},
