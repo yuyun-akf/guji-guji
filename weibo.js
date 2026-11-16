@@ -998,7 +998,11 @@ export function createWeiboModule(api) {
   parent.append(controls);
  }
  function renderSettingsScan(parent,q){
-  parent.append(control('＋ 手动新建账号','newAccount'));
+  const manual=control('＋ 手动新建账号','newAccount');
+  manual.classList.add('lp-wb-scanner-entry');
+  parent.append(manual);
+  const scanPanel=el('details','lp-wb-scanner-disclosure');
+  scanPanel.append(el('summary','lp-wb-scanner-entry','从故事资料检索账号'));
   const scanner=el('div','lp-wb-scanner');
    const cached=typeof api.cachedScanAccounts==='function'?api.cachedScanAccounts():null;
    const signature=JSON.stringify((cached?.candidates||[]).map(c=>[c.name,c.reference,c.source,c.followers]));
@@ -1007,18 +1011,22 @@ export function createWeiboModule(api) {
     state.candidates=Array.isArray(cached?.candidates)?cached.candidates.slice(0,45):[];
     if(state.candidates.length&&!state.scanMessage)state.scanMessage='已读取同角色卡的共享检索结果；无需重复扫描。';
    }
-   scanner.append(heading('从故事资料检索账号'));
+   // The scan options appear only after opening the independent scan entry.
    field(scanner,'额外世界书名称（选填）','scanWorldName',state.scanWorldName||'');
    scanner.append(control(state.scanLoading?'正在检测…':'本地规则检索（不调用 API）','scanAccounts'));
    scanner.append(control(state.scanLoading?'正在检测…':'AI 智能检索（调用一次 API）','scanAccountsAI'));
    scanner.append(control('清空角色卡共享检索结果','clearScanCatalog'));
    
    if(state.candidates.length){
-    scanner.append(heading('待确认账号（'+state.candidates.length+'）','确认人物绑定、职业和个性签名后勾选；未勾选的不会保存'));
+    const pending=el('details','lp-wb-scan-pending');
+    pending.open=false;
+    pending.append(el('summary','lp-wb-scanner-entry','待确认账号（'+state.candidates.length+'）'));
+    const pendingContent=el('div','lp-wb-pending-content');
+    pendingContent.append(el('p','lp-wb-bind-note','确认人物绑定、职业和个性签名后勾选；未勾选的不会保存'));
     state.candidates.forEach((candidate,index)=>{
      const existing=q.accounts.find(a=>a.name===candidate.name);
-     const row=el('div','lp-wb-candidate');row.dataset.wbCandidate=String(index);
-     const title=el('label','lp-wb-candidate-title');
+     const row=el('details','lp-wb-candidate');row.dataset.wbCandidate=String(index);
+     const title=el('summary','lp-wb-candidate-title');
      const choose=document.createElement('input');choose.type='checkbox';choose.dataset.wbChoose=String(index);
      title.append(choose,el('strong','',candidate.name),el('small','',existing?'已有账号 · 可更新':'新候选'));
      row.append(title,el('small','lp-wb-candidate-source','来源：'+candidate.source));
@@ -1037,11 +1045,14 @@ export function createWeiboModule(api) {
        const item=type==='followers'?followerField(row,label,'candidate-'+index+'-'+key,value):field(row,label,'candidate-'+index+'-'+key,value,type);
        item.dataset.wbCandidateField=key;
      }
-     scanner.append(row);
+     pendingContent.append(row);
     });
-    scanner.append(control('保存勾选的账号','saveCandidates'));
+    pendingContent.append(control('保存勾选的账号','saveCandidates'));
+    pending.append(pendingContent);
+    scanner.append(pending);
    }
-  parent.append(scanner);
+  scanPanel.append(scanner);
+  parent.append(scanPanel);
  }
  function renderSettingsAccounts(parent,q){
   const filter=el('input','lp-wb-account-filter');filter.type='search';
