@@ -29,6 +29,10 @@ export function createAlbumModule(api){
  function render(){
   const wrap=host();if(!wrap)return;
   const oldTop=wrap.scrollTop;
+  // A changed role-card must never expose the previous card's cached navigation.
+  if(state.owner&&state.owner!=='world'&&!people().some(person=>person.id===state.owner)){
+   state.level='root';state.owner='';state.folder='';state.pending=null;state.selectedFiles=[];state.navReset=true;
+  }
   wrap.dataset.albumOwner=state.owner;wrap.dataset.albumLevel=state.level;
   wrap.replaceChildren();
   if(state.level==='root'){
@@ -241,7 +245,7 @@ export function createAlbumModule(api){
   const b=event.target.closest?.('[data-album-action]');if(!b||state.busy)return false;
   const type=b.dataset.albumAction,id=b.dataset.albumId;
   if(type==='root'){state.level='root';state.owner='';state.folder='';state.message='';state.navReset=true;render();return true;}
-  if(type==='owner'){state.level='owner';state.folder='';state.editing='';state.pending=null;state.navReset=true;render();return true;}
+  if(type==='owner'){if(id)state.owner=id;state.level='owner';state.folder='';state.editing='';state.pending=null;state.navReset=true;render();return true;}
   if(type==='folder'){state.folder=id;state.level='folder';state.editing='';state.navReset=true;render();return true;}
   if(type==='import'){state.level='import';state.mode='files';state.selectedFiles=[];state.navReset=true;render();return true;}
   if(type==='mode'){state.mode=id;render();return true;}
@@ -267,6 +271,9 @@ export function createAlbumModule(api){
   return true;
  }
  function handleChange(event){
+  if(event.target?.matches?.('[data-album-field="target"]')){
+   state.folder=event.target.value;render();return true;
+  }
   if(!event.target?.matches?.('[data-album-field="files"]'))return false;
   state.selectedFiles=[...(event.target.files||[])];if(state.selectedFiles.length>10){
    state.selectedFiles=state.selectedFiles.slice(0,10);state.message='一次最多选择10张图片，已取前10张';
