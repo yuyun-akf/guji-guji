@@ -5132,7 +5132,7 @@ async function postMoment() {
     try {
         await writeData(ctx,{...data,__contactId:PRIMARY_CONTACT_ID});
         if(!sameSession(session))return;
-        nodes.momentsText.value='';momentImageDraft='';nodes?.momentsPreview?.replaceChildren();
+        nodes.momentsText.value='';momentImageDraft='';nodes?.momentsPreview?.replaceChildren();if(nodes?.momentComposer)nodes.momentComposer.hidden=true;
         renderMoments(ctx);
         void tickMomentInteractions();
     }catch(e){setStatus(recordError('发布动态',e),'error');}
@@ -7195,6 +7195,8 @@ function makeUI() {
             <div data-lp="weiboCompose" class="lp-weibo-compose-panel" hidden>
               <h3>发布新动态</h3>
               <textarea data-lp="weiboComposeText" rows="6" maxlength="1000" placeholder="分享你的想法…"></textarea>
+              <label class="lp-wb-compose-picker">▧ 添加图片<input type="file" data-wb-field="composePhoto" accept="image/png,image/jpeg,image/webp" hidden /></label>
+              <div data-wb-compose-preview class="lp-wb-compose-preview"></div>
               <button type="button" data-lp="weiboPublish">发布到群星</button>
             </div>
             <div data-lp="weiboMe" class="lp-weibo-me" hidden></div>
@@ -7939,7 +7941,7 @@ function mount() {
         'albumContent','groupsContent','shareTargets','sharePreview',
         'weiboGenerate','weiboFeedback','weiboFeed','weiboHot','weiboNearby','weiboCompose','weiboMe','weiboDetail','weiboTabs','weiboComposeText','weiboPublish','weiboDetailBack','weiboRefreshBox',
         'desktopSortList','clockMode','clockRate','clockContinueClosed','clockCustomFields','clockSave','lockEnabled','lockSaveEnabled','notification','inlineNotification','calendarPrev','calendarNext','calendarHeading','calendarViews','calendarGrid','calendarSelected','calendarSummary','calendarSelectedTime','calendarStoryToday','calendarRealToday','calendarSaveTime','calendarExactSave',
-        'momentsPost', 'momentsText', 'momentsFeed', 'momentFeedback','momentsPreview','momentImageUpload','momentRemovePhoto','myAvatarUpload','myAvatarFallback','myAvatarStatus','myIdentity', 'myAvatar', 'myPersona', 'messageBannerToggle','messageBannerStatus','autoMessagesMode','autoMessagesDays','autoMomentsMode','autoMomentsDays','relationAutoSync','phoneInPast','characterRequests','momentInteractions','autonomyStatus','autonomyFeedback','saveAutonomy','rescanRelations','testAutonomy', 'stickerUpload','stickerPackUpload', 'stickerStatus', 'stickerLibrary',
+        'momentsPost', 'momentsText', 'momentsFeed', 'momentFeedback','momentsPreview','momentImageUpload','momentRemovePhoto','momentCamera','momentComposer','momentHistoryOpen','myBio','myBioEdit','profileBio','profileBioEdit','contactMomentList','myAvatarUpload','myAvatarFallback','myAvatarStatus','myIdentity', 'myAvatar', 'myPersona', 'messageBannerToggle','messageBannerStatus','autoMessagesMode','autoMessagesDays','autoMomentsMode','autoMomentsDays','relationAutoSync','phoneInPast','characterRequests','momentInteractions','autonomyStatus','autonomyFeedback','saveAutonomy','rescanRelations','testAutonomy', 'stickerUpload','stickerPackUpload', 'stickerStatus', 'stickerLibrary',
         'friendLabel', 'friendActions','profileAvatar','profileAvatarAction','profileAvatarSheet','profileChooseAvatar','profileAvatarCancel','profileRoleDialog','profileRoleOpen','profileRoleClose','profileRoleTitle','profileName','profileDescription','contactEvidence','contactExchange','contactLinks','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcAiScanButton','npcClearScanButton','npcScanState','npcCandidates','npcSaveCandidates','storyPeopleList','viewPrimaryContact','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','resetCharAvatar',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
@@ -8020,7 +8022,7 @@ function mount() {
     root.addEventListener('click',e=>{if(e.target.closest('[data-wb-action],[data-wb-topic]'))weiboController?.handleClick(e);});
     root.addEventListener('input',e=>{if(e.target.matches?.('[data-wb-account-search]'))weiboController?.handleInput(e);});
     root.addEventListener('keydown',e=>{if(e.target.matches?.('[data-wb-comment-for]'))weiboController?.handleKeydown(e);});
-    root.addEventListener('change',e=>{if(e.target.closest('[data-wb-field="accountAvatar"],[data-wb-field="ownerAvatar"]'))weiboController?.handleFile(e);});
+    root.addEventListener('change',e=>{if(e.target.closest('[data-wb-field="accountAvatar"],[data-wb-field="ownerAvatar"],[data-wb-field="composePhoto"]'))weiboController?.handleFile(e);});
     nodes.launcher.addEventListener('click', event => {
         if(draggedClick(event)){event.preventDefault?.();return;}
         const opening = !root.classList.contains('lp-open');
@@ -8064,6 +8066,13 @@ function mount() {
     window.addEventListener('focus',pickerFocusListener);
     nodes.chatMenu.addEventListener('click',()=>setScreen('chatOptions'));
     nodes.momentsPost.addEventListener('click',()=>void postMoment());
+    nodes.momentCamera.addEventListener('click',()=>{
+      nodes.momentComposer.hidden=!nodes.momentComposer.hidden;
+      if(!nodes.momentComposer.hidden)nodes.momentsText.focus();
+    });
+    nodes.momentHistoryOpen.addEventListener('click',()=>setScreen('momentHistory'));
+    nodes.myBioEdit.addEventListener('click',()=>editPhoneBio('user'));
+    nodes.profileBioEdit.addEventListener('click',()=>editPhoneBio(activeContactId));
     nodes.momentImageUpload.addEventListener('change',event=>{void importMomentPhoto(event.target.files?.[0]);event.target.value='';});
     nodes.momentRemovePhoto.addEventListener('click',()=>{momentImageDraft='';nodes.momentsPreview.replaceChildren();});
     nodes.myAvatarUpload.addEventListener('click',()=>beginFilePicker());
