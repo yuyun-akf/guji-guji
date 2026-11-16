@@ -32,6 +32,106 @@ export function createAlbumModule(api){
  function requestImport(){if(!safetyDisabled()&&!state.warningShown){state.dialog={type:'warning'};render();}else enterImport();}
  function openOptions(){state.dialog={type:'options'};render();}
  function endPhoneSession(){state.warningShown=false;state.dialog=null;state.selectedFiles=[];}
+ function exportAlbumTemplate(){
+  const owners=[{id:'world',name:'世界相册'},...people().map(p=>({id:p.id,name:p.name}))];
+  const template={
+   schema:'gujiguji-album-v1',version:1,
+   instruction:'复制本模板交给 AI 填写 photos。图片文件放在 ZIP 的 images/ 文件夹并保留相对路径；也可上传 manifest.json 和图片文件，名称必须对应。不要编造 ownerId 或 folder。',
+   owners:owners.map(o=>({...o,folders:o.id==='world'?api.worldFolders?.()||[]:characterFolders.map(f=>({id:f[0],label:f[1]}))})),
+   photos:[{file:'images/001.png',ownerId:state.owner||'world',
+    folder:state.owner==='world'?'风景':'public',title:'示例照片名称',description:'具体可见内容',usage:''}]
+  };
+  const text=JSON.stringify(template,null,2),url=URL.createObjectURL(new Blob([text],{type:'application/json;charset=utf-8'}));
+  const a=el('a');a.href=url;a.download='咕叽咕机相册导入模板.json';document.body.append(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);hint('模板已导出');
+ }
+ async function extractZipFiles(file){
+  const map=new Map(),raw=await file.arrayBuffer();
+  if(raw.byteLength>65*1024*1024)throw Error('ZIP包大小超过65MB');
+  const lib=window.JSZip;
+  if(lib?.loadAsync){
+   const zip=await lib.loadAsync(raw);
+   for(const [name,entry] of Object.entries(zip.files)){
+    if(entry.dir)continue;if(map.size>=70)throw Error('ZIP内文件数量超出限制');
+    const normalized=name.replace(/^\.\//,'').replaceAll('\\','/');
+    if(normalized.startsWith('/')||normalized.split('/').includes('..'))throw Error('ZIP包含不安全路径');
+    map.set(normalized,new Uint8Array(await entry.async('uint8array')));
+   }
+   return map;
+  }
+  const bytes=new Uint8Array(raw),view=new DataView(raw);
+  let eocd=-1;
+  for(let i=bytes.length-22;i>=Math.max(0,bytes.length-66000);i--)if(view.getUint32(i,true)===0x06054b50){eocd=i;break;}
+  if(eocd<0)throw Error('ZIP中央目录无效');
+  const total=view.getUint16(eocd+10,true);
+  if(total>70)throw Error('ZIP内文件数量超出限制');
+  let pos=view.getUint32(eocd+16,true);
+  const decoder=new TextDecoder();
+  for(let i=0;i<total;i++){
+   if(view.getUint32(pos,true)!==0x02014b50)throw Error('ZIP文件目录损坏');
+   const method=view.getUint16(pos+10,true),length=view.getUint32(pos+20,true);
+   const compressed=view.getUint32(pos+20,true),uncompressed=view.getUint32(pos+24,true);
+   const nameLength=view.getUint16(pos+28,true),extra=view.getUint16(pos+30,true),comment=view.getUint16(pos+32,true);
+   const offset=view.getUint32(pos+42,true);
+   const name=decoder.decode(bytes.slice(pos+46,pos+46+nameLength)).replace(/^\.\//,'').replaceAll('\\','/');
+   pos+=46+nameLength+extra+comment;
+   if(name.endsWith('/'))continue;
+   if(name.startsWith('/')||name.split('/').includes('..'))throw Error('ZIP包含不安全路径');
+   if(uncompressed>15*1024*1024||!['manifest.json'].includes(name)&&uncompressed===0)throw Error('ZIP图片体积或内容无效');
+   if(view.getUint32(offset,true)!==0x04034b50)throw Error('ZIP图片数据损坏');
+   const start=offset+30+view.getUint16(offset+26,true)+view.getUint16(offset+28,true);
+   const part=bytes.slice(start,start+compressed);
+   let out=part;
+   if(method===8){
+    if(typeof DecompressionStream!=='function')throw Error('当前浏览器无法解压 ZIP，请使用 JSZip 或 JSON＋图片文件导入');
+    const stream=new Blob([part]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    out=new Uint8Array(await new Response(stream).arrayBuffer());
+   }else if(method!==0)throw Error('ZIP包含不支持的压缩方式');
+   if(out.length!==uncompressed)throw Error('ZIP图片数据不完整');
+   map.set(name,out);
+  }
+  return map;
+ }
+ const albumMime=name=>/\.png$/i.test(name)?'image/png':/\.webp$/i.test(name)?'image/webp':/\.gif$/i.test(name)?'image/gif':'image/jpeg';
+ async function prepareBatch(files){
+  const entries=new Map(),source=files.find(f=>/\.zip$/i.test(f.name)),decoder=new TextDecoder();
+  if(source){
+   const zipped=await extractZipFiles(source);
+   for(const [name,bytes] of zipped)entries.set(name,bytes);
+  }else{
+   for(const file of files){if(file.size>15*1024*1024)throw Error('单个文件不能超过15MB');entries.set(file.webkitRelativePath||file.name,new Uint8Array(await file.arrayBuffer()));}
+  }
+  const manifestBytes=entries.get('manifest.json')||[...entries].find(([name])=>/manifest\.json$/i.test(name))?.[1];
+  if(!manifestBytes)throw Error('缺少 manifest.json，请先导出模板');
+  let manifest;try{manifest=JSON.parse(decoder.decode(manifestBytes));}catch{throw Error('manifest.json 不是有效 JSON');}
+  if(manifest.schema!=='gujiguji-album-v1'||manifest.version!==1||!Array.isArray(manifest.photos))throw Error('导入文件格式不匹配模板 v1');
+  if(!manifest.photos.length||manifest.photos.length>45)throw Error('每批须包含1～45张图片');
+  const pool=[...entries.entries()].filter(([name])=>/\.(?:png|jpg|jpeg|webp|gif)$/i.test(name));
+  const images=[],labels=[],fileObjects=[],mapping=[];
+  for(const p of manifest.photos){
+   const owner=p.ownerId||state.owner,folder=p.folder||state.folder||'public';
+   const ownerObj=people().find(person=>person.id===owner);
+   if(owner!=='world'&&!ownerObj)throw Error('未知人物 ownerId：'+owner);
+   const validFolders=owner==='world'?api.worldFolders?.()||[]:characterFolders.map(x=>x[0]);
+   if(!validFolders.includes(folder))throw Error('未知相册分类：'+folder);
+   const filePath=String(p.file||'').replace(/^\.\//,'').replaceAll('\\','/');
+   if(!filePath||filePath.split('/').includes('..'))throw Error('图片路径无效');
+   let bytes=entries.get(filePath);
+   if(!bytes)bytes=pool.find(([path])=>path===filePath||path.split('/').pop()===filePath.split('/').pop())?.[1];
+   const type=albumMime(filePath);
+   if(!bytes&&typeof p.image==='string'&&validImage(p.image)){
+    const parts=p.image.split(','),raw=atob(parts[1]||'');
+    bytes=Uint8Array.from(raw,c=>c.charCodeAt(0));
+   }
+   if(!bytes)throw Error('找不到图片：'+filePath+'；请将图片与 manifest.json 一起导入或打包 ZIP');
+   const blob=new File([bytes],filePath.split('/').pop(),{type});
+   images.push(await encode(blob,folder==='表情包'));
+   fileObjects.push(blob);
+   mapping.push({owner,folder});
+   labels.push({title:String(p.title||'').slice(0,60),description:String(p.description||'').slice(0,500),usage:String(p.usage||'').slice(0,160)});
+  }
+  return {images,files:fileObjects,labels,mapping,owner:state.owner,folder:state.folder,signature:api.albumScope?.()};
+ }
  function renderDialog(wrap){
   if(!state.dialog)return;
   const data=state.dialog,overlay=el('div','lp-album-overlay'),dialog=el('section','lp-album-dialog');
@@ -132,7 +232,7 @@ export function createAlbumModule(api){
    if(!photos().length)list.append(el('p','lp-album-empty','这个子相册还没有图片。返回上一页，从「添加照片」导入即可。'));
    wrap.append(list);
   }else if(state.level==='review'){
-   wrap.append(pane('检查 AI 识图结果','逐张修改名称与描述，确认后一次性保存。'));
+   wrap.append(pane('检查图片资料','核对图片、所属人物、分类、名称及描述，确认后一次保存。'));
    const pending=state.pending;
    if(!pending){state.level='owner';render();return;}
    
@@ -150,6 +250,19 @@ export function createAlbumModule(api){
      input.dataset.albumReview=key;input.dataset.albumIndex=String(index);input.value=String(value);
      field.append(input);fields.append(field);
     }
+    if(pending.mapping){
+      const info=pending.mapping[index],ownerSelect=el('select');ownerSelect.dataset.albumReview='owner';ownerSelect.dataset.albumIndex=String(index);
+      for(const person of [{id:'world',name:'世界相册'},...people()]){const option=el('option','',person.name);option.value=person.id;ownerSelect.append(option);}
+      ownerSelect.value=info.owner;
+      const folderSelect=el('select');folderSelect.dataset.albumReview='folder';folderSelect.dataset.albumIndex=String(index);
+      for(const item of (info.owner==='world'?api.worldFolders?.()||[]:characterFolders.map(x=>x[0]))){
+       const option=el('option','',item);option.value=item;folderSelect.append(option);
+      }
+      folderSelect.value=info.folder;
+      const ownerLabel=el('label','lp-album-field','所属人物／相册');ownerLabel.append(ownerSelect);
+      const folderLabel=el('label','lp-album-field','子相册');folderLabel.append(folderSelect);
+      fields.prepend(folderLabel);fields.prepend(ownerLabel);
+    }
     card.append(img,fields);list.append(card);
    });
    wrap.append(list,button('saveReview','确认导入 '+pending.images.length+' 张图片'));
@@ -166,18 +279,22 @@ export function createAlbumModule(api){
     const b=button('mode',label,mode);if(state.mode===mode)b.classList.add('selected');modes.append(b);
    }
    form.append(modes);
-   const picker=el('label','lp-album-picker');picker.append(el('strong','','选择照片（1～10张）'));
-   const file=el('input');file.type='file';file.accept='image/jpeg,image/png,image/webp,image/gif';file.multiple=true;file.dataset.albumField='files';
+   const picker=el('label','lp-album-picker');picker.append(el('strong','',state.mode==='files'?'选择 ZIP 或 manifest.json 与对应图片':state.mode==='manual'?'选择一张图片':'选择照片（1～10张）'));
+   const file=el('input');file.type='file';file.accept=state.mode==='files'?'.zip,.json,image/jpeg,image/png,image/webp,image/gif':'image/jpeg,image/png,image/webp,image/gif';file.multiple=state.mode!=='manual';file.dataset.albumField='files';
    picker.append(file);form.append(picker);
    const preview=el('div','lp-album-preview');preview.dataset.albumPreview='true';
    for(const file of readFiles()){const i=el('div','lp-album-file-name',file.name);preview.append(i);}
    form.append(preview);
-   if(state.mode!=='ai'){
+   if(state.mode==='files'){
+    form.append(button('exportTemplate','导出标准导入模板'));
+    form.append(el('p','lp-album-template-note','支持标准 ZIP（含 manifest.json、images/）或同时选择 manifest.json 与对应图片。先预览资料与分类，确认后保存。'));
+   }
+   if(state.mode==='manual'){
     for(const [key,label,placeholder]of [['title','统一名称（选填，单张更适用）','留空使用文件名'],['description','图片内容描述（选填）','可在导入后逐张修改'],...(target.value==='表情包'?[['usage','表情包用途（选填）','例如开心、吐槽']]:[])]){
      const box=el('label','lp-album-field',label),input=el('input');input.dataset.albumField=key;input.placeholder=placeholder;box.append(input);form.append(box);
     }
    }else form.append(el('p','lp-settings-hint','所选1～10张将一次发送给当前支持识图的模型，返回后可检查逐张名称、描述和表情包用途；不会自动发布。'));
-   form.append(button('upload',state.busy?'正在处理…':state.mode==='ai'?'调用 API 识图并导入':'保存到所选相册'));
+   form.append(button('upload',state.busy?'正在处理…':state.mode==='ai'?'调用 API 识图并导入':state.mode==='files'?'解析导入文件并预览':'保存图片资料'));
    wrap.append(form);
   }
   if(state.message)wrap.append(el('p','lp-album-feedback',state.message));
@@ -204,7 +321,16 @@ export function createAlbumModule(api){
  async function upload(){
   if(state.busy)return;
   const wrap=host(),files=readFiles();
-  if(!files.length)return hint('请先选择至少一张图片',true);
+  if(!files.length)return hint(state.mode==='files'?'请先选择标准导入文件':'请先选择图片',true);
+  if(state.mode==='files'){
+   state.busy=true;try{
+    const pending=await prepareBatch(files);
+    if(pending.signature!==api.albumScope?.())throw Error('角色卡已切换');
+    state.pending=pending;state.level='review';state.navReset=true;state.message='';render();
+   }catch(error){hint('导入文件校验失败：'+String(error.message||error),true);}
+   finally{state.busy=false;}return;
+  }
+  if(state.mode==='manual'&&files.length!==1)return hint('手动补录每次选择一张图片',true);
   if(files.length>10)return hint('一次最多导入10张，请分批处理',true);
   const folder=wrap?.querySelector('[data-album-field="target"]')?.value||folders()[0];
   const title=wrap?.querySelector('[data-album-field="title"]')?.value?.trim()||'';
@@ -300,12 +426,13 @@ export function createAlbumModule(api){
   if(type==='owner'){if(id)state.owner=id;state.level='owner';state.folder='';state.editing='';state.pending=null;state.navReset=true;render();return true;}
   if(type==='folder'){state.folder=id;state.level='folder';state.editing='';state.navReset=true;render();return true;}
   if(type==='import'){requestImport();return true;}
-  if(type==='mode'){state.mode=id;render();return true;}
+  if(type==='mode'){state.mode=id;state.selectedFiles=[];render();return true;}
   if(type==='newFolder'){
    const name=window.prompt('输入世界相册子相册名称（不超过20字）','');
    if(name?.trim()){const list=[...folders()];if(!list.includes(name.trim())){await api.saveWorldFolders([...list,name.trim().slice(0,20)]);hint('子相册已添加');}}
    return true;
   }
+  if(type==='exportTemplate'){exportAlbumTemplate();return true;}
   if(type==='upload'){await upload();return true;}
   if(type==='saveReview'){await saveReview();return true;}
   if(type==='dialogClose'){state.dialog=null;render();return true;}
