@@ -2,6 +2,8 @@
 export function createWeiboModule(api) {
  const state={scope:'',tab:'home',detail:'',topic:null,profileAccount:'',adminHistoryAccount:'',historyEditingId:'',historyFormOpen:false,searchQuery:'',sharingId:'',subview:'',posts:{home:[],nearby:[]},trends:[],nearbyTrends:[],loading:false,hotLoading:false,refreshResult:{},attempted:{},token:0,sessionId:0,headline:'',hotBundles:{},queuedNearby:false,confirming:false,editing:'',avatarDraft:'',avatarOwnerDraft:'',candidates:[],scanLoading:false,scanMessage:''};
  let writes=Promise.resolve(), autoBusy=false,closeHotConfirmation=null;
+ const commentBusy=new Set(),commentNotices=new Map();
+ const scrollViews=new Map();let renderedView='',renderedScope='';
  const context=()=>api.context(), nodes=()=>api.getNodes(), root=()=>api.readRootData(context());
  const uid=(prefix='qx')=>prefix+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
  const scope=()=>[context()?.characterId,context()?.chatId,context()?.groupId].join(':');
@@ -176,6 +178,7 @@ export function createWeiboModule(api) {
   };
   state.loading=false;state.hotLoading=false;state.queuedNearby=false;state.refreshResult={};
   state.token++;state.sessionId++;
+  scrollViews.clear();renderedView='';renderedScope=next;commentBusy.clear();commentNotices.clear();
  }
  function endPhoneSession(){
   // Closing the virtual phone must NEVER erase generated posts or hot topics.
@@ -662,8 +665,17 @@ export function createWeiboModule(api) {
   if(!history.length)container.append(el('p','lp-wb-empty','还没有记录该账号的公开动态。'));
 
  }
+ function isOwnComment(p,c){
+  return Boolean(c?.isMine||c?.authorId==='self'||(actionState(p).comments||[]).some(entry=>entry.id===c.id));
+ }
+ function commentPreview(p){
+  const all=Array.isArray(p.comments)?p.comments:[];
+  // Feed keeps only a few original examples, plus EVERY comment made by user.
+  const top=all.filter(c=>!isOwnComment(p,c)).slice(0,3);
+  return [...top,...all.filter(c=>isOwnComment(p,c))];
+ }
  function card(p,detailed=false){
-  const box=el('article','lp-wb-card');
+  const box=el('article','lp-wb-card');box.dataset.wbCardId=p.id;
   const acct=actor(p),top=el('div','lp-wb-head'),author=el('div','lp-wb-author');
   author.append(authorButton(acct,p),el('small','',((acct?.handle||p.handle)||'@群星用户')+' · '+(p.category||'日常')));
   const avatarLink=control('',acct?'openAccount':'openPostAuthor',acct?.id||p.id);avatarLink.classList.add('lp-wb-avatar-button');avatarLink.append(avatar(acct?.avatar||p.avatar,p.author));
@@ -673,17 +685,33 @@ export function createWeiboModule(api) {
    const follow=control('＋ 关注','follow',p.id);follow.classList.add('lp-wb-follow');top.append(follow);
   }else if(q.following.includes(stableId)){top.append(control('已关注','unfollow',p.id,true));}
   box.append(top,el('p','lp-wb-text',p.text));
-   if(typeof p.image==='string'&&/^data:image\/(?:jpeg|png|webp);base64,/.test(p.image)){
-    const photo=el('img','lp-wb-post-image');photo.src=p.image;photo.alt='群星动态照片';photo.loading='lazy';box.append(photo);
+  if(typeof p.image==='string'&&/^data:image\/(?:jpeg|png|webp);base64,/.test(p.image)){
+   const photo=el('img','lp-wb-post-image');photo.src=p.image;photo.alt='群星动态照片';photo.loading='lazy';box.append(photo);
+  }
+  const list=detailed?(p.comments||[]):commentPreview(p);
+  const comments=el('div','lp-wb-comments'+(detailed?' lp-wb-comments-full':''));
+  for(const c of list){
+   const own=isOwnComment(p,c);
+   const line=el('div','lp-wb-comment-line'+(own?' lp-wb-own-comment':''));
+   line.dataset.wbCommentId=c.id||'';
+   const body=el('p');
+   body.append(el('b','',c.name+'：'),document.createTextNode(c.text));
+   if(c.replyTo){
+    const parent=(p.comments||[]).find(x=>x.id===c.replyTo);
+    if(parent)body.prepend(el('span','lp-wb-reply-to','回复 '+parent.name+' · '));
    }
-  const comments=el('div','lp-wb-comments');
-  for(const c of (detailed?(p.comments||[]):(p.comments||[]).slice(0,3))){
-   const line=el('p');line.append(el('b','',c.name+'：'),document.createTextNode(c.text));
+   line.append(body);
+   if(own){
+    const remove=control('删除','deleteComment',p.id);
+    remove.classList.add('lp-wb-comment-delete');remove.dataset.wbCommentId=c.id;
+    remove.title='删除我的评论';line.append(remove);
+   }
    comments.append(line);
   }
-  if(comments.childNodes.length)box.append(comments);
+  if(list.length)box.append(comments);
   if(p.commentCount!=null&&Number(p.commentCount)>0)
-   box.append(el('div','lp-wb-comment-total','评论 '+Number(p.commentCount).toLocaleString('zh-CN')));
+   box.append(el('div','lp-wb-comment-total','评论 '+Number(p.commentCount).toLocaleString('zh-CN')+
+    (detailed?' · 已展示 '+(p.comments||[]).length+' 条':'') ));
   const a=actionState(p),actions=el('div','lp-wb-actions lp-wb-actions-inline');
   const like=control((a.liked?'♥ ':'♡ ')+((p.likes||0)+(a.liked?1:0)),'like',p.id,a.liked);
   like.title=a.liked?'取消点赞':'点赞';like.classList.add('lp-wb-action-compact');
@@ -691,20 +719,32 @@ export function createWeiboModule(api) {
   const favorite=control(a.favorited?'★':'☆','favorite',p.id,a.favorited);
   favorite.title=a.favorited?'取消收藏':'收藏';favorite.setAttribute('aria-label',favorite.title);
   favorite.setAttribute('aria-pressed',String(Boolean(a.favorited)));
-  favorite.dataset.touchEffect='favorite';
-  favorite.classList.add('lp-wb-action-compact','lp-wb-favorite-icon');
-  const share=control('分享','shareMenu',p.id);
-  share.classList.add('lp-wb-action-compact');
+  favorite.dataset.touchEffect='favorite';favorite.classList.add('lp-wb-action-compact','lp-wb-favorite-icon');
+  const share=control('分享','shareMenu',p.id);share.classList.add('lp-wb-action-compact');
   const comment=el('div','lp-wb-inline-comment');
   const input=document.createElement('input');input.type='text';input.maxLength=500;
   input.placeholder='评论…';input.dataset.wbCommentFor=p.id;input.setAttribute('aria-label','写评论');
-  const send=control('↗','sendComment',p.id);send.title='发送评论';send.setAttribute('aria-label','发送评论');
+  const posting=commentBusy.has(p.id);
+  const send=control(posting?'发送中…':'↗','sendComment',p.id);
+  send.title=posting?'正在发送评论':'发送评论';send.disabled=posting;
+  send.setAttribute('aria-label',send.title);
+  send.classList.add('lp-wb-comment-send');
   comment.append(input,send);
   actions.append(like,favorite,share,comment);box.append(actions);
+  const notice=commentNotices.get(p.id);
+  if(notice)box.append(el('div','lp-wb-comment-notice',notice));
   if(state.sharingId===p.id){
    const menu=el('div','lp-wb-share-menu');
    menu.append(control('转发到我的群星','repost',p.id,a.reposted),control('发送到咕叽聊','shareChat',p.id));
    box.append(menu);
+  }
+  const hasMine=(a.comments||[]).length>0||(p.comments||[]).some(c=>c.isMine);
+  if(hasMine&&!a.commentsLoaded){
+   const loading=commentBusy.has('load:'+p.id);
+   const button=control(loading?'正在加载评论…':'加载完整评论区','loadFullComments',p.id);
+   button.disabled=loading;button.classList.add('lp-wb-load-comments');
+   button.title='手动调用一次 API 补全这篇帖子的评论，最多展示120条';
+   box.append(button);
   }
   if(!detailed)box.append(control('查看详情','detail',p.id));
   return box;
