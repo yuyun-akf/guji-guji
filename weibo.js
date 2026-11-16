@@ -1,6 +1,6 @@
 /* 群星 · character-card accounts + per-story persistent generated feeds and interactions. */
 export function createWeiboModule(api) {
- const state={scope:'',tab:'home',detail:'',topic:null,profileAccount:'',adminHistoryAccount:'',historyEditingId:'',historyFormOpen:false,historyGenerating:false,historyStatus:'',historyInstructions:'',historyCount:'3',searchQuery:'',sharingId:'',subview:'',posts:{home:[],nearby:[]},trends:[],nearbyTrends:[],loading:false,hotLoading:false,refreshResult:{},attempted:{},token:0,sessionId:0,headline:'',hotBundles:{},queuedNearby:false,confirming:false,editing:'',avatarDraft:'',avatarOwnerDraft:'',candidates:[],scanLoading:false,scanMessage:''};
+ const state={scope:'',tab:'home',detail:'',topic:null,profileAccount:'',adminHistoryAccount:'',historyEditingId:'',historyFormOpen:false,historyGenerating:false,historyStatus:'',historyInstructions:'',historyCount:'3',composePhoto:'',searchQuery:'',sharingId:'',subview:'',posts:{home:[],nearby:[]},trends:[],nearbyTrends:[],loading:false,hotLoading:false,refreshResult:{},attempted:{},token:0,sessionId:0,headline:'',hotBundles:{},queuedNearby:false,confirming:false,editing:'',avatarDraft:'',avatarOwnerDraft:'',candidates:[],scanLoading:false,scanMessage:''};
  let writes=Promise.resolve(), autoBusy=false,closeHotConfirmation=null;
  const commentBusy=new Set(),commentNotices=new Map();
  const scrollViews=new Map();let renderedView='',renderedScope='';
@@ -197,7 +197,7 @@ export function createWeiboModule(api) {
   // An explicitly saved empty role directory means previously deleted accounts
   // must not be resurrected by an older story chat.
   api.ensureSharedAccounts?.();
-  state.scope=next;state.tab='home';state.detail='';state.topic=null;state.profileAccount='';state.adminHistoryAccount='';state.historyEditingId='';state.historyFormOpen=false;state.historyGenerating=false;state.historyStatus='';state.historyInstructions='';state.historyCount='3';state.searchQuery='';state.sharingId='';state.subview='';
+  state.scope=next;state.tab='home';state.detail='';state.topic=null;state.profileAccount='';state.adminHistoryAccount='';state.historyEditingId='';state.historyFormOpen=false;state.historyGenerating=false;state.historyStatus='';state.historyInstructions='';state.historyCount='3';state.composePhoto='';state.searchQuery='';state.sharingId='';state.subview='';
   state.candidates=[];state.scanCacheSignature='';state.scanMessage='';state.scanLoading=false;
   const stored=data().generated;
   const feeds=stored?.feeds||{};
@@ -1341,6 +1341,11 @@ export function createWeiboModule(api) {
  }
  async function action(type,id,commentId=''){
   // Reading/profile/settings interactions remain available during feed generation.
+  if(type==='removeComposePhoto'){
+   state.composePhoto='';
+   nodes()?.weiboCompose?.querySelector?.('[data-wb-compose-preview]')?.replaceChildren();
+   return;
+  }
   
 if(type==='clearInteractions'){
    if(!window.confirm('清空当前存档的点赞、评论、收藏和转发？转发生成的「我的动态」也会移除，原创动态与关注账号会保留。此操作不可撤销。'))return;
@@ -1763,17 +1768,17 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
   }render();
  }
  async function publish(){
-  const n=nodes(),text=clean(n.weiboComposeText?.value,1000);if(!text){feedback('请先输入内容');return;}
+  const n=nodes(),text=clean(n.weiboComposeText?.value,1000);if(!text&&!state.composePhoto){feedback('请先输入内容或选择图片');return;}
   const q=data(),post={id:uid('post'),author:q.profile.nickname,handle:q.profile.handle,avatar:q.profile.avatar,authorId:'self',
-   category:'日常',text,comments:[],likes:0,time:root().storyTime||'',zone:'world',actions:{owned:true}};
+   category:'日常',text,...(state.composePhoto?{image:state.composePhoto}:{}),comments:[],likes:0,time:root().storyTime||'',zone:'world',actions:{owned:true}};
   await mutate(d=>{d.posts.push(post);d.posts=d.posts.slice(-180);});
   const r=structuredClone(root());api.publishPhoneAppEvent(r,{app:'weibo',action:'posted',id:post.id,detail:'发布群星：'+clean(text,170)});
   await api.writeData(context(),{...r,__contactId:'primary'});
-  n.weiboComposeText.value='';state.tab='home';feedback('发布成功');render();
+  n.weiboComposeText.value='';state.composePhoto='';n.weiboCompose.querySelector('[data-wb-compose-preview]')?.replaceChildren();state.tab='home';feedback('发布成功');render();
  }
  async function publishAlbumPhoto(photo,caption){
-  if(photo?.owner!=='user'||photo?.access!=='public'||typeof photo.image!=='string')
-   throw Error('不能使用不属于 user 或未允许公开的相册照片');
+  if(photo?.access!=='public'||typeof photo.image!=='string')
+   throw Error('这张照片不属于公开相册，不能发布群星');
   const me=data().profile,text=clean(caption||photo.title||'分享照片',1000);
   const post={id:uid('post'),author:me.nickname,handle:me.handle,avatar:me.avatar,
    authorId:'self',category:'图片',text,image:photo.image,comments:[],likes:0,time:root().storyTime||'',zone:'world',actions:{owned:true}};
@@ -1829,7 +1834,41 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
   if(n.dataset.wbTopic!==undefined){void openTopic(n.dataset.wbTopic,n.dataset.wbZone==='nearby'?'nearby':'home');return true;}
   void action(n.dataset.wbAction,n.dataset.wbPost,n.dataset.wbCommentId||'').catch(e=>feedback('操作失败：'+String(e.message||e)));return true;
  }
+ async function readComposePhoto(file){
+  if(!file)return;
+  if(!['image/png','image/jpeg','image/webp'].includes(file.type)||file.size>12*1024*1024){
+   feedback('请选择12MB以内的JPG、PNG或WebP图片');return;
+  }
+  try{
+   const original=await new Promise((resolve,reject)=>{
+    const reader=new FileReader();reader.onload=()=>resolve(reader.result);
+    reader.onerror=()=>reject(Error('图片读取失败'));reader.readAsDataURL(file);
+   });
+   const img=await new Promise((resolve,reject)=>{
+    const image=new Image();image.onload=()=>resolve(image);
+    image.onerror=()=>reject(Error('图片解码失败'));image.src=original;
+   });
+   const canvas=document.createElement('canvas'),scale=Math.min(1,950/Math.max(img.width,img.height));
+   canvas.width=Math.max(1,Math.round(img.width*scale));
+   canvas.height=Math.max(1,Math.round(img.height*scale));
+   canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
+   state.composePhoto='';
+   for(const q of [.78,.6,.46]){
+    const value=canvas.toDataURL('image/jpeg',q);
+    if(value.length<450000){state.composePhoto=value;break;}
+   }
+   if(!state.composePhoto)throw Error('图片压缩后仍过大');
+   const preview=nodes()?.weiboCompose?.querySelector('[data-wb-compose-preview]');
+   if(preview){
+    const image=el('img','lp-wb-compose-photo');image.src=state.composePhoto;image.alt='待发布配图';
+    preview.replaceChildren(image,control('移除图片','removeComposePhoto'));
+   }
+  }catch(error){feedback('图片添加失败：'+String(error.message||error));}
+ }
  function handleFile(event){
+  if(event.target?.matches?.('[data-wb-field="composePhoto"]')){
+   void readComposePhoto(event.target.files?.[0]);event.target.value='';return true;
+  }
   const input=event.target?.closest?.('[data-wb-field="accountAvatar"],[data-wb-field="ownerAvatar"]');
   if(!input||!input.files?.[0])return false;
   const file=input.files[0];
