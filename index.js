@@ -5435,58 +5435,83 @@ async function manualHistoricMoment(){
 }
 async function generateHistoricMoments(){
  if(momentHistoryGenerating||busy)return;
- const ctx=context(),owner=nodes.momentHistoryOwner.value,actor=galleryPeople(ctx).find(x=>x.id===owner);
- if(!actor)return;
- if(owner==='user')return setStatus('AI 不会代替 user 编写已发生的历史行为；可手动补录自己的朋友圈','error');
- const r=readRootData(ctx),count=Math.max(1,Math.min(5,Number(nodes.momentHistoryCount.value)||3));
- const settings=nodes.momentHistoryInstructions.value.trim().slice(0,1000);
- const char=contactCharacter(ctx,owner);
- const details=[char?.data?.description,char?.data?.personality,char?.description,char?.personality,
-  r.contacts.find(x=>x.id===owner)?.description].filter(Boolean).join('\n').slice(0,2300);
- const prior=(r.moments||[]).filter(p=>momentAuthorId(ctx,p)===owner).slice(-10).map(p=>p.text).join('；');
- const allowedPhotos=photosForActor(owner,'group',ctx).filter(p=>p.folder!=='表情包').slice(0,16);
- const photoGuide=allowedPhotos.map(p=>({id:p.id,owner:p.ownerName||'世界',
-  title:p.title||'',description:String(p.description||'').slice(0,115)}));
- const post={authorId:owner,author:actor.name,comments:[]};
- const linked=momentCandidates(ctx,post).slice(0,8).map(id=>({id,name:contactDisplayName(ctx,id)}));
- const session=captureSession(ctx);
+ const ctx=context(),rootData=readRootData(ctx),count=Math.max(1,Math.min(5,Number(nodes.momentHistoryCount.value)||3));
+ const randomMode=nodes.momentHistoryMode?.value==='random';
+ const registered=galleryPeople(ctx).filter(p=>p.id!=='user'&&
+  (p.id===PRIMARY_CONTACT_ID||rootData.contacts.some(c=>c.id===p.id))&&
+  friendshipState(readData(ctx,p.id))==='friends');
+ const selectedId=nodes.momentHistoryOwner.value;
+ const selected=galleryPeople(ctx).find(p=>p.id===selectedId);
+ if(!randomMode&&(!selected||selected.id==='user'))return setStatus('请选择一位已有联系人生成历史朋友圈','error');
+ if(randomMode&&registered.length<2)return setStatus('随机生成至少需要两位已添加的好友','error');
+ const pool=randomMode?registered.sort(()=>Math.random()-.5)
+  .slice(0,Math.min(registered.length,count,5,Math.max(2,Math.round(Math.random()*4)+2))):[selected];
+ const options=pool.map(actor=>{
+  const char=contactCharacter(ctx,actor.id);
+  const details=[char?.data?.description,char?.data?.personality,char?.description,char?.personality,
+   rootData.contacts.find(x=>x.id===actor.id)?.description].filter(Boolean).join('\n').slice(0,2000);
+  const prior=(rootData.moments||[]).filter(p=>momentAuthorId(ctx,p)===actor.id).slice(-8).map(p=>p.text);
+  const post={authorId:actor.id,author:actor.name,comments:[]};
+  const linked=momentCandidates(ctx,post).filter(id=>id!=='user').map(id=>({id,name:contactDisplayName(ctx,id)}));
+  const allowedPhotos=photosForActor(actor.id,'group',ctx).filter(p=>p.folder!=='表情包').slice(0,18);
+  return {id:actor.id,name:actor.name,details,prior,linked,allowedPhotos};
+ });
+ const interactable=options.filter(p=>p.linked.length>0);
+ if(interactable.length<options.length)return setStatus('所选人物缺少能互动的已有联系人，无法生成每条至少五条评论的历史朋友圈','error');
+ const session=captureSession(ctx),instructions=nodes.momentHistoryInstructions.value.trim().slice(0,1000);
  momentHistoryGenerating=true;momentHistoryMessage='';renderMomentHistory();
  try{
+  const authorBrief=options.map(p=>({id:p.id,name:p.name,character:p.details,priorPosts:p.prior,
+   allowedCommenters:p.linked,photoCatalog:p.allowedPhotos.map(photo=>({id:photo.id,title:photo.title,description:String(photo.description||'').slice(0,100)}))}));
   const raw=await phoneGenerate(ctx,{
-   task:'autonomy',maxTokens:Math.min(7000,1200+count*800),
-   systemPrompt:'为故事世界人物编写曾经公开给朋友圈好友的历史动态；只输出严格合法JSON，不能代替 user 言行，不能发明重大未发生事实。人与人之间的互动仅限明确建立好友关系的人物。',
+   task:'autonomy',maxTokens:Math.min(13000,1700+count*1600),
+   systemPrompt:'你根据当前角色设定编写过去已发生的朋友圈。严格只返回 JSON，不替用户发言、心理或参与评论，不虚构重大事件与未知好友关系。各角色保持各自语言风格。',
    prompt:[{role:'user',content:[
-    '当前剧情时间：'+r.storyTime,'作者：'+actor.name,'明确人设：'+details,
-    '此前朋友圈，避免重复：'+prior,'本次要求：'+(settings||'自然生活日常'),
-    '可互动的人物（ID：姓名）：'+JSON.stringify(linked),
-    '可选朋友圈配图：'+JSON.stringify(photoGuide)+'。只有内容确实涉及所选照片主题才能附带 photoId；没有合适配图就发纯文字。照片无需来自本人，但禁止拿别人照片冒充本人自拍。',
-    '写 '+count+' 条当前剧情时间之前、日期错开、符合人物设定的朋友圈。熟人互动量合理，可以没有点赞评论；不用编造大量陌生粉丝。',
-    '仅返回 JSON：{"posts":[{"text":"正文","daysAgo":2,"likes":["角色ID"],"photoId":"可选相册照片ID","comments":[{"actorId":"角色ID","text":"自然评论"}]}]}。daysAgo 为1至90的整数，点赞与评论只能使用允许互动的人物 ID；输出不能包含 user 的未写明言行。'
-   ].join('\n')}]},readData(ctx,owner));
+    '小手机当前剧情时间：'+rootData.storyTime,
+    '模式：'+(randomMode?'随机多个已有联系人':'指定单个角色'),
+    '作者资料和可互动联系人：'+JSON.stringify(authorBrief),
+    '生成 '+count+' 条此前不同日期的朋友圈，每条至少5条真实且内容不同的评论（可由同一联系人多次回复或由作者回复，不需5个不同人物）。',
+    '每条必须指定上面的 authorId；随机模式需要覆盖尽量多位作者并交错分配；单人模式只使用指定作者。',
+    '每条评论只能由该作者的 allowedCommenters 或作者本人发表；作者本人只能作为回复者，不得自说自话凑数。评论可设置 replyToIndex 指向本帖更早评论的索引（0开始）。',
+    '照片必须使用该作者已允许的 photoCatalog 中匹配内容的 photoId，否则留空。不得拿别人的照片冒充自拍。',
+    '本次补充要求：'+(instructions||'日常自然生活'),
+    'JSON格式：{"posts":[{"authorId":"作者ID","text":"正文","daysAgo":2,"likes":["允许点赞的联系人ID"],"photoId":"","comments":[{"actorId":"联系人ID或作者ID","text":"评论正文","replyToIndex":0}]}]}',
+    'daysAgo为1到90。每条comments最少5条，必须至少有一位非作者的联系人评论，其他评论互相回应并自然真实。'
+   ].join('\n')}]},readData(ctx,selectedId||PRIMARY_CONTACT_ID));
   if(!sameSession(session))return;
-  const rawText=stripModelReasoning(String(raw||'')),a=rawText.indexOf('{'),b=rawText.lastIndexOf('}');
-  if(a<0||b<=a)throw Error('模型未返回可解析 JSON');
-  const parsed=JSON.parse(rawText.slice(a,b+1));
-  const posts=Array.isArray(parsed.posts)?parsed.posts.slice(0,count):[];
-  const allowed=new Map(linked.map(p=>[p.id,p.name])),created=[];
+  const cleaned=stripModelReasoning(String(raw||'')),start=cleaned.indexOf('{'),end=cleaned.lastIndexOf('}');
+  if(start<0||end<=start)throw Error('模型没有返回有效的 JSON');
+  const parsed=JSON.parse(cleaned.slice(start,end+1));
+  const posts=Array.isArray(parsed.posts)?parsed.posts.slice(0,count):[],created=[];
+  const optionsById=new Map(options.map(x=>[x.id,x]));
   for(const item of posts){
-   const text=String(item?.text||'').trim().slice(0,1000);
-   if(!text)continue;
-   const date=historicTime(r.storyTime,Math.max(1,Math.min(90,Number(item.daysAgo)||1)));
-   const id='moment-'+Date.now()+'-'+Math.random().toString(36).slice(2,8);
+   const author=optionsById.get(item?.authorId)||(randomMode?null:options[0]);if(!author)continue;
+   const text=String(item.text||'').trim().slice(0,1000);if(!text)continue;
+   const date=historicTime(rootData.storyTime,Math.max(1,Math.min(90,Number(item.daysAgo)||1)));
+   if(!date)continue;
+   const allowed=new Map(author.linked.map(p=>[p.id,p.name]));
+   const comments=[];
+   for(const c of (Array.isArray(item.comments)?item.comments:[]).slice(0,22)){
+    if(!c?.text||(!allowed.has(c.actorId)&&c.actorId!==author.id))continue;
+    const parent=Number.isInteger(c.replyToIndex)&&c.replyToIndex>=0?comments[c.replyToIndex]:null;
+    if(c.actorId===author.id&&!parent)continue;
+    comments.push({id:'comment-'+Math.random().toString(36).slice(2,9),
+     actorId:c.actorId,author:c.actorId===author.id?author.name:allowed.get(c.actorId),
+     text:String(c.text).trim().slice(0,120),...(parent?{replyTo:parent.id}:{}),at:date});
+   }
+   if(comments.length<5||!comments.some(c=>c.actorId!==author.id))continue;
    const likes=(Array.isArray(item.likes)?item.likes:[]).filter(v=>allowed.has(v))
     .map(actorId=>({actorId,name:allowed.get(actorId),at:date}));
-   const comments=(Array.isArray(item.comments)?item.comments:[]).filter(c=>allowed.has(c.actorId)&&c.text)
-    .slice(0,10).map(c=>({id:'comment-'+Math.random().toString(36).slice(2,9),actorId:c.actorId,
-     author:allowed.get(c.actorId),text:String(c.text).slice(0,120),at:date}));
-   const image=allowedPhotos.find(p=>p.id===item.photoId)?.image;
-   created.push({id,authorId:owner,author:actor.name,text,...(image?{image}:{}),storyTime:date,likes,comments,historical:true});
+   const image=author.allowedPhotos.find(p=>p.id===item.photoId)?.image;
+   created.push({id:'moment-'+Date.now()+'-'+Math.random().toString(36).slice(2,8),
+    authorId:author.id,author:author.name,text,...(image?{image}:{}),
+    storyTime:date,likes,comments,historical:true});
   }
-  if(!created.length)throw Error('模型没有返回可用的朋友圈正文');
+  if(created.length<count)throw Error('模型只生成 '+created.length+' 条符合评论与身份要求的动态（目标 '+count+' 条），本次未保存；可重新尝试');
   await editMoments(ctx,data=>{data.moments=[...(data.moments||[]),...created].slice(-130);return true;});
-  momentHistoryMessage='已补录 '+created.length+' 条历史朋友圈';
+  momentHistoryMessage='已生成 '+created.length+' 条历史朋友圈';
   notifyInteraction(momentHistoryMessage,'success');
- }catch(error){momentHistoryMessage='生成历史朋友圈失败：'+String(error.message||error);notifyInteraction(momentHistoryMessage,'error');}
+ }catch(error){momentHistoryMessage='历史朋友圈生成失败：'+String(error.message||error);notifyInteraction(momentHistoryMessage,'error');}
  finally{momentHistoryGenerating=false;if(sameSession(session))renderMomentHistory();}
 }
 async function postMoment() {
