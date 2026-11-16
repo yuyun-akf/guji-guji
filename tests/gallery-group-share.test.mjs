@@ -11,7 +11,7 @@ const parseModule=source=>new Function(source.replace(/^export /gm,''));
 
 test('all new JS modules parse and release version is consistent',()=>{
  for(const source of [code,weibo,album,groups])assert.doesNotThrow(()=>parseModule(source));
- assert.equal(manifest.version,'0.27.0');
+ assert.equal(manifest.version,'0.33.0');
  assert.match(code,/album\.js\?v=0\.27\.0/);
  assert.match(code,/groups\.js\?v=0\.27\.0/);
  assert.match(code,/weibo\.js\?v=0\.27\.0/);
