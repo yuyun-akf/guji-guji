@@ -1,7 +1,7 @@
 /* 咕叽咕机共享素材库：角色卡人物相册与现代世界公共相册。 */
 export function createAlbumModule(api){
  const el=(tag,cls='',value='')=>{const n=document.createElement(tag);if(cls)n.className=cls;if(value)n.textContent=value;return n;};
- const state={level:'root',owner:'',folder:'',mode:'files',busy:false,message:'',editing:'',selectedFiles:[],fileErrors:new Map(),imageCache:new Map(),pending:null,navReset:false,dialog:null,warningShown:false};
+ const state={level:'root',owner:'',folder:'',mode:'files',busy:false,message:'',editing:'',selectedFiles:[],fileErrors:new Map(),fileChecks:new Map(),imageCache:new Map(),pending:null,navReset:false,dialog:null,warningShown:false};
  const host=()=>api.getNodes()?.albumContent;
  const people=()=>api.galleryPeople();
  const worldId='world';
@@ -47,17 +47,17 @@ export function createAlbumModule(api){
   const max=state.mode==='manual'?1:state.mode==='ai'?10:70;
   for(const [index,file] of state.selectedFiles.entries()){
    const error=candidateError(file)||(index>=max?'本次最多 '+max+' 个文件':'');
-   if(error)state.fileErrors.set(file,error);
-   else if(!state.imageCache.has(file))state.fileErrors.delete(file);
+   if(error)state.fileChecks.set(file,error);
+   else state.fileChecks.delete(file);
   }
-  return state.selectedFiles.some(file=>state.fileErrors.has(file));
+  return state.selectedFiles.some(file=>state.fileErrors.has(file)||state.fileChecks.has(file));
  }
  const warningText='请勿上传涉及个人隐私、真人画师作品或未经授权的图片；建议只上传本人有权使用的 AI 生成图片。';
  const safetyDisabled=()=>api.safetyWarningDisabled?.()===true;
- function enterImport(){state.dialog=null;state.level='import';state.mode='files';state.selectedFiles=[];state.fileErrors.clear();state.imageCache.clear();state.navReset=true;render();}
+ function enterImport(){state.dialog=null;state.level='import';state.mode='files';state.selectedFiles=[];state.fileErrors.clear();state.fileChecks.clear();state.imageCache.clear();state.navReset=true;render();}
  function requestImport(){if(!safetyDisabled()&&!state.warningShown){state.dialog={type:'warning'};render();}else enterImport();}
  function openOptions(){state.dialog={type:'options'};render();}
- function endPhoneSession(){state.warningShown=false;state.dialog=null;state.selectedFiles=[];state.fileErrors.clear();state.imageCache.clear();}
+ function endPhoneSession(){state.warningShown=false;state.dialog=null;state.selectedFiles=[];state.fileErrors.clear();state.fileChecks.clear();state.imageCache.clear();}
  function exportAlbumTemplate(){
   const owners=[{id:'world',name:'世界相册'},...people().map(p=>({id:p.id,name:p.name}))];
   const template={
@@ -320,7 +320,7 @@ export function createAlbumModule(api){
    const preview=el('div','lp-album-preview');preview.dataset.albumPreview='true';
    validateCandidateFiles();
    readFiles().forEach((file,index)=>{
-    const error=state.fileErrors.get(file);
+    const error=state.fileChecks.get(file)||state.fileErrors.get(file);
     const entry=el('div','lp-album-file-name'+(error?' lp-album-invalid':''));
     const details=el('span','lp-album-file-details');
     details.append(el('strong','',file.name));
@@ -495,12 +495,12 @@ export function createAlbumModule(api){
   if(type==='folder'){state.folder=id;state.level='folder';state.editing='';state.navReset=true;render();return true;}
   if(type==='import'){requestImport();return true;}
   if(type==='mode'){
-   if(state.mode!==id){state.mode=id;state.selectedFiles=[];state.fileErrors.clear();state.imageCache.clear();}
+   if(state.mode!==id){state.mode=id;state.selectedFiles=[];state.fileErrors.clear();state.fileChecks.clear();state.imageCache.clear();}
    render();return true;
   }
   if(type==='removeCandidate'){
    const index=Number(id),file=state.selectedFiles[index];
-   if(file){state.selectedFiles.splice(index,1);state.fileErrors.delete(file);state.imageCache.delete(file);}
+   if(file){state.selectedFiles.splice(index,1);state.fileErrors.delete(file);state.fileChecks.delete(file);state.imageCache.delete(file);}
    render();return true;
   }
   if(type==='removeReviewCandidate'){
@@ -512,7 +512,7 @@ export function createAlbumModule(api){
    if(original){
     const fileIndex=state.selectedFiles.findIndex(f=>f===original||fileKey(f)===fileKey(original));
     if(fileIndex>=0){
-     const file=state.selectedFiles.splice(fileIndex,1)[0];state.fileErrors.delete(file);state.imageCache.delete(file);
+     const file=state.selectedFiles.splice(fileIndex,1)[0];state.fileErrors.delete(file);state.fileChecks.delete(file);state.imageCache.delete(file);
     }
    }
    if(!pending.images.length){state.pending=null;state.level='import';}
@@ -598,7 +598,7 @@ export function createAlbumModule(api){
   if(state.level==='review'){
    state.level='import';state.pending=null;state.navReset=true;
   }else if(state.level==='folder'||state.level==='import'){
-   state.level='owner';state.pending=null;state.selectedFiles=[];state.fileErrors.clear();state.imageCache.clear();state.editing='';state.folder='';state.navReset=true;
+   state.level='owner';state.pending=null;state.selectedFiles=[];state.fileErrors.clear();state.fileChecks.clear();state.imageCache.clear();state.editing='';state.folder='';state.navReset=true;
   }else{state.level='root';state.owner='';state.folder='';state.navReset=true;}
   render();return true;
  }
