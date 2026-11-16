@@ -5258,7 +5258,11 @@ function openMomentEditDialog(ctx,post,action='edit'){
   const result=await editMoments(ctx,data=>{
    const idx=(data.moments||[]).findIndex(p=>p.id===post.id&&p.authorId==='user');
    if(idx<0)return false;
-   if(action==='delete')data.moments.splice(idx,1);
+   if(action==='delete'){
+    data.moments.splice(idx,1);
+    data.pendingMomentReplies=(data.pendingMomentReplies||[]).filter(p=>p.postId!==post.id);
+    data.momentInteractionSeen=(data.momentInteractionSeen||[]).filter(id=>id!==post.id);
+   }
    else{data.moments[idx].text=textArea.value.trim().slice(0,1000);data.moments[idx].image=picture;}
    return true;
   });
@@ -5289,7 +5293,7 @@ async function toggleMomentLike(id) {
         post.likes=Array.isArray(post.likes)?post.likes:[];
         const exists=post.likes.some(like=>like.actorId===MOMENT_USER_ID);
         post.likes=post.likes.filter(like=>like.actorId!==MOMENT_USER_ID);
-        if(!exists)post.likes.push({actorId:MOMENT_USER_ID,name:currentPersona(ctx).name,at:new Date().toISOString()});
+        if(!exists)post.likes.push({actorId:MOMENT_USER_ID,name:phoneUserDisplayName(ctx),at:new Date().toISOString()});
         return true;
     });
 }
@@ -5300,7 +5304,7 @@ async function addMomentComment(id,text,replyTo='') {
         const post=(data.moments||[]).find(item=>item.id===id);if(!post)return false;
         post.comments=Array.isArray(post.comments)?post.comments:[];
         const comment={id:'comment-'+Date.now()+'-'+Math.random().toString(36).slice(2,8),
-            actorId:MOMENT_USER_ID,author:currentPersona(ctx).name,text:message,
+            actorId:MOMENT_USER_ID,author:phoneUserDisplayName(ctx),text:message,
             replyTo:post.comments.some(comment=>comment.id===replyTo)?replyTo:'',at:new Date().toISOString()};
         post.comments.push(comment);
         if(socialConfig(data).momentInteractions&&momentBatchActors(ctx,post,[comment]).length){
@@ -5320,7 +5324,7 @@ async function repostMoment(id) {
         data.moments||=[];
         const source=data.moments.find(item=>item.id===id);if(!source)return false;
         data.moments.push({id:'moment-'+Date.now()+'-'+Math.random().toString(36).slice(2,8),
-            authorId:MOMENT_USER_ID,author:currentPersona(ctx).name,text:caption.slice(0,1000),
+            authorId:MOMENT_USER_ID,author:phoneUserDisplayName(ctx),text:caption.slice(0,1000),
             repostOf:{id:source.id,author:source.author,text:String(source.text||'').slice(0,360)},
             storyTime:data.storyTime,createdAt:new Date().toISOString()});
         data.moments=data.moments.slice(-100);return true;
