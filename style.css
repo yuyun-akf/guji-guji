@@ -5101,3 +5101,14 @@
  margin:0!important;max-width:min(49vw,190px);max-height:190px;
  border-radius:13px;
 }
+
+/* Override the theme's high-specificity bubble corners for image-only stickers. */
+#st-little-phone-root .lp-message.lp-theirs .lp-bubble.lp-sticker-only,
+#st-little-phone-root .lp-message.lp-mine .lp-bubble.lp-sticker-only{
+ padding:0!important;border:0!important;border-radius:0!important;
+ background:transparent!important;box-shadow:none!important;
+}
+#st-little-phone-root .lp-message.lp-theirs .lp-bubble.lp-sticker-only .lp-chat-image,
+#st-little-phone-root .lp-message.lp-mine .lp-bubble.lp-sticker-only .lp-chat-image{
+ margin:0!important;border-radius:13px!important;
+}
