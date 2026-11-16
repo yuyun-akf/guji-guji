@@ -971,9 +971,59 @@ export function createWeiboModule(api) {
   parent.append(scanner);
  }
 
+ // Preserve the scroll position and visible-post anchor per tab/detail. Returning
+ // from a post must not reconstruct the list at the first post.
+ function currentViewKey(){
+  if(state.adminHistoryAccount)return 'history:'+state.adminHistoryAccount;
+  if(state.profileAccount)return 'profile:'+state.profileAccount;
+  if(state.detail)return 'detail:'+state.detail;
+  if(state.topic)return 'topic:'+(state.topic.key||state.topic.title);
+  return 'tab:'+state.tab+(state.subview?':'+state.subview:'');
+ }
+ function scrollArea(){
+  return nodes()?.weiboFeed?.parentElement||null;
+ }
+ function rememberCurrentView(){
+  const surface=scrollArea();
+  if(!surface||!renderedView||renderedScope!==state.scope)return;
+  const rect=surface.getBoundingClientRect?.();
+  let anchor=null;
+  if(rect){
+   for(const card of surface.querySelectorAll?.('[data-wb-card-id]')||[]){
+    const box=card.getBoundingClientRect?.();
+    if(box&&box.bottom>=rect.top+10){
+     anchor={id:card.dataset.wbCardId,relativeTop:box.top-rect.top};
+     break;
+    }
+   }
+  }
+  scrollViews.set(renderedView,{top:surface.scrollTop,anchor});
+ }
+ function restoreCurrentView(view,from){
+  const surface=scrollArea();
+  if(!surface)return;
+  const record=scrollViews.get(view);
+  const top=from===view?record?.top:(record?.top??0);
+  const apply=()=>{
+   if(state.scope!==renderedScope||currentViewKey()!==view)return;
+   surface.scrollTop=top||0;
+   if(record?.anchor&&view.startsWith('tab:')){
+    const posts=[...surface.querySelectorAll('[data-wb-card-id]')];
+    const target=posts.find(card=>card.dataset.wbCardId===record.anchor.id);
+    if(target){
+     const container=surface.getBoundingClientRect();
+     surface.scrollTop+=target.getBoundingClientRect().top-container.top-record.anchor.relativeTop;
+    }
+   }
+  };
+  apply();
+  if(typeof requestAnimationFrame==='function')requestAnimationFrame(apply);
+ }
  function render(){
   const n=nodes();if(!n?.weiboFeed)return;
   reset();
+  const from=renderedView;rememberCurrentView();
+  const view=currentViewKey();
   const pageNames={mine:'我的动态',interactions:'我的互动',following:'关注列表',profile:'个人资料',settings:'群星设置',accountEditor:'编辑群星账号'};
   if(n.title)n.title.textContent=state.adminHistoryAccount?'历史帖管理':state.profileAccount?'个人主页':state.detail?'动态详情':state.topic?'热搜详情':state.tab==='me'&&state.subview?(pageNames[state.subview]||'群星'):'群星';
   const generating=state.loading||state.hotLoading;
@@ -1021,6 +1071,7 @@ export function createWeiboModule(api) {
    }
    n.weiboGenerate.hidden=true;
    n.weiboRefreshBox.append(n.weiboGenerate);
+   renderedView=view;renderedScope=state.scope;restoreCurrentView(view,from);
    return;
   }
   if(state.tab==='home'){
@@ -1048,6 +1099,7 @@ export function createWeiboModule(api) {
   const target={home:n.weiboFeed,discover:n.weiboHot,nearby:n.weiboNearby}[state.tab];
   if(target){n.weiboGenerate.hidden=false;n.weiboGenerate.classList.add('lp-wb-refresh-button');target.append(n.weiboGenerate);}
   else{n.weiboGenerate.hidden=true;n.weiboRefreshBox.append(n.weiboGenerate);}
+  renderedView=view;renderedScope=state.scope;restoreCurrentView(view,from);
  }
 
  async function followPost(p,enabled){
@@ -1503,7 +1555,6 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
   if(t==='me'&&state.tab==='me')state.subview='';
   if(t!=='me')state.subview='';
   state.tab=t;state.detail='';state.topic=null;state.profileAccount='';state.adminHistoryAccount='';state.sharingId='';render();
-  if(nodes()?.weiboFeed?.parentElement)nodes().weiboFeed.parentElement.scrollTop=0;
   if(t==='home'&&!state.attempted.world){state.attempted.world=true;void generate('home');}
   if(t==='nearby'&&!state.attempted.nearby){
    state.attempted.nearby=true;void generate('nearby');
@@ -1601,10 +1652,11 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
  }
  function open(options={}){
   reset();
-  state.detail='';state.topic=null;state.subview='';
-  // All feeds now survive entire-phone closing. Only switching to a different
-  // story chat loads its own saved list; manual refresh replaces the current tab.
-  state.tab=options.tab==='discover'?'discover':'home';
+  // Reopening the same app is not a refresh. Preserve its selected tab
+  // and last scroll position unless an explicit destination was supplied.
+  if(options.tab&&['home','discover','nearby','compose','me'].includes(options.tab)){
+   state.tab=options.tab;state.detail='';state.topic=null;state.profileAccount='';
+  }
   render();
   if(state.tab==='discover'){
    if(options.confirmed&&!state.trends.length&&!state.hotLoading)
