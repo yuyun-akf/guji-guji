@@ -68,7 +68,7 @@ let bridgeNeedsSync=false;
 const bridgeListeners=[];
 let autoRequestWorking = false;
 let momentImageDraft = '';
-let momentHistoryGenerating=false,momentHistoryMessage='';
+let momentHistoryGenerating=false,momentHistoryMessage='',momentHistoryPhotoDraft='';
 let pickerState = null;
 let pickerReturnTimer = null;
 let pickerGuardUntil = 0;
@@ -5149,6 +5149,37 @@ async function tickMomentInteractions() {
     await runMomentBatch(post.id,false);
 }
 
+async function importHistoricMomentPhoto(file){
+ if(!file)return;
+ if(!['image/png','image/jpeg','image/webp'].includes(file.type)||file.size>12*1024*1024)
+  return setStatus('历史朋友圈配图请使用12MB以内的JPG、PNG或WebP','error');
+ const session=captureSession(context());
+ try{
+  const raw=await new Promise((resolve,reject)=>{
+   const reader=new FileReader();reader.onload=()=>resolve(reader.result);
+   reader.onerror=()=>reject(Error('图片读取失败'));reader.readAsDataURL(file);
+  });
+  const image=await new Promise((resolve,reject)=>{
+   const img=new Image();img.onload=()=>resolve(img);img.onerror=()=>reject(Error('图片无法解码'));img.src=raw;
+  });
+  const canvas=document.createElement('canvas'),scale=Math.min(1,920/Math.max(image.width,image.height));
+  canvas.width=Math.max(1,Math.round(image.width*scale));
+  canvas.height=Math.max(1,Math.round(image.height*scale));
+  canvas.getContext('2d').drawImage(image,0,0,canvas.width,canvas.height);
+  let output='';
+  for(const quality of [.78,.6,.45]){
+   const next=canvas.toDataURL('image/jpeg',quality);
+   if(next.length<=450000){output=next;break;}
+  }
+  if(!output)throw Error('配图压缩后仍然过大');
+  if(!sameSession(session))return;
+  momentHistoryPhotoDraft=output;
+  const preview=nodes?.momentHistoryPhotoPreview;
+  if(preview){
+   const img=document.createElement('img');img.src=output;img.alt='历史朋友圈待上传图片';preview.replaceChildren(img);
+  }
+ }catch(e){setStatus('导入历史朋友圈图片失败：'+String(e.message||e),'error');}
+}
 function historicTime(source,days=1){
  const m=String(source||'').match(/^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d)/);
  if(!m)return '';
@@ -5179,6 +5210,10 @@ function renderMomentHistory(){
   const article=document.createElement('div');article.className='lp-moment-history-item';
   const title=document.createElement('strong');title.textContent=(p.author||'角色')+' · '+String(p.storyTime||'').replace('T',' ').slice(0,16);
   const body=document.createElement('p');body.textContent=p.text||'（图片动态）';
+  if(p.image&&ALBUM_IMAGE_RE.test(p.image)){
+   const img=document.createElement('img');img.src=p.image;img.alt='历史朋友圈配图';
+   article.append(img);
+  }
   const actions=document.createElement('div');actions.className='lp-moment-history-actions';
   for(const [type,label] of [['edit','编辑'],['delete','删除']]){
    const b=document.createElement('button');b.type='button';b.textContent=label;
@@ -5217,17 +5252,17 @@ async function manualHistoricMoment(){
  const ctx=context(),id=nodes.momentHistoryOwner.value,
   text=nodes.momentHistoryText.value.trim().slice(0,1000),
   time=nodes.momentHistoryTime.value;
- if(!text)return setStatus('请填写历史朋友圈正文','error');
+ if(!text&&!momentHistoryPhotoDraft)return setStatus('请填写历史朋友圈正文或添加配图','error');
  if(!historicTime(time,0)||Date.parse(time)>=Date.parse(readRootData(ctx).storyTime))
   return setStatus('历史朋友圈发布时间必须早于当前剧情','error');
  const author=id==='user'?currentPersona(ctx).name:contactDisplayName(ctx,id);
  const added=await editMoments(ctx,data=>{
   data.moments=Array.isArray(data.moments)?data.moments:[];
   data.moments.push({id:'moment-'+Date.now()+'-'+Math.random().toString(36).slice(2,8),
-   authorId:id,author,text,storyTime:time,comments:[],likes:[],historical:true});
+   authorId:id,author,text,...(momentHistoryPhotoDraft?{image:momentHistoryPhotoDraft}:{}),storyTime:time,comments:[],likes:[],historical:true});
   data.moments=data.moments.slice(-130);return true;
  });
- if(added){nodes.momentHistoryText.value='';momentHistoryMessage='历史朋友圈已补录';renderMomentHistory();notifyInteraction(momentHistoryMessage,'success');}
+ if(added){nodes.momentHistoryText.value='';momentHistoryPhotoDraft='';nodes?.momentHistoryPhotoPreview?.replaceChildren();momentHistoryMessage='历史朋友圈已补录';renderMomentHistory();notifyInteraction(momentHistoryMessage,'success');}
 }
 async function generateHistoricMoments(){
  if(momentHistoryGenerating||busy)return;
@@ -5240,6 +5275,9 @@ async function generateHistoricMoments(){
  const details=[char?.data?.description,char?.data?.personality,char?.description,char?.personality,
   r.contacts.find(x=>x.id===owner)?.description].filter(Boolean).join('\n').slice(0,2300);
  const prior=(r.moments||[]).filter(p=>momentAuthorId(ctx,p)===owner).slice(-10).map(p=>p.text).join('；');
+ const allowedPhotos=photosForActor(owner,'group',ctx).filter(p=>p.folder!=='表情包').slice(0,16);
+ const photoGuide=allowedPhotos.map(p=>({id:p.id,owner:p.ownerName||'世界',
+  title:p.title||'',description:String(p.description||'').slice(0,115)}));
  const post={authorId:owner,author:actor.name,comments:[]};
  const linked=momentCandidates(ctx,post).slice(0,8).map(id=>({id,name:contactDisplayName(ctx,id)}));
  const session=captureSession(ctx);
@@ -5252,8 +5290,9 @@ async function generateHistoricMoments(){
     '当前剧情时间：'+r.storyTime,'作者：'+actor.name,'明确人设：'+details,
     '此前朋友圈，避免重复：'+prior,'本次要求：'+(settings||'自然生活日常'),
     '可互动的人物（ID：姓名）：'+JSON.stringify(linked),
+    '可选朋友圈配图：'+JSON.stringify(photoGuide)+'。只有内容确实涉及所选照片主题才能附带 photoId；没有合适配图就发纯文字。照片无需来自本人，但禁止拿别人照片冒充本人自拍。',
     '写 '+count+' 条当前剧情时间之前、日期错开、符合人物设定的朋友圈。熟人互动量合理，可以没有点赞评论；不用编造大量陌生粉丝。',
-    '仅返回 JSON：{"posts":[{"text":"正文","daysAgo":2,"likes":["角色ID"],"comments":[{"actorId":"角色ID","text":"自然评论"}]}]}。daysAgo 为1至90的整数，点赞与评论只能使用允许互动的人物 ID；输出不能包含 user 的未写明言行。'
+    '仅返回 JSON：{"posts":[{"text":"正文","daysAgo":2,"likes":["角色ID"],"photoId":"可选相册照片ID","comments":[{"actorId":"角色ID","text":"自然评论"}]}]}。daysAgo 为1至90的整数，点赞与评论只能使用允许互动的人物 ID；输出不能包含 user 的未写明言行。'
    ].join('\n')}]},readData(ctx,owner));
   if(!sameSession(session))return;
   const rawText=stripModelReasoning(String(raw||'')),a=rawText.indexOf('{'),b=rawText.lastIndexOf('}');
@@ -5271,7 +5310,8 @@ async function generateHistoricMoments(){
    const comments=(Array.isArray(item.comments)?item.comments:[]).filter(c=>allowed.has(c.actorId)&&c.text)
     .slice(0,10).map(c=>({id:'comment-'+Math.random().toString(36).slice(2,9),actorId:c.actorId,
      author:allowed.get(c.actorId),text:String(c.text).slice(0,120),at:date}));
-   created.push({id,authorId:owner,author:actor.name,text,storyTime:date,likes,comments,historical:true});
+   const image=allowedPhotos.find(p=>p.id===item.photoId)?.image;
+   created.push({id,authorId:owner,author:actor.name,text,...(image?{image}:{}),storyTime:date,likes,comments,historical:true});
   }
   if(!created.length)throw Error('模型没有返回可用的朋友圈正文');
   await editMoments(ctx,data=>{data.moments=[...(data.moments||[]),...created].slice(-130);return true;});
@@ -7464,6 +7504,9 @@ function makeUI() {
             <label>发布人物<select data-lp="momentHistoryOwner"></select></label>
             <label>发布时间（手动补录）<input data-lp="momentHistoryTime" type="datetime-local" /></label>
             <label>朋友圈正文<textarea data-lp="momentHistoryText" rows="3" maxlength="1000" placeholder="写一条已发生的过去动态"></textarea></label>
+            <label>配图（可选）<input type="file" data-lp="momentHistoryPhoto" accept="image/png,image/jpeg,image/webp" /></label>
+            <div data-lp="momentHistoryPhotoPreview" class="lp-moment-history-photo-preview"></div>
+            <button type="button" data-lp="momentHistoryRemovePhoto">移除补录配图</button>
             <button type="button" data-lp="momentHistoryManual">手动补录这条朋友圈</button>
             <label>AI 生成额外要求<textarea data-lp="momentHistoryInstructions" rows="3" placeholder="例如生成三条日常朋友圈，言行符合人物设定，不虚构重大事件"></textarea></label>
             <label>一次生成几条<select data-lp="momentHistoryCount"><option value="1">1 条</option><option value="3" selected>3 条</option><option value="5">5 条</option></select></label>
@@ -8120,7 +8163,7 @@ function mount() {
         'albumContent','groupsContent','shareTargets','sharePreview',
         'weiboGenerate','weiboFeedback','weiboFeed','weiboHot','weiboNearby','weiboCompose','weiboMe','weiboDetail','weiboTabs','weiboComposeText','weiboPublish','weiboDetailBack','weiboRefreshBox',
         'desktopSortList','clockMode','clockRate','clockContinueClosed','clockCustomFields','clockSave','lockEnabled','lockSaveEnabled','notification','inlineNotification','calendarPrev','calendarNext','calendarHeading','calendarViews','calendarGrid','calendarSelected','calendarSummary','calendarSelectedTime','calendarStoryToday','calendarRealToday','calendarSaveTime','calendarExactSave',
-        'momentsPost', 'momentsText', 'momentsFeed', 'momentFeedback','momentsPreview','momentImageUpload','momentRemovePhoto','momentCamera','momentComposer','momentHistoryOpen','momentHistoryOwner','momentHistoryTime','momentHistoryText','momentHistoryManual','momentHistoryInstructions','momentHistoryCount','momentHistoryGenerate','momentHistoryStatus','momentHistoryList','myBio','myBioEdit','profileBio','profileBioEdit','contactMomentList','myAvatarUpload','myAvatarFallback','myAvatarStatus','myIdentity', 'myAvatar', 'myPersona', 'messageBannerToggle','messageBannerStatus','autoMessagesMode','autoMessagesDays','autoMomentsMode','autoMomentsDays','relationAutoSync','phoneInPast','characterRequests','momentInteractions','autonomyStatus','autonomyFeedback','saveAutonomy','rescanRelations','testAutonomy', 'stickerUpload','stickerPackUpload', 'stickerStatus', 'stickerLibrary',
+        'momentsPost', 'momentsText', 'momentsFeed', 'momentFeedback','momentsPreview','momentImageUpload','momentRemovePhoto','momentCamera','momentComposer','momentHistoryOpen','momentHistoryOwner','momentHistoryTime','momentHistoryText','momentHistoryPhoto','momentHistoryPhotoPreview','momentHistoryRemovePhoto','momentHistoryManual','momentHistoryInstructions','momentHistoryCount','momentHistoryGenerate','momentHistoryStatus','momentHistoryList','myBio','myBioEdit','profileBio','profileBioEdit','contactMomentList','myAvatarUpload','myAvatarFallback','myAvatarStatus','myIdentity', 'myAvatar', 'myPersona', 'messageBannerToggle','messageBannerStatus','autoMessagesMode','autoMessagesDays','autoMomentsMode','autoMomentsDays','relationAutoSync','phoneInPast','characterRequests','momentInteractions','autonomyStatus','autonomyFeedback','saveAutonomy','rescanRelations','testAutonomy', 'stickerUpload','stickerPackUpload', 'stickerStatus', 'stickerLibrary',
         'friendLabel', 'friendActions','profileAvatar','profileAvatarAction','profileAvatarSheet','profileChooseAvatar','profileAvatarCancel','profileRoleDialog','profileRoleOpen','profileRoleClose','profileRoleTitle','profileName','profileDescription','contactEvidence','contactExchange','contactLinks','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcAiScanButton','npcClearScanButton','npcScanState','npcCandidates','npcSaveCandidates','storyPeopleList','viewPrimaryContact','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','resetCharAvatar',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
@@ -8266,6 +8309,13 @@ function mount() {
     });
     nodes.momentHistoryOpen.addEventListener('click',()=>setScreen('momentHistory'));
     nodes.momentHistoryManual.addEventListener('click',()=>void manualHistoricMoment());
+    nodes.momentHistoryPhoto.addEventListener('change',event=>{
+      const file=event.target.files?.[0];event.target.value='';
+      if(file)void importHistoricMomentPhoto(file);
+    });
+    nodes.momentHistoryRemovePhoto.addEventListener('click',()=>{
+      momentHistoryPhotoDraft='';nodes.momentHistoryPhotoPreview.replaceChildren();
+    });
     nodes.momentHistoryGenerate.addEventListener('click',()=>void generateHistoricMoments());
     nodes.momentHistoryList.addEventListener('click',event=>{
       const b=event.target.closest('[data-moment-history-action]');
