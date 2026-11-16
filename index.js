@@ -2554,27 +2554,44 @@ function contactDisplayName(ctx,id=activeContactId) {
 
 // A person's own contacts are not the user's phone contacts. These selections
 // are keyed by character name and shared across saves of the same role card.
+function roleFriendCatalog(ctx=context()){
+ const people=galleryPeople(ctx).filter(p=>p.id!=='user');
+ const names=new Set(people.map(p=>p.name));
+ for(const character of readSharedNpcScan(ctx)){
+  const name=String(character?.name||'').trim();
+  if(!name||names.has(name))continue;
+  people.push({id:'scanned:'+name,name,description:String(character.description||''),scanned:true});
+  names.add(name);
+ }
+ return people;
+}
 function roleFriendsStore(ctx=context()){
  const key=qunxingAccountCardKey(ctx);
  return ctx?.extensionSettings?.[SETTINGS_KEY]?.roleFriendsByCard?.[key]||{};
 }
 function roleFriendsOf(ctx,id){
- const owner=galleryPeople(ctx).find(p=>p.id===id);
+ const owner=roleFriendCatalog(ctx).find(p=>p.id===id);
  const value=owner&&roleFriendsStore(ctx)[owner.name];
  return {known:Array.isArray(value?.known)?value.known.filter(v=>typeof v==='string'):[],
   custom:Array.isArray(value?.custom)?value.custom.filter(p=>p&&typeof p.name==='string'):[]};
 }
 function roleFriendName(ctx,id){
- const known=galleryPeople(ctx).find(p=>p.id===id);return known?.name||'';
+ const known=roleFriendCatalog(ctx).find(p=>p.id===id);return known?.name||'';
 }
 function roleFriendGuest(ctx,id){
- const match=String(id||'').match(/^(rolefriend|ambient)\|([^|]+)\|(\d+)$/);
+ const match=String(id||'').match(/^(rolefriend|roleknown|ambient)\|([^|]+)\|(\d+)$/);
  if(!match)return null;
  const ownerName=decodeURIComponent(match[2]);
  if(match[1]==='ambient')return {name:'其他熟人',description:'与朋友圈作者有合理往来的未详细设定人物，可以由模型生成姓名及日常身份',ambient:true};
- const owner=galleryPeople(ctx).find(p=>p.name===ownerName);
- const person=owner&&roleFriendsOf(ctx,owner.id).custom[Number(match[3])];
- return person||null;
+ const owner=roleFriendCatalog(ctx).find(p=>p.name===ownerName);
+ if(!owner)return null;
+ if(match[1]==='roleknown'){
+  const name=roleFriendsOf(ctx,owner.id).known[Number(match[3])];
+  if(!name)return null;
+  const person=roleFriendCatalog(ctx).find(p=>p.name===name);
+  return {name,description:person?.description||'已扫描的故事人物，按故事资料中已明确的关系进行互动'};
+ }
+ return roleFriendsOf(ctx,owner.id).custom[Number(match[3])]||null;
 }
 function roleFriendActorId(type,ownerName,index){
  return type+'|'+encodeURIComponent(ownerName)+'|'+index;
@@ -2588,7 +2605,7 @@ function roleFriendKnownConnected(ctx,first,second){
 }
 function renderRoleFriends(){
  if(!nodes?.roleFriendsOwner||!nodes.roleFriendsContent)return;
- const ctx=context(),owners=galleryPeople(ctx).filter(p=>p.id!=='user');
+ const ctx=context(),owners=roleFriendCatalog(ctx);
  const select=nodes.roleFriendsOwner,old=select.value;
  select.replaceChildren();
  for(const person of owners){const o=document.createElement('option');o.value=person.id;o.textContent=person.name;select.append(o);}
@@ -2629,7 +2646,7 @@ function renderRoleFriends(){
  container.append(list);
 }
 function saveRoleFriends(ctx,id,next){
- const owner=galleryPeople(ctx).find(p=>p.id===id);
+ const owner=roleFriendCatalog(ctx).find(p=>p.id===id);
  if(!owner||!ctx?.extensionSettings||typeof ctx.saveSettingsDebounced!=='function')throw Error('无法保存好友列表');
  const settings=ctx.extensionSettings[SETTINGS_KEY]||={},key=qunxingAccountCardKey(ctx);
  const stored=settings.roleFriendsByCard||{};
@@ -5205,8 +5222,10 @@ function momentCandidates(ctx,post) {
     // Characters have friends outside the user's saved phone contacts.
     const name=roleFriendName(ctx,author),known=roleFriendsOf(ctx,author);
     const guest=known.custom.slice(0,12).map((_,i)=>roleFriendActorId('rolefriend',name,i));
+    const knownOutsideContacts=known.known.flatMap((personName,i)=>
+        galleryPeople(ctx).some(p=>p.name===personName)?[]:[roleFriendActorId('roleknown',name,i)]);
     const ambient=[0,1].map(i=>roleFriendActorId('ambient',name,i));
-    return [...new Set([...registered,...guest,...ambient])];
+    return [...new Set([...registered,...knownOutsideContacts,...guest,...ambient])];
 }
 function momentBatchActors(ctx,post,replyComments=[]) {
     const eligible=momentCandidates(ctx,post);
