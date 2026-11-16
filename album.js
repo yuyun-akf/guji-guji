@@ -229,6 +229,7 @@ export function createAlbumModule(api){
     if(photo.usage)info.append(el('small','','用途：'+photo.usage));
     const actions=el('div','lp-album-actions');
     actions.append(button('edit','编辑',photo.id),button('move','移动',photo.id),button('cover','设为封面',photo.id),button('delete','删除',photo.id));
+    if(world()&&state.folder==='表情包')actions.append(button('deleteFrom','从此张起批量删除',photo.id));
     card.append(img,info,actions);list.append(card);
    }
    if(!photos().length)list.append(el('p','lp-album-empty','这个子相册还没有图片。返回上一页，从「添加照片」导入即可。'));
@@ -368,7 +369,7 @@ export function createAlbumModule(api){
     throw Error('世界相册表情包最多100张，请删除或分批整理');
    if(owner===worldId)await api.saveWorldPhotos([...old,...added]);
    else await api.saveSharedPhotos([...old,...added]);
-   state.selectedFiles=[];state.folder=folder;state.level='folder';state.editing='';
+   state.selectedFiles=[];state.folder=folder;state.level='import';state.editing='';
    hint('已导入 '+added.length+' 张图片');
   }catch(error){hint('导入失败：'+String(error.message||error),true);}
   finally{state.busy=false;}
@@ -435,9 +436,9 @@ export function createAlbumModule(api){
     throw error;
    }
    state.pending=null;state.selectedFiles=[];
-   if(pictures.length===1&&pictures[0].owner===state.owner){
-    state.folder=pictures[0].folder;state.level='folder';
-   }else{state.folder='';state.level='owner';}
+   // Keep the import route, mode and target selection until Back is pressed.
+   // Do not force a new visit through the album/owner/folder hierarchy.
+   state.level='import';
    state.navReset=true;hint('已导入 '+pictures.length+' 张图片');
   }catch(error){hint('保存图片资料失败：'+String(error.message||error),true);}
   finally{state.busy=false;}
@@ -483,6 +484,16 @@ export function createAlbumModule(api){
     return true;
    }
    const photo=ownerPhotos().find(p=>p.id===id);if(!photo)return false;
+   if(type==='deleteFrom'&&world()&&state.folder==='表情包'){
+    const entries=ownerPhotos().filter(p=>photoFolder(p)==='表情包');
+    const index=entries.findIndex(p=>p.id===id);
+    if(index<0)return true;
+    const count=entries.length-index;
+    if(!window.confirm('从「'+(photo.title||'此张表情包')+'」开始，删除它及后面的 '+(count-1)+' 张表情包？已发送的聊天图片不受影响。'))return true;
+    const removeIds=new Set(entries.slice(index).map(p=>p.id));
+    await api.saveWorldPhotos(ownerPhotos().filter(p=>!removeIds.has(p.id)));
+    hint('已删除 '+count+' 张表情包');return true;
+   }
    if(['edit','move','cover','delete'].includes(type)){state.dialog={type,photoId:id};render();return true;}
    return false;
  }
@@ -508,8 +519,10 @@ export function createAlbumModule(api){
  function back(){
   if(state.dialog){state.dialog=null;render();return true;}
    if(state.level==='root')return false;
-  if(state.level==='folder'||state.level==='import'||state.level==='review'){
-   state.level='owner';state.pending=null;state.editing='';state.folder='';state.navReset=true;
+  if(state.level==='review'){
+   state.level='import';state.pending=null;state.selectedFiles=[];state.navReset=true;
+  }else if(state.level==='folder'||state.level==='import'){
+   state.level='owner';state.pending=null;state.selectedFiles=[];state.editing='';state.folder='';state.navReset=true;
   }else{state.level='root';state.owner='';state.folder='';state.navReset=true;}
   render();return true;
  }
