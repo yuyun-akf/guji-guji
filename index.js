@@ -4964,11 +4964,53 @@ function momentButton(label,click) {
     const button=document.createElement('button');button.type='button';button.textContent=label;
     button.addEventListener('click',click);return button;
 }
+function renderMomentCover(ctx=context()){
+ if(!nodes?.momentCoverImage)return;
+ const settings=ctx?.extensionSettings?.[SETTINGS_KEY]||{};
+ const cover=settings.momentCovers?.[qunxingAccountCardKey(ctx)]||'';
+ const image=nodes.momentCoverImage;
+ image.src=typeof cover==='string'&&ALBUM_IMAGE_RE.test(cover)?cover:'';
+ image.hidden=!cover;
+ nodes.momentCoverName.textContent=currentPersona(ctx).name;
+ nodes.momentCoverAvatar.src=avatarSources(ctx,readRootData(ctx)).user;
+}
+async function uploadMomentCover(file){
+ if(!file)return;
+ if(!['image/png','image/jpeg','image/webp'].includes(file.type)||file.size>12*1024*1024)
+  return setStatus('朋友圈封面只支持12MB以内的JPG、PNG或WebP','error');
+ const ctx=context(),session=captureSession(ctx),key=qunxingAccountCardKey(ctx);
+ try{
+  const original=await new Promise((resolve,reject)=>{
+   const r=new FileReader();r.onload=()=>resolve(r.result);
+   r.onerror=()=>reject(Error('封面图片读取失败'));r.readAsDataURL(file);
+  });
+  const picture=await new Promise((resolve,reject)=>{
+   const i=new Image();i.onload=()=>resolve(i);i.onerror=()=>reject(Error('无法解码封面图片'));i.src=original;
+  });
+  const canvas=document.createElement('canvas'),scale=Math.min(1,1000/Math.max(picture.width,picture.height));
+  canvas.width=Math.max(1,Math.round(picture.width*scale));
+  canvas.height=Math.max(1,Math.round(picture.height*scale));
+  canvas.getContext('2d').drawImage(picture,0,0,canvas.width,canvas.height);
+  let image='';
+  for(const q of [.8,.65,.5]){
+   const data=canvas.toDataURL('image/jpeg',q);
+   if(data.length<490000){image=data;break;}
+  }
+  if(!image)throw Error('封面图片压缩后仍过大');
+  if(!sameSession(session))return;
+  if(!ctx?.extensionSettings||typeof ctx.saveSettingsDebounced!=='function')
+   throw Error('酒馆设置不可保存朋友圈封面');
+  const settings=ctx.extensionSettings[SETTINGS_KEY]||={};
+  settings.momentCovers={...(settings.momentCovers||{}),[key]:image};
+  ctx.saveSettingsDebounced();
+  renderMomentCover(ctx);notifyInteraction('朋友圈封面已保存','success');
+ }catch(error){setStatus('更换朋友圈封面失败：'+String(error.message||error),'error');}
+}
 function renderMoments(ctx) {
     if(!nodes?.momentsFeed)return;
     nodes.momentsFeed.replaceChildren();
     const posts=readRootData(ctx).moments||[];
-    renderPersona(ctx);
+    renderPersona(ctx);renderMomentCover(ctx);
     for(const post of [...posts].reverse()){
         const authorId=momentAuthorId(ctx,post);
         if(authorId&&authorId!=='user'&&friendshipState(readData(ctx,authorId))!=='friends')continue;
@@ -7517,6 +7559,17 @@ function makeUI() {
         <section class="lp-screen lp-chatlist lp-social-screen" data-lp-screen="discover" aria-label="发现" hidden>
   <div class="lp-list-body lp-discover">
     <div class="lp-discover-heading"><span>朋友圈</span><span class="lp-discover-actions"><button type="button" data-lp="momentHistoryOpen" class="lp-moment-history-link">历史朋友圈</button><button type="button" data-lp="momentCamera" class="lp-moment-camera" aria-label="发布朋友圈" title="发布朋友圈"><svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7.5h4l2-3h6l2 3h4v12H3z"/><circle cx="12" cy="13" r="3.2"/></svg></button></span></div>
+    <div class="lp-moment-cover-card">
+      <label class="lp-moment-cover-background" title="更换朋友圈封面">
+        <img data-lp="momentCoverImage" alt="朋友圈封面" />
+        <span>✎ 更换封面</span>
+        <input data-lp="momentCoverUpload" type="file" accept="image/png,image/jpeg,image/webp" hidden />
+      </label>
+      <div class="lp-moment-cover-person">
+        <strong data-lp="momentCoverName"></strong>
+        <img data-lp="momentCoverAvatar" alt="我的朋友圈头像" />
+      </div>
+    </div>
     <div class="lp-moments-composer" data-lp="momentComposer" hidden>
       <div class="lp-moments-caption">分享这一刻</div>
       <textarea data-lp="momentsText" rows="3" maxlength="1000" placeholder="写点什么，或分享一张照片…"></textarea>
@@ -8162,7 +8215,7 @@ function mount() {
         'albumContent','groupsContent','shareTargets','sharePreview',
         'weiboGenerate','weiboFeedback','weiboFeed','weiboHot','weiboNearby','weiboCompose','weiboMe','weiboDetail','weiboTabs','weiboComposeText','weiboPublish','weiboDetailBack','weiboRefreshBox',
         'desktopSortList','clockMode','clockRate','clockContinueClosed','clockCustomFields','clockSave','lockEnabled','lockSaveEnabled','notification','inlineNotification','calendarPrev','calendarNext','calendarHeading','calendarViews','calendarGrid','calendarSelected','calendarSummary','calendarSelectedTime','calendarStoryToday','calendarRealToday','calendarSaveTime','calendarExactSave',
-        'momentsPost', 'momentsText', 'momentsFeed', 'momentFeedback','momentsPreview','momentImageUpload','momentRemovePhoto','momentCamera','momentComposer','momentHistoryOpen','momentHistoryOwner','momentHistoryTime','momentHistoryText','momentHistoryPhoto','momentHistoryPhotoPreview','momentHistoryRemovePhoto','momentHistoryManual','momentHistoryInstructions','momentHistoryCount','momentHistoryGenerate','momentHistoryStatus','momentHistoryList','myBio','myBioEdit','profileBio','profileBioEdit','contactMomentList','myAvatarUpload','myAvatarFallback','myAvatarStatus','myIdentity', 'myAvatar', 'myPersona', 'messageBannerToggle','messageBannerStatus','autoMessagesMode','autoMessagesDays','autoMomentsMode','autoMomentsDays','relationAutoSync','phoneInPast','characterRequests','momentInteractions','autonomyStatus','autonomyFeedback','saveAutonomy','rescanRelations','testAutonomy', 'stickerUpload','stickerPackUpload', 'stickerStatus', 'stickerLibrary',
+        'momentsPost', 'momentsText', 'momentsFeed', 'momentFeedback','momentsPreview','momentImageUpload','momentRemovePhoto','momentCamera','momentComposer','momentCoverImage','momentCoverUpload','momentCoverName','momentCoverAvatar','momentHistoryOpen','momentHistoryOwner','momentHistoryTime','momentHistoryText','momentHistoryPhoto','momentHistoryPhotoPreview','momentHistoryRemovePhoto','momentHistoryManual','momentHistoryInstructions','momentHistoryCount','momentHistoryGenerate','momentHistoryStatus','momentHistoryList','myBio','myBioEdit','profileBio','profileBioEdit','contactMomentList','myAvatarUpload','myAvatarFallback','myAvatarStatus','myIdentity', 'myAvatar', 'myPersona', 'messageBannerToggle','messageBannerStatus','autoMessagesMode','autoMessagesDays','autoMomentsMode','autoMomentsDays','relationAutoSync','phoneInPast','characterRequests','momentInteractions','autonomyStatus','autonomyFeedback','saveAutonomy','rescanRelations','testAutonomy', 'stickerUpload','stickerPackUpload', 'stickerStatus', 'stickerLibrary',
         'friendLabel', 'friendActions','profileAvatar','profileAvatarAction','profileAvatarSheet','profileChooseAvatar','profileAvatarCancel','profileRoleDialog','profileRoleOpen','profileRoleClose','profileRoleTitle','profileName','profileDescription','contactEvidence','contactExchange','contactLinks','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcAiScanButton','npcClearScanButton','npcScanState','npcCandidates','npcSaveCandidates','storyPeopleList','viewPrimaryContact','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','resetCharAvatar',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
@@ -8301,6 +8354,10 @@ function mount() {
     window.addEventListener('focus',pickerFocusListener);
     nodes.chatMenu.addEventListener('click',()=>setScreen('chatOptions'));
     nodes.momentsPost.addEventListener('click',()=>void postMoment());
+    nodes.momentCoverUpload.addEventListener('change',event=>{
+      const file=event.target.files?.[0];event.target.value='';
+      if(file)void uploadMomentCover(file);
+    });
     nodes.momentCamera.addEventListener('click',()=>{
       nodes.momentComposer.hidden=!nodes.momentComposer.hidden;
       momentsBackdrop.hidden=nodes.momentComposer.hidden;
