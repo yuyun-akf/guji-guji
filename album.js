@@ -53,7 +53,7 @@ export function createAlbumModule(api){
    const zip=await lib.loadAsync(raw);
    for(const [name,entry] of Object.entries(zip.files)){
     if(entry.dir)continue;if(map.size>=70)throw Error('ZIP内文件数量超出限制');
-    if(Number(entry?._data?.uncompressedSize)||0>15*1024*1024)throw Error('ZIP单个文件过大');
+    if((Number(entry?._data?.uncompressedSize)||0)>15*1024*1024)throw Error('ZIP单个文件过大');
     const normalized=name.replace(/^\.\//,'').replaceAll('\\','/');
     if(normalized.startsWith('/')||normalized.split('/').includes('..'))throw Error('ZIP包含不安全路径');
     map.set(normalized,new Uint8Array(await entry.async('uint8array')));
