@@ -1121,7 +1121,12 @@ export function createWeiboModule(api) {
    post.actions={...(post.actions||{}),...patch};
    if(change.newComment){
     post.actions.commentsLoaded=false;
-    post.comments=[...(post.comments||[]),change.newComment];
+    const merged=[...(post.comments||[]),change.newComment];
+    const own=merged.filter(c=>c.isMine||c.authorId==='self');
+    const others=merged.filter(c=>!c.isMine&&c.authorId!=='self');
+    // Even after fresh user comments, never exceed the 120 visible-comment cap;
+    // keep the newest comment and all user-authored items where possible.
+    post.comments=[...others.slice(-Math.max(0,120-Math.min(120,own.length))),...own.slice(-120)].slice(-120);
     post.commentCount=Math.max(post.comments.length,Number(post.commentCount||0)+1);
    }
   };
@@ -1212,7 +1217,7 @@ export function createWeiboModule(api) {
   const publishedTotal=Math.max(kept.length,Number(post.commentCount)||0);
   const previouslyLoaded=Boolean(current.commentsLoadedOnce);
   const missing=Math.max(0,Math.min(120,publishedTotal)-kept.length);
-  const interactionSlots=previouslyLoaded?Math.min(4,Math.max(0,120-kept.length)):0;
+  const interactionSlots=previouslyLoaded&&missing===0?Math.min(4,Math.max(0,120-kept.length)):0;
   const target=missing+interactionSlots;
   if(!target){
    await replacePostComments(post,kept,publishedTotal,{commentsLoaded:true,commentsLoadedOnce:true});
