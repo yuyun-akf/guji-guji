@@ -1,7 +1,7 @@
 /* 咕叽聊群聊：群消息仅属于当前剧情存档，所有发言独立归属成员。 */
 export function createGroupsModule(api){
  const el=(tag,cls='',text='')=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text)n.textContent=text;return n;};
- const state={active:'',busy:false,status:'',manage:false,avatarDraft:''};
+ const state={active:'',busy:false,status:'',manage:false,avatarDraft:'',fromMessageList:false};
  const host=()=>api.getNodes()?.groupsContent;
  const ctx=()=>api.context();
  const root=()=>api.readRootData(ctx());
@@ -78,13 +78,14 @@ export function createGroupsModule(api){
   fn(r.groupChats,r);
   if(scope()!==meta)throw Error('已切换剧情存档，取消群聊写入');
   await api.writeData(ctx(),{...r,__contactId:'primary'});
+  api.refreshChatList?.();
  }
  async function shareToGroup(groupId,post){
   const group=groups().find(g=>g.id===groupId);if(!group)throw Error('群聊不存在');
   await mutate(all=>{
    const target=all.find(g=>g.id===groupId);
    target.messages||=[];
-   target.messages.push({id:uid(),from:'user',text:'[群星分享] '+(post.author||'用户')+' 的动态',sharePost:{id:post.id,author:post.author,text:post.text,handle:post.handle,image:post.image||''},storyTime:root().storyTime||''});
+   target.messages.push({id:uid(),from:'user',text:'[群星分享] '+(post.author||'用户')+' 的动态',sharePost:{id:post.id,author:post.author,text:post.text,handle:post.handle,image:post.image||''},storyTime:root().storyTime||'',createdAt:new Date().toISOString()});
   });
   state.active=groupId;state.manage=false;render();
  }
@@ -92,7 +93,7 @@ export function createGroupsModule(api){
   const group=groups().find(g=>g.id===state.active),input=host()?.querySelector('[data-group-input="message"],[data-group-input="message"]');
   const text=input?.value?.trim();if(!group||!text)return;
   await mutate(all=>{
-   const g=all.find(x=>x.id===group.id);g.messages.push({id:uid(),from:'user',text:text.slice(0,1000),storyTime:root().storyTime||''});
+   const g=all.find(x=>x.id===group.id);g.messages.push({id:uid(),from:'user',text:text.slice(0,1000),storyTime:root().storyTime||'',createdAt:new Date().toISOString()});
    g.messages=g.messages.slice(-180);
   });
   state.status='';render();
@@ -123,7 +124,7 @@ export function createGroupsModule(api){
      const photo=match?memberPhotos.find(p=>p.id===match[1]):null;
      const text=message.text.replace(/\[\[photo:[^\]\r\n]+\]\]/g,'').trim();
      if(text||photo)g.messages.push({id:uid(),from:message.speaker,text:text.slice(0,1000),
-       ...(photo?{images:[photo.image]}:{}),storyTime:root().storyTime||''});
+       ...(photo?{images:[photo.image]}:{}),storyTime:root().storyTime||'',createdAt:new Date().toISOString()});
     }
     g.messages=g.messages.slice(-180);
    });
@@ -168,7 +169,17 @@ export function createGroupsModule(api){
   }catch(e){state.status='头像处理失败：'+String(e.message||e);}
   return true;
  }
- function open(){state.active='';state.manage=false;state.status='';render();}
- function back(){if(state.manage){state.manage=false;state.avatarDraft='';render();return true;}if(!state.active)return false;state.active='';render();return true;}
+ function open(options={}){
+  const direct=options?.groupId&&groups().some(g=>g.id===options.groupId);
+  state.active=direct?options.groupId:'';
+  state.fromMessageList=!!(direct&&options.origin==='messages');
+  state.manage=false;state.status='';render();
+ }
+ function back(){
+  if(state.manage){state.manage=false;state.avatarDraft='';render();return true;}
+  if(!state.active)return false;
+  if(state.fromMessageList){state.active='';state.fromMessageList=false;return false;}
+  state.active='';render();return true;
+ }
  return {open,back,render,handleClick,handleFile,shareToGroup};
 }
