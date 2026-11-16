@@ -369,12 +369,19 @@ export function createAlbumModule(api){
   if(state.busy)return;
   const wrap=host(),files=readFiles();
   if(!files.length)return hint(state.mode==='files'?'请先选择标准导入文件':'请先选择图片',true);
+  if(validateCandidateFiles())return hint('红色标记的文件不符合导入要求，请单独移除，再添加替换图片；其他候选已保留',true);
   if(state.mode==='files'){
    state.busy=true;try{
     const pending=await prepareBatch(files);
     if(pending.signature!==api.albumScope?.())throw Error('角色卡已切换');
     state.pending=pending;state.level='review';state.navReset=true;state.message='';render();
-   }catch(error){hint('导入文件校验失败：'+String(error.message||error),true);}
+   }catch(error){
+    const message=String(error.message||error);
+    const named=files.find(f=>message.includes(f.name));
+    const target=named||files.find(f=>/\.zip$/i.test(f.name))||files.find(f=>/\.json$/i.test(f.name))||files[0];
+    if(target)state.fileErrors.set(target,message);
+    hint('导入文件校验失败：'+message,true);
+   }
    finally{state.busy=false;}return;
   }
   if(state.mode==='manual'&&files.length!==1)return hint('手动补录每次选择一张图片',true);
@@ -388,8 +395,24 @@ export function createAlbumModule(api){
   // Do not call render before the File input has been read; selected File objects
   // remain in state across render and asynchronous model requests.
   try{
-   const images=[];
-   for(const f of files){images.push(await encode(f,folder==='表情包'));if(signature!==api.albumScope?.())throw Error('角色卡已切换，停止导入');}
+   const images=[],failed=[];
+   for(const f of files){
+    try{
+     const key=folder==='表情包'?'sticker':'photo';
+     let cached=state.imageCache.get(f);
+     if(!cached||cached.kind!==key){
+      cached={kind:key,image:await encode(f,folder==='表情包')};
+      state.imageCache.set(f,cached);
+     }
+     images.push(cached.image);
+     state.fileErrors.delete(f);
+    }catch(error){failed.push(f);state.fileErrors.set(f,String(error.message||error));}
+    if(signature!==api.albumScope?.())throw Error('角色卡已切换，停止导入');
+   }
+   if(failed.length){
+    hint('已标出 '+failed.length+' 张无法导入的图片。移除这些图片后可补选新图，其余文件保持不变',true);
+    return;
+   }
    let labels=[];
    if(state.mode==='ai'){
     state.message='正在一次识别 '+images.length+' 张图片…';render();
@@ -413,7 +436,8 @@ export function createAlbumModule(api){
     throw Error('世界相册表情包最多100张，请删除或分批整理');
    if(owner===worldId)await api.saveWorldPhotos([...old,...added]);
    else await api.saveSharedPhotos([...old,...added]);
-   state.selectedFiles=[];state.folder=folder;state.level='import';state.editing='';
+   state.selectedFiles=[];state.fileErrors.clear();state.fileChecks.clear();state.imageCache.clear();
+   state.folder=folder;state.level='import';state.editing='';
    hint('已导入 '+added.length+' 张图片');
   }catch(error){hint('导入失败：'+String(error.message||error),true);}
   finally{state.busy=false;}
@@ -483,6 +507,7 @@ export function createAlbumModule(api){
    // Keep the import route, mode and target selection until Back is pressed.
    // Do not force a new visit through the album/owner/folder hierarchy.
    state.level='import';
+   state.fileErrors.clear();state.fileChecks.clear();state.imageCache.clear();
    state.navReset=true;hint('已导入 '+pictures.length+' 张图片');
   }catch(error){hint('保存图片资料失败：'+String(error.message||error),true);}
   finally{state.busy=false;}
@@ -572,7 +597,8 @@ export function createAlbumModule(api){
  }
  function handleChange(event){
   if(event.target?.matches?.('[data-album-field="target"]')){
-   state.folder=event.target.value;render();return true;
+   state.folder=event.target.value;
+   state.fileErrors.clear();state.imageCache.clear();render();return true;
   }
   if(event.target?.matches?.('[data-album-review="owner"]')){
    const i=event.target.dataset.albumIndex,owner=event.target.value;
