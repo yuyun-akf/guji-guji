@@ -3429,10 +3429,18 @@ function weiboStoryContext(){
  return (c?.chat||[]).slice(-16).map(m=>String(m?.mes||m?.text||'').slice(0,350)).join('\n').slice(-3200);
 }
 
-async function scanQunxingAccounts(extraWorld=''){
+async function scanQunxingAccounts(extraWorld='',mode='rules'){
  const ctx=context(),main=selectedCharacter(ctx);
  if(!main)throw Error('请先打开角色卡的单人聊天');
- const result=await scanNpcSources(ctx,extraWorld);
+ const result=await performSharedNpcScan(ctx,extraWorld,mode);
+ return formatQunxingScan(ctx,result);
+}
+function cachedQunxingAccounts(){
+ const ctx=context();if(!selectedCharacter(ctx))return {candidates:[]};
+ return formatQunxingScan(ctx,{candidates:visibleSharedNpcScan(ctx),scanned:0,worlds:0,failures:[]});
+}
+function formatQunxingScan(ctx,result){
+ const main=selectedCharacter(ctx);
  const charName=getCharacterName(main);
  const mainInfo=main.data||main;
  const ownDescription=[mainInfo.description,mainInfo.personality,mainInfo.scenario,
@@ -3469,7 +3477,7 @@ async function loadWeiboController(){
    readSharedAccounts:()=>sharedQunxingAccounts(context()),
    saveSharedAccounts:(accounts,originalCtx)=>saveSharedQunxingAccounts(accounts,originalCtx||context()),
    ensureSharedAccounts:()=>ensureSharedQunxingAccounts(context()),
-   storyContext:weiboStoryContext,scanAccounts:scanQunxingAccounts,
+   storyContext:weiboStoryContext,scanAccounts:scanQunxingAccounts,cachedScanAccounts:cachedQunxingAccounts,
     accountSubjects:()=>{
      const ctx=context(),main=selectedCharacter(ctx);
      if(!main)return [];
@@ -3477,6 +3485,7 @@ async function loadWeiboController(){
      for(const person of readRootData(ctx).contacts||[]){
       if(person?.id?.startsWith('npc:')&&person?.name)people.push({id:person.id,name:person.name});
      }
+     for(const person of visibleSharedNpcScan(ctx))if(person?.name)people.push({id:'scanned:'+person.name,name:person.name});
      return people;
     },
     accountSubjectContext:subject=>{
@@ -3801,6 +3810,7 @@ function setScreen(screen, options={}) {
     nodes.chatMenu.hidden = screen !== 'chat';
     if(nodes.homeExit)nodes.homeExit.hidden=screen!=='home';
     if(nodes.lockExit)nodes.lockExit.hidden=screen!=='lock';
+    if(screen==='discoverNpc')restoreSharedNpcPreview();
     if(screen==='lock')renderLock();
     if(screen==='home')renderDesktop();
     if(screen==='weibo'){
@@ -5133,6 +5143,34 @@ function cleanNpcName(name) {
     if (/^(?:这位|那位|一个|两个|他的|她的|我的|你的|他们|她们|自己|没有|任何|所有|其它|与|和|跟|对|在|于|将|已|有|被|是|由|把|范畴|范围|目前|现在)/.test(value)) return '';
     return value;
 }
+// The fallback detector uses surnames only for ambiguous prose matches. Explicit
+// names and user-edited names are not restricted to Han surnames.
+const NPC_SURNAMES=new Set('赵钱孙李周吴郑王冯陈褚卫蒋沈韩杨朱秦尤许何吕施张孔曹严华金魏陶姜戚谢邹喻柏水窦章云苏潘葛奚范彭郎鲁韦昌马苗凤花方俞任袁柳酆鲍史唐费廉岑薛雷贺倪汤滕殷罗毕郝邬安常乐于时傅皮卞齐康伍余元卜顾孟平黄和穆萧尹姚邵湛汪祁毛禹狄米贝明臧计伏成戴谈宋茅庞熊纪舒屈项祝董梁杜阮蓝闵席季麻强贾路娄危江童颜郭梅盛林刁钟徐邱骆高夏蔡田樊胡凌霍虞万支柯昝管卢莫经房裘缪干解应宗丁宣贲邓郁单杭洪包诸左石崔吉钮龚程嵇邢滑裴陆荣翁荀羊甄家封芮羿储靳汲邴糜松井段富巫乌焦巴弓牧隗山谷车侯宓蓬全郗班仰秋仲伊宫宁仇栾暴甘钭厉戎祖武符刘景詹束龙叶幸司韶郜黎蓟薄印宿白怀蒲邰从鄂索咸籍赖卓蔺屠蒙池乔阴胥能苍双闻莘党翟谭贡劳逄姬申扶堵冉宰郦雍却璩桑桂濮牛寿通边扈燕冀郏浦尚农温别庄晏柴瞿阎充慕连茹习宦艾鱼容向古易慎戈廖庾终暨居衡步都耿满弘匡国文寇广禄阙东欧利蔚越夔隆师巩厍聂晁勾敖融冷訾辛阚那简饶空曾毋沙乜养鞠须丰巢关蒯相查后荆红游竺权逯盖益桓公'.split(''));
+const NPC_COMPOUND_SURNAMES=['欧阳','司马','上官','诸葛','夏侯','东方','皇甫','尉迟','公孙','慕容','令狐','司徒','司空','宇文','独孤','南宫','闻人','长孙','轩辕','百里','东郭','西门','呼延','端木','公冶','赫连'];
+function likelyNpcPersonalName(raw){
+ const name=cleanNpcName(raw);
+ if(!name||name.includes('同学')||name.includes('室友')||name.includes('朋友')||name.includes('老师')||name.includes('关系'))return '';
+ return NPC_COMPOUND_SURNAMES.some(s=>name.startsWith(s))&&name.length>=3&&name.length<=5
+  ?name:NPC_SURNAMES.has(name[0])&&name.length>=2&&name.length<=4?name:'';
+}
+function npcEntryKeywords(entry){
+ const values=[entry?.key,entry?.keysecondary,entry?.keys,entry?.secondary_keys].flatMap(v=>Array.isArray(v)?v:typeof v==='string'?[v]:[]);
+ return [...new Set(values.map(v=>String(v||'').trim()).filter(Boolean))].slice(0,30);
+}
+function npcEntryHeaderCandidates(source,mainName){
+ if(!source.profileEntry)return [];
+ const title=String(source.title||'');
+ const fields=[...title.split(/[｜|／/：:—\-]/),...(source.keys||[])];
+ const names=[];
+ for(const field of fields){
+  const name=likelyNpcPersonalName(field.trim().replace(/^(?:NPC|人物|角色|姓名)[：:\s]*/i,''));
+  if(name&&name!==mainName&&!names.includes(name))names.push(name);
+ }
+ return names.slice(0,5).map(name=>({
+  name,relation:'',description:(title+'\n'+String(source.content||'')).slice(0,3500),
+  source:source.name,confidence:'世界书标题／关键词'
+ }));
+}
 function extractNpcCandidatesFromText(sourceText,source,mainName) {
     const text=String(sourceText||'').slice(0,40000);
     const found=[];
@@ -5174,7 +5212,7 @@ function extractNpcCandidatesFromText(sourceText,source,mainName) {
             if(m)hits.push({name:m[1],relation:''});
         }
         for(const hit of hits){
-            const name=cleanNpcName(hit.name);
+            const name=(hit.relation||!labeled||hit.name!==labeled[1])?likelyNpcPersonalName(hit.name):cleanNpcName(hit.name);
             if(!name||name===mainName)continue;
             const context=[lines[Math.max(0,i-1)]||'',line,lines[i+1]||''].join('\n').slice(0,900);
             const meaningful=context.replace(/\s/g,'').length>=8;
@@ -5209,7 +5247,7 @@ function embeddedCharacterLore(char) {
     const entries=info.character_book?.entries||char?.character_book?.entries||[];
     return Array.isArray(entries)?entries:[];
 }
-async function scanNpcSources(ctx,extraWorld='') {
+async function scanNpcSources(ctx,extraWorld='',mode='rules') {
     const char=selectedCharacter(ctx);
     if(!char)throw new Error('请先打开角色卡的单人聊天');
     const info=char.data||char;
@@ -5224,7 +5262,7 @@ async function scanNpcSources(ctx,extraWorld='') {
         if(entry.enabled===false||entry.disable===true)continue;
         const title=String(entry.name||entry.comment||'');
         const content=String(entry.content||'');
-        if(content)sources.push({name:'角色卡内嵌世界书 · '+title,text:title+'\n'+content,title,profileEntry:true});
+        if(content)sources.push({name:'角色卡内嵌世界书 · '+title,text:title+'\n'+content,title,content,keys:npcEntryKeywords(entry),profileEntry:true});
     }
     const names=new Set();
     if(typeof info.extensions?.world==='string'&&info.extensions.world.trim())names.add(info.extensions.world.trim());
@@ -5243,14 +5281,50 @@ async function scanNpcSources(ctx,extraWorld='') {
                 if(entry?.disable===true||entry?.enabled===false)continue;
                 const title=String(entry?.comment||entry?.name||'');
                 const content=String(entry?.content||'');
-                if(content)sources.push({name:'世界书「'+name+'」 · '+title,text:title+'\n'+content,title,profileEntry:true});
+                if(content)sources.push({name:'世界书「'+name+'」 · '+title,text:title+'\n'+content,title,content,keys:npcEntryKeywords(entry),profileEntry:true});
             }
         }catch(e){failures.push(name+'：'+String(e?.message||e).slice(0,90));}
+    }
+    const usableSources=sources.filter(source=>!(source.profileEntry&&(
+        /文风|写作|叙事|排版|格式|提示词|系统指令|输出规则|示例/.test(source.title)||
+        /文风要求|写作风格|写作要求|叙事规则|输出格式|扮演规则/.test(source.text.slice(0,300)))));
+    if(mode==='ai'){
+        const pieces=[];let used=0;
+        for(const source of usableSources){
+            const segment=('[资料来源] '+source.name+'\n[关键词] '+(source.keys||[]).join('、')+'\n'+source.text.slice(0,1350)).slice(0,1600);
+            if(used+segment.length>23000)break;
+            pieces.push(segment);used+=segment.length;
+        }
+        if(!pieces.length)throw Error('没有可供 AI 识别的人物资料');
+        const response=await phoneGenerate(ctx,{
+            task:'default',maxTokens:5200,
+            systemPrompt:'你是小说世界书的人物档案整理器。只识别输入资料明确存在的具名人物，不把职业、关系称谓、普通词语当成人名。不得创造人物、身份、经历、关系、账号、粉丝数量或未提供的事实。仅返回严格 JSON，不使用 Markdown。输出格式：{"people":[{"name":"真实姓名","relation":"与当前角色或user的明确关系，未知填空","description":"从原文提取的简短人物档案，保留姓名、身份、性格、经历、关系等已证实信息","source":"对应资料来源"}]}。同名合并。不要输出当前主角本人；没有姓名的人不输出。最多45人。',
+            prompt:'当前主角：'+getCharacterName(char)+'\n只根据下列资料检索具名人物。\n'+pieces.join('\n\n')
+        },readRootData(ctx));
+        const output=stripModelReasoning(response);
+        const start=output.indexOf('{'),end=output.lastIndexOf('}');
+        if(start<0||end<=start)throw Error('AI 未返回有效 JSON 人物名单');
+        let decoded;
+        try{decoded=JSON.parse(output.slice(start,end+1));}catch{throw Error('AI 返回的 JSON 无法解析，请重试或使用规则检索');}
+        const raw=Array.isArray(decoded?.people)?decoded.people:[];
+        const evidence=usableSources.map(s=>s.text+'\n'+(s.keys||[]).join('、')).join('\n');
+        const aiCandidates=raw.slice(0,70).flatMap(item=>{
+            const name=cleanNpcName(item?.name);
+            if(!name||name===getCharacterName(char)||selfNames.has(name)||!evidence.includes(name))return [];
+            const linked=usableSources.find(s=>s.text.includes(name)||(s.keys||[]).includes(name));
+            const description=String(item?.description||'').trim().slice(0,3500)||
+                String(linked?.content||'').slice(0,3500);
+            if(!description)return [];
+            return [{name,relation:String(item?.relation||'').slice(0,180),description,
+                source:String(linked?.name||'AI 检索').slice(0,180),confidence:'AI 语义检索'}];
+        });
+        return {candidates:mergeNpcCandidates(aiCandidates,readRootData(ctx),getCharacterName(char)),
+            scanned:sources.length,worlds:loaded,failures,aiSources:pieces.length,aiTruncated:pieces.length<usableSources.length};
     }
     const candidates=[];
     for(const source of sources){
         if(source.profileEntry && (/文风|写作|叙事|排版|格式|提示词|系统指令|输出规则|示例/.test(source.title) || /文风要求|写作风格|写作要求|叙事规则|输出格式|扮演规则/.test(source.text.slice(0,300))))continue;
-        const parsed=extractNpcCandidatesFromText(source.text,source.name,getCharacterName(char));
+        const parsed=[...npcEntryHeaderCandidates(source,getCharacterName(char)),...extractNpcCandidatesFromText(source.text,source.name,getCharacterName(char))];
         const titleName=source.profileEntry ? cleanNpcName(source.title) : '';
         const titleLooksLikeBio=titleName && !selfNames.has(titleName) && titleName!==getCharacterName(char) && source.text.slice(source.title.length).includes(titleName) &&
             /(?:姓名|年龄|职业|身份|性格|外貌|长相|个人经历|人物背景|画家|导演|教授|助理|室友|同学|朋友|老师)/.test(source.text.slice(0,900));
@@ -5266,6 +5340,40 @@ async function scanNpcSources(ctx,extraWorld='') {
         candidates.push(...parsed);
     }
     return {candidates:mergeNpcCandidates(candidates.filter(c=>!selfNames.has(c.name)),readRootData(ctx),getCharacterName(char)),scanned:sources.length,worlds:loaded,failures};
+}
+function readSharedNpcScan(ctx=context()){
+ const key=qunxingAccountCardKey(ctx);
+ const all=ctx?.extensionSettings?.[SETTINGS_KEY]?.npcRoleScanCatalog;
+ const record=key&&all&&Object.prototype.hasOwnProperty.call(all,key)?all[key]:null;
+ return Array.isArray(record?.candidates)?record.candidates.filter(c=>c&&typeof c.name==='string'):[];
+}
+function saveSharedNpcScan(candidates,ctx=context()){
+ const key=qunxingAccountCardKey(ctx);
+ if(!key||!ctx?.extensionSettings||typeof ctx.saveSettingsDebounced!=='function')
+  throw Error('角色卡共享目录无法保存：酒馆扩展设置接口不可用');
+ const settings=ctx.extensionSettings[SETTINGS_KEY]||={};
+ const catalog=settings.npcRoleScanCatalog||={};
+ const previous=readSharedNpcScan(ctx);
+ const combined=mergeNpcCandidates([...(candidates||[]),...previous],{contacts:[]},getCharacterName(selectedCharacter(ctx)))
+  .slice(0,80).map(c=>({name:c.name,relation:String(c.relation||'').slice(0,180),
+   description:String(c.description||'').slice(0,3500),source:String(c.source||'').slice(0,180),
+   confidence:String(c.confidence||'').slice(0,50)}));
+ if(JSON.stringify(previous)===JSON.stringify(combined))return combined;
+ const old=catalog[key];
+ catalog[key]={candidates:combined,updatedAt:new Date().toISOString()};
+ try{ctx.saveSettingsDebounced();}catch(error){if(old===undefined)delete catalog[key];else catalog[key]=old;throw error;}
+ return combined;
+}
+function visibleSharedNpcScan(ctx=context()){
+ return mergeNpcCandidates(readSharedNpcScan(ctx),readRootData(ctx),getCharacterName(selectedCharacter(ctx)))
+  .filter(c=>!personaNames(ctx).has(c.name));
+}
+async function performSharedNpcScan(ctx,extraWorld='',mode='rules'){
+ const result=await scanNpcSources(ctx,extraWorld,mode);
+ // Never replace saved results after a model failure. A partial source scan adds
+ // to the catalog without deleting people discovered in earlier story saves.
+ saveSharedNpcScan(result.candidates,ctx);
+ return {...result,candidates:visibleSharedNpcScan(ctx)};
 }
 function sameNpcScanSession(snapshot) {
     const ctx=context();
@@ -5305,7 +5413,7 @@ function renderNpcCandidates() {
         nodes.npcCandidates.append(row);
     }
 }
-async function scanNpcUI() {
+async function scanNpcUI(mode='rules') {
     if(npcScanning||busy)return;
     const ctx=context();
     if(!selectedCharacter(ctx))return setStatus('请先进入一条角色聊天存档','error');
@@ -5313,20 +5421,30 @@ async function scanNpcUI() {
     const snapshot=makeNpcScanSnapshot(ctx);
     npcScanSession=snapshot;
     nodes.npcScanButton.disabled=true;
-    nodes.npcScanState.textContent='正在读取角色卡和世界书…';
+    nodes.npcAiScanButton.disabled=true;
+    nodes.npcScanState.textContent=mode==='ai'?'正在调用 API 识别人物…':'正在读取角色卡和世界书…';
     try {
-        const result=await scanNpcSources(ctx,nodes.npcWorldSelect.value);
+        const result=await performSharedNpcScan(ctx,nodes.npcWorldSelect.value,mode);
         if(!sameNpcScanSession(snapshot))return;
         npcCandidates=result.candidates;
         renderNpcCandidates();
-        nodes.npcScanState.textContent='扫描 '+result.scanned+' 段资料、'+result.worlds+' 本世界书，找到 '+npcCandidates.length+' 位候选人物。'+(result.failures.length?' 未读取：'+result.failures.join('；'):'');
+        nodes.npcScanState.textContent=(mode==='ai'?'AI 智能检索':'本地规则检索')+'：扫描 '+result.scanned+' 段资料、'+result.worlds+' 本世界书，角色卡共享 '+readSharedNpcScan(ctx).length+' 位人物；当前可添加 '+npcCandidates.length+' 位。'+(result.aiTruncated?' API 输入过长，部分资料未发送。':'')+(result.failures.length?' 未读取：'+result.failures.join('；'):'');
         recordActivity('NPC 扫描','候选 '+npcCandidates.length+'，未自动添加任何好友','success');
     }catch(e){
         if(sameNpcScanSession(snapshot)){
             nodes.npcScanState.textContent='扫描失败：'+String(e.message||e);
             recordError('扫描 NPC',e);
         }
-    }finally{npcScanning=false;if(nodes?.npcScanButton)nodes.npcScanButton.disabled=false;}
+    }finally{npcScanning=false;if(nodes?.npcScanButton)nodes.npcScanButton.disabled=false;if(nodes?.npcAiScanButton)nodes.npcAiScanButton.disabled=false;}
+}
+function restoreSharedNpcPreview(){
+ const ctx=context();if(!selectedCharacter(ctx))return;
+ npcCandidates=visibleSharedNpcScan(ctx);
+ npcScanSession=makeNpcScanSnapshot(ctx);
+ renderNpcCandidates();
+ if(nodes?.npcScanState)nodes.npcScanState.textContent=readSharedNpcScan(ctx).length
+  ?'已加载当前角色卡共享的 '+readSharedNpcScan(ctx).length+' 位人物；当前可添加 '+npcCandidates.length+' 位。'
+  :'尚未保存人物检索结果。可选择本地规则检索或手动调用一次 AI 检索。';
 }
 async function saveSelectedNpcCandidates() {
     if(busy||npcScanning||!npcScanSession||!sameNpcScanSession(npcScanSession))return setStatus('请重新扫描当前存档','error');
@@ -6988,12 +7106,13 @@ function makeUI() {
         <section class="lp-screen lp-chatlist" data-lp-screen="discoverNpc" aria-label="从设定中发现人物" hidden>
           <div class="lp-list-body lp-npc-discovery">
             <h2>从当前设定中发现人物</h2>
-            <p>本地扫描，不会调用 API。仅从明确的人物资料与关系描述中提取候选；勾选并确认后才加入通讯录。</p>
+            <p>任选本地规则检索（免费）或 AI 智能检索（一次 API 请求）。结果保存到当前角色卡，并同步供咕叽聊、群星及该角色卡其他聊天读取；添加联系人仍须勾选确认。</p>
 
             <label>额外选择一本世界书（可选）
               <select data-lp="npcWorldSelect"></select>
             </label>
-            <button type="button" data-lp="npcScanButton">扫描人物设定</button>
+            <button type="button" data-lp="npcScanButton">本地规则检索（不调用 API）</button>
+            <button type="button" data-lp="npcAiScanButton">AI 智能检索（调用一次 API）</button>
             <div class="lp-npc-scan-state" data-lp="npcScanState" role="status" aria-live="polite"></div>
             <div class="lp-npc-candidates" data-lp="npcCandidates"></div>
             <button type="button" data-lp="npcSaveCandidates">添加勾选的 NPC</button>
@@ -7479,7 +7598,7 @@ function mount() {
         'weiboGenerate','weiboFeedback','weiboFeed','weiboHot','weiboNearby','weiboCompose','weiboMe','weiboDetail','weiboTabs','weiboComposeText','weiboPublish','weiboDetailBack','weiboRefreshBox',
         'desktopSortList','clockMode','clockRate','clockContinueClosed','clockCustomFields','clockSave','lockEnabled','lockSaveEnabled','notification','inlineNotification','calendarPrev','calendarNext','calendarHeading','calendarViews','calendarGrid','calendarSelected','calendarSummary','calendarSelectedTime','calendarStoryToday','calendarRealToday','calendarSaveTime','calendarExactSave',
         'momentsPost', 'momentsText', 'momentsFeed', 'momentFeedback','momentsPreview','momentImageUpload','momentRemovePhoto','myAvatarUpload','myAvatarFallback','myAvatarStatus','myIdentity', 'myAvatar', 'myPersona', 'messageBannerToggle','messageBannerStatus','autoMessagesMode','autoMessagesDays','autoMomentsMode','autoMomentsDays','relationAutoSync','phoneInPast','characterRequests','momentInteractions','autonomyStatus','autonomyFeedback','saveAutonomy','rescanRelations','testAutonomy', 'stickerUpload','stickerPackUpload', 'stickerStatus', 'stickerLibrary',
-        'friendLabel', 'friendActions','profileAvatar','profileName','profileDescription','contactEvidence','contactExchange','contactLinks','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcScanState','npcCandidates','npcSaveCandidates','storyPeopleList','viewPrimaryContact','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
+        'friendLabel', 'friendActions','profileAvatar','profileName','profileDescription','contactEvidence','contactExchange','contactLinks','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcAiScanButton','npcScanState','npcCandidates','npcSaveCandidates','storyPeopleList','viewPrimaryContact','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','avatarUserFile','resetCharAvatar','resetUserAvatar',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
         'settingsMenu','apiTask','apiProfile','apiProfileModel','apiProfileModelManual','apiReloadModels','apiProfileFields','apiProfileHint','apiTest',
@@ -7765,7 +7884,8 @@ function mount() {
     nodes.friendSave.addEventListener('click', saveManualFriendship);
     nodes.addNpcSave.addEventListener('click',()=>void addNpcContact());
     nodes.viewPrimaryContact.addEventListener('click',()=>switchContact(PRIMARY_CONTACT_ID,'profile'));
-    nodes.npcScanButton.addEventListener('click',()=>void scanNpcUI());
+    nodes.npcScanButton.addEventListener('click',()=>void scanNpcUI('rules'));
+    nodes.npcAiScanButton.addEventListener('click',()=>void scanNpcUI('ai'));
     nodes.npcSaveCandidates.addEventListener('click',()=>void saveSelectedNpcCandidates());
     nodes.saveContactRemark.addEventListener('click',()=>void saveContactRemark());
     nodes.deleteNpc.addEventListener('click',()=>void removeNpcContact());
