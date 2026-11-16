@@ -5296,6 +5296,14 @@ function visibleMomentComments(ctx,post,viewerId) {
         (viewerId===author&&Boolean(roleFriendGuest(ctx,comment.actorId)))||
         charactersHaveContact(ctx,viewerId,comment.actorId));
 }
+function canReplyToMomentComment(ctx,post,comment){
+ if(!comment)return false;
+ const author=momentAuthorId(ctx,post),actor=comment.actorId;
+ if(actor===MOMENT_USER_ID)return true;
+ if(actor===author)return author!==MOMENT_USER_ID&&friendshipState(readData(ctx,author))==='friends';
+ return typeof actor==='string'&&validContactId(readRootData(ctx),actor)&&
+  friendshipState(readData(ctx,actor))==='friends';
+}
 function momentButton(label,click) {
     const button=document.createElement('button');button.type='button';button.textContent=label;
     button.addEventListener('click',click);return button;
@@ -5401,7 +5409,7 @@ function renderMoments(ctx){
   const liked=likes.some(like=>like.actorId===MOMENT_USER_ID);
   if(likes.length){
    const line=document.createElement('div');line.className='lp-moment-likes';
-   line.textContent='♥ '+likes.map(like=>like.actorId===MOMENT_USER_ID?phoneUserDisplayName(ctx):(like.name||'朋友')).join('、');
+   line.textContent='♥ '+likes.length;line.setAttribute('aria-label','点赞 '+likes.length+' 次');
    item.append(line);
   }
   let replyTo='';
@@ -5419,9 +5427,31 @@ function renderMoments(ctx){
    const parent=comments.find(c=>c.id===comment.replyTo);
    const name=comment.actorId===MOMENT_USER_ID?phoneUserDisplayName(ctx):(comment.author||'朋友');
    const parentName=parent?.actorId===MOMENT_USER_ID?phoneUserDisplayName(ctx):(parent?.author||'朋友');
-   const text=document.createElement('span');text.textContent=name+
-    (parent&&parent.actorId!==comment.actorId?' 回复 '+parentName:'')+'：'+comment.text;
-   row.append(text,momentButton('回复',()=>{replyTo=comment.id;input.placeholder='回复 '+name+'…';input.focus();}));
+   const nameNode=document.createElement('span');nameNode.className='lp-moment-comment-author';
+   nameNode.textContent=name;
+   const content=document.createElement('span');content.className='lp-moment-comment-text';
+   content.textContent=(parent&&parent.actorId!==comment.actorId?' 回复 '+parentName:'')+'：'+comment.text;
+   row.append(nameNode,content);
+   if(canReplyToMomentComment(ctx,post,comment)){
+    nameNode.classList.add('lp-moment-comment-quotable');
+    nameNode.title='长按引用这条评论';
+    nameNode.setAttribute('aria-label','长按引用 '+name+' 的评论');
+    nameNode.tabIndex=0;
+    let holdTimer=null,startX=0,startY=0,triggered=false;
+    const stop=()=>{if(holdTimer){clearTimeout(holdTimer);holdTimer=null;}};
+    const quote=()=>{triggered=true;replyTo=comment.id;input.placeholder='回复 '+name+'…';input.focus();};
+    nameNode.addEventListener('pointerdown',event=>{
+     if(!['touch','pen','mouse'].includes(event.pointerType))return;
+     stop();triggered=false;startX=event.clientX;startY=event.clientY;
+     holdTimer=setTimeout(()=>{holdTimer=null;quote();},480);
+    });
+    nameNode.addEventListener('pointermove',event=>{
+     if(Math.abs(event.clientX-startX)>9||Math.abs(event.clientY-startY)>9)stop();
+    });
+    for(const type of ['pointerup','pointerleave','pointercancel'])nameNode.addEventListener(type,stop);
+    nameNode.addEventListener('contextmenu',event=>{event.preventDefault();stop();if(!triggered)quote();});
+    nameNode.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();quote();}});
+   }
    commentList.append(row);
   }
   if(comments.length)item.append(commentList);
@@ -5504,6 +5534,10 @@ async function addMomentComment(id,text,replyTo='') {
     const saved=await editMoments(ctx,data=>{
         const post=(data.moments||[]).find(item=>item.id===id);if(!post)return false;
         post.comments=Array.isArray(post.comments)?post.comments:[];
+        if(replyTo){
+          const original=post.comments.find(item=>item.id===replyTo);
+          if(!canReplyToMomentComment(ctx,post,original))return false;
+        }
         const comment={id:'comment-'+Date.now()+'-'+Math.random().toString(36).slice(2,8),
             actorId:MOMENT_USER_ID,author:phoneUserDisplayName(ctx),text:message,
             replyTo:post.comments.some(comment=>comment.id===replyTo)?replyTo:'',at:new Date().toISOString()};
@@ -6014,6 +6048,13 @@ async function openGroupFromChatList(id){
   setScreen('groups',{preserveGroup:true,groupReturn:'chatList'});
  }catch(error){setStatus(recordError('打开群聊',error),'error');}
 }
+function chatListMessagePreview(message){
+ if(!message)return '';
+ if(message.sticker||message.image||(Array.isArray(message.images)&&message.images.length))return '[图片]';
+ const value=String(message.text||'').trim();
+ if(/^\[(?:表情包|图片)[^\]]*\]/.test(value))return '[图片]';
+ return value.slice(0,64);
+}
 function renderChatLists(ctx,char,data) {
  for(const key of ['recentChats','contactsList','requestsList','storyPeopleList'])nodes[key]?.replaceChildren();
  if(!char||!data)return;
@@ -6028,7 +6069,7 @@ function renderChatLists(ctx,char,data) {
  for(const id of ids){
   const person=contactCharacter(ctx,id),view=readData(ctx,id),info=getContactInfo(ctx,id);
   const label=info.remark||info.name,{last,state}=contactSummary(ctx,id);
-  const summary=last?.text?.slice(0,64)||(state==='friends'?'点击开始聊天':FRIEND_LABELS[state]);
+  const summary=last?chatListMessagePreview(last):(state==='friends'?'点击开始聊天':FRIEND_LABELS[state]);
   if(!view.chatDeleted&&state==='friends'){
    const row=makeListContact(person,view,summary,()=>void openContactChat(id),label);
    const unread=unreadCount(story,id);
@@ -6070,7 +6111,7 @@ function renderChatLists(ctx,char,data) {
   const last=Array.isArray(group.messages)?group.messages.at(-1):null;
   const preview=document.createElement('small');
   const speaker=last?.from==='user'?'我':last?.from&&validContactId(story,last.from)?getContactInfo(ctx,last.from).name:'成员';
-  preview.textContent=last?(speaker+'：'+String(last.text||'[分享／图片]').slice(0,64)):(group.members?.length||0)+'位群成员 · 暂无消息';
+  preview.textContent=last?(speaker+'：'+(chatListMessagePreview(last)||'[分享]')):(group.members?.length||0)+'位群成员 · 暂无消息';
   const chevron=document.createElement('span');chevron.textContent='›';chevron.className='lp-chevron';
   info.append(name,preview);row.append(avatar,info,chevron);
   row.addEventListener('click',()=>void openGroupFromChatList(group.id));
