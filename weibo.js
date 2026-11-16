@@ -1,6 +1,6 @@
 /* 群星 · character-card accounts + per-story persistent generated feeds and interactions. */
 export function createWeiboModule(api) {
- const state={scope:'',tab:'home',detail:'',topic:null,profileAccount:'',adminHistoryAccount:'',historyEditingId:'',historyFormOpen:false,historyGenerating:false,historyStatus:'',historyInstructions:'',historyCount:'3',composePhoto:'',searchQuery:'',sharingId:'',subview:'',posts:{home:[],nearby:[]},trends:[],nearbyTrends:[],loading:false,hotLoading:false,refreshResult:{},attempted:{},token:0,sessionId:0,headline:'',hotBundles:{},queuedNearby:false,confirming:false,editing:'',avatarDraft:'',avatarOwnerDraft:'',candidates:[],scanLoading:false,scanMessage:''};
+ const state={scope:'',tab:'home',detail:'',topic:null,profileAccount:'',adminHistoryAccount:'',historyEditingId:'',historyFormOpen:false,historyGenerating:false,historyStatus:'',historyInstructions:'',historyCount:'3',randomHistoryCount:'10',composePhoto:'',searchQuery:'',sharingId:'',subview:'',posts:{home:[],nearby:[]},trends:[],nearbyTrends:[],loading:false,hotLoading:false,refreshResult:{},attempted:{},token:0,sessionId:0,headline:'',hotBundles:{},queuedNearby:false,confirming:false,editing:'',avatarDraft:'',avatarOwnerDraft:'',candidates:[],scanLoading:false,scanMessage:''};
  let writes=Promise.resolve(), autoBusy=false,closeHotConfirmation=null;
  const commentBusy=new Set(),commentNotices=new Map();
  const scrollViews=new Map();let renderedView='',renderedScope='';
@@ -988,6 +988,16 @@ export function createWeiboModule(api) {
   parent.append(controls);
   parent.append(heading('互动记录管理','清理当前存档里的测试互动，不影响原创动态或账号'));
   parent.append(control('清空测试互动记录','clearInteractions'));
+  parent.append(heading('批量补发角色历史帖'));
+  const batch=el('div','lp-wb-history-batch');
+  const quantity=el('select');quantity.dataset.wbRandomHistoryCount='true';
+  for(const n of [10,15,20,30,50]){const option=el('option');option.value=String(n);option.textContent=n+' 条';quantity.append(option);}
+  quantity.value=state.randomHistoryCount||'10';
+  const requirement=document.createElement('textarea');requirement.dataset.wbRandomHistoryPrompt='true';
+  requirement.rows=3;requirement.placeholder='补充要求（可选）';
+  const start=control(state.historyGenerating?'正在生成多人历史帖…':'随机已有账号生成历史帖','generateRandomHistory');
+  start.disabled=state.historyGenerating;
+  batch.append(el('label','','发布数量（至少10条）'),quantity,requirement,start);parent.append(batch);
   parent.append(heading('管理群星账号','账号绑定具体故事人物；媒体、表白墙和后援会等可建立独立组织账号'));
   for(const a of q.accounts){
    const line=el('div','lp-wb-account-line lp-wb-managed-account');
@@ -1536,6 +1546,78 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
    state.historyEditingId='';
    state.historyStatus='公开帖子已删除';
    feedback(state.historyStatus);render();return;
+  }
+  if(type==='generateRandomHistory'){
+   if(state.historyGenerating)return;
+   const screen=nodes()?.weiboMe;
+   const count=Math.max(10,Math.min(50,Number(screen?.querySelector('[data-wb-random-history-count]')?.value)||10));
+   const requirement=clean(screen?.querySelector('[data-wb-random-history-prompt]')?.value,900);
+   const registered=data().accounts.filter(a=>subjectOfAccount(a).type!=='organization');
+   const byPerson=new Map();
+   for(const account of [...registered].sort(()=>Math.random()-.5)){
+    const subject=subjectOfAccount(account),key=subject.type+':'+subject.name;
+    if(!byPerson.has(key))byPerson.set(key,account);
+   }
+   const accounts=[...byPerson.values()].sort(()=>Math.random()-.5).slice(0,count);
+   if(!accounts.length){feedback('尚无可用的已保存人物账号');return;}
+   const session=scope(),scene=root().storyTime||'';
+   if(!storyMoment(scene)){feedback('请先设置有效的剧情年月日和时间');return;}
+   state.randomHistoryCount=String(count);state.historyGenerating=true;
+   state.historyStatus='';render();
+   try{
+    const actorData=accounts.map(a=>({
+     id:a.id,name:a.name,handle:a.handle,occupation:savedProfession(a),
+     publicFigure:Boolean(a.publicFigure),followers:Number(a.followers)||0,
+     bio:a.bio,visibility:a.identityVisibility||'public',
+     operator:accountOperatorGuide(a),
+     background:clean(api.accountSubjectContext?.(subjectOfAccount(a))||a.roleBrief||'',1550),
+     previousPosts:accountHistory(a).slice(0,5).map(p=>clean(p.text,140))
+    }));
+    const valid=[];let offset=0;
+    const batches=Math.ceil(count/4)+2;
+    for(let batch=0;batch<batches&&valid.length<count;batch++){
+     const needed=Math.min(4,count-valid.length);
+     const assigned=Array.from({length:needed},(_,i)=>accounts[(offset+i)%accounts.length]);
+     offset+=needed;
+     const prompt=[
+      '当前故事时间：'+scene,
+      '以下是已有账号（不得新增账号或编造身份）：'+JSON.stringify(actorData),
+      '本批准确生成 '+needed+' 条历史帖子，账号依次归属：'+JSON.stringify(assigned.map(a=>a.id))+
+       '。每条 authorId 必须对应指定的账号，不得互换。',
+      '用户补充要求：'+(requirement||'自然日常，与账户人设相符'),
+      '时间必须早于当前剧情，日期错开，符合角色性格、公开身份、运营方式和粉丝量。',
+      '每条帖子至少两条不同的自然评论，点赞数及评论总数符合既有粉丝规模；不能透露私人小号真实身份。',
+      '只返回JSON：{"posts":[{"authorId":"已有账号ID","text":"正文","publishedAt":"'+historyMomentFor('',scene,1,0)+'","likes":10000,"commentCount":100,"comments":[{"name":"网友","text":"评论"}]}]}'
+     ].join('\n');
+     const raw=await api.phoneGenerate(context(),{task:'weibo',maxTokens:Math.min(6500,1400+needed*1100),
+      systemPrompt:'为虚构故事中已经登记的群星账号生成历史公开帖；遵循人物和账号身份，不得冒充其他账号或新增账号。只返回紧凑合法JSON。',
+      prompt:[{role:'user',content:prompt}]},api.readData(context()));
+     if(scope()!==session)return;
+     const parsed=parse(raw),rows=Array.isArray(parsed.posts)?parsed.posts.slice(0,needed):[];
+     for(let i=0;i<rows.length;i++){
+      const item=rows[i],owner=assigned[i];if(!owner||item?.authorId!==owner.id)continue;
+      const text=clean(item.text,1000);if(!text)continue;
+      const comments=(Array.isArray(item.comments)?item.comments:[]).map(c=>({
+       id:uid('comment'),name:clean(c?.name||'网友',40),text:clean(c?.text,350)
+      })).filter(c=>c.text).slice(0,10);
+      if(comments.length<2)continue;
+      const date=historyMomentFor(item.publishedAt,scene,item.daysAgo,valid.length);if(!date)continue;
+      const range=historicalLikeRange(owner.followers),n=Number(item.likes);
+      const likes=Number.isSafeInteger(n)?Math.min(range.max,Math.max(range.min,n)):
+       Math.round(Math.max(range.min,Math.min(range.max,Number(owner.followers||0)*.002)));
+      const commentCount=Math.max(comments.length,countValue(item.commentCount)??Math.round(likes*.025));
+      valid.push({id:uid('post'),authorId:owner.id,author:owner.name,handle:owner.handle,avatar:owner.avatar,
+       category:'日常',text,likes,commentCount,comments,time:date,zone:'world',actions:{},backfilled:true});
+     }
+     // No additional request beyond the bounded batch budget; failed rows remain unsaved.
+    }
+    if(valid.length<10)throw Error('只得到 '+valid.length+' 条符合账号、日期与评论要求的帖子；本次未保存');
+    await mutate(q=>{q.posts.push(...valid.slice(0,count));q.posts=q.posts.slice(-Math.max(300,count*4));});
+    state.historyStatus='已保存 '+valid.length+' 条历史帖子，涉及 '+new Set(valid.map(p=>p.authorId)).size+' 个账号';
+    feedback(state.historyStatus);render();
+   }catch(error){state.historyStatus='多人历史帖生成失败：'+String(error.message||error);feedback(state.historyStatus);render();}
+   finally{state.historyGenerating=false;if(scope()===session)render();}
+   return;
   }
   if(type==='generateAccountHistory'){
    const account=data().accounts.find(a=>a.id===id);
