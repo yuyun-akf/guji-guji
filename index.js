@@ -3239,7 +3239,7 @@ function readExternalMemory(ctx,data) {
 
 async function composePhonePrompt(ctx, char, data) {
     const persona=currentPersona(ctx);
-    const parts = [createSystemPrompt(char, data, persona),albumIdentityPrompt(data?.__contactId||activeContactId,ctx)].filter(Boolean);
+    const parts = [createSystemPrompt(char, data, persona),phoneRelationshipPrompt(ctx,data?.__contactId||activeContactId),albumIdentityPrompt(data?.__contactId||activeContactId,ctx)].filter(Boolean);
     const summary={preset:0,selected:0,world:0,skipped:0,characters:0};
     const config=data?.config||{};
     // The chosen preset implicitly enables its originally enabled prompts.
@@ -4606,6 +4606,85 @@ function currentPersona(ctx) {
     }
     return { name: String(ctx?.name1 || 'user'), description: String(settings.persona_description || ''),
         lorebook: String(settings.persona_description_lorebook || '').trim(), avatar: avatar || '/img/user-default.png' };
+}
+const PHONE_RELATION_LABELS={
+ unfamiliar:'不熟',acquaintance:'熟人',friend:'朋友',ambiguous:'暧昧',lover:'恋人',
+ family:'家人',hostile:'敌对',enemy:'仇人',ex:'前任',crush:'暗恋对象',custom:'自定义',unknown:'待确认'
+};
+function phoneRelationshipFor(ctx=context(),id=activeContactId){
+ const saved=readRootData(ctx)?.phoneRelationshipStates?.[id]||{};
+ return {
+  mode:saved.mode==='manual'?'manual':'auto',
+  relation:String(saved.relation||'unknown'),
+  custom:String(saved.custom||''),
+  details:String(saved.details||''),
+  source:String(saved.source||''),
+  updatedAt:String(saved.updatedAt||'')
+ };
+}
+function phoneRelationshipDescription(ctx=context(),id=activeContactId){
+ const saved=phoneRelationshipFor(ctx,id);
+ const name=saved.relation==='custom'?(saved.custom||'未指定'):(PHONE_RELATION_LABELS[saved.relation]||saved.relation);
+ return name+(saved.relation==='crush'?'（角色暗恋 user）':'')+(saved.details?'；'+saved.details:'');
+}
+function phoneRelationshipPrompt(ctx=context(),id=activeContactId){
+ const saved=phoneRelationshipFor(ctx,id),label=phoneRelationshipDescription(ctx,id);
+ if(saved.relation==='unknown'&&!saved.details)return '';
+ return '【咕叽聊关系资料】当前 '+getContactInfo(ctx,id).name+' 与 '+currentPersona(ctx).name+
+  ' 的关系：'+label+'。来源：'+(saved.mode==='manual'?'用户明确设定':'依据设定及已发生剧情自动识别')+
+  '。按角色本人性格、世界书关系阶段／好感度阈值、当前时间线和已发生事实决定态度。关系不等于微信好友状态；不得把未来关系当作当前事实，不得替 user 补写心理或言行。';
+}
+function showPhoneRelationTab(tab='relation'){
+ if(!nodes?.profileRoleDialog)return;
+ const details=tab==='details';
+ nodes.profileDetailsPane.hidden=!details;nodes.profileRelationPane.hidden=details;
+ nodes.profileTabDetails.classList.toggle('selected',details);
+ nodes.profileTabRelation.classList.toggle('selected',!details);
+ if(details)return;
+ const ctx=context(),saved=phoneRelationshipFor(ctx),persona=currentPersona(ctx),contact=getContactInfo(ctx);
+ nodes.profileRelationNames.textContent=contact.name+' 与 '+persona.name+' 的关系';
+ nodes.relationManual.checked=saved.mode==='manual';nodes.relationAuto.checked=saved.mode!=='manual';
+ nodes.relationManualFields.hidden=saved.mode!=='manual';
+ nodes.relationChoice.value=Object.prototype.hasOwnProperty.call(PHONE_RELATION_LABELS,saved.relation)&&saved.relation!=='unknown'?saved.relation:'custom';
+ nodes.relationCustom.value=saved.custom||(nodes.relationChoice.value==='custom'&&saved.relation!=='unknown'?saved.relation:'');
+ nodes.relationCustomLabel.hidden=nodes.relationChoice.value!=='custom';
+ nodes.relationDetails.value=saved.details;
+ nodes.relationCurrent.textContent='当前：'+phoneRelationshipDescription(ctx);
+ nodes.relationStatus.textContent='';
+}
+async function savePhoneRelationship(mode,relation,custom='',details='',source=''){
+ const ctx=context(),id=activeContactId,session=captureSession(ctx),data=structuredClone(readRootData(ctx));
+ data.phoneRelationshipStates||={};
+ data.phoneRelationshipStates[id]={mode,relation,custom:custom.slice(0,80),details:details.slice(0,800),source,updatedAt:data.storyTime||''};
+ await writeData(ctx,{...data,__contactId:id});
+ if(sameSession(session)){render();showPhoneRelationTab('relation');notifyInteraction('人物关系已保存','success');}
+}
+async function detectPhoneRelationship(){
+ if(busy||autonomousWorking)return;
+ const ctx=context(),char=contactCharacter(ctx),id=activeContactId,snapshot=captureSession(ctx);
+ const data=readData(ctx,id),sceneTime=readRootData(ctx).storyTime;
+ nodes.relationDetect.disabled=true;nodes.relationStatus.textContent='正在读取设定与记忆并识别关系…';
+ try{
+  const modelContext=await composePhonePrompt(ctx,char,data);
+  const raw=await phoneGenerate(ctx,{
+   task:'default',maxTokens:750,
+   systemPrompt:'你是人物关系状态提取器。只根据给出的真实角色资料、已触发世界书、预设及可信剧情记忆提取当前关系，不编造进度、数值和未来事件。只输出合法JSON。',
+   prompt:[{role:'user',content:[
+    '当前小手机故事时间：'+sceneTime,
+    '注意：小手机时间可能早于或晚于酒馆正文；不得根据正文晚于该时间的事件推定当前关系，未来事件若无可确认的过去日期则不能采用。',
+    '如果世界书有关系阶段和好感度阈值，必须遵循既有条件，未满足或资料不明则返回 unknown。若只有角色暗恋用户，则关系为 crush，不意味着用户也喜欢角色。',
+    '允许关系：'+Object.keys(PHONE_RELATION_LABELS).join(', '),
+    '返回JSON：{"relation":"unknown","custom":"","details":"不超过100字的可核实当前关系摘要","source":"设定/剧情/记忆的简要依据"}。没有明确证据关系为 unknown。',
+    modelContext.slice(0,15000)
+   ].join('\n')}]},data);
+  if(!sameSession(snapshot))return;
+  const cleaned=stripModelReasoning(String(raw||'')),first=cleaned.indexOf('{'),last=cleaned.lastIndexOf('}');
+  if(first<0||last<=first)throw Error('模型未返回可用的关系数据');
+  const parsed=JSON.parse(cleaned.slice(first,last+1));
+  const relation=Object.prototype.hasOwnProperty.call(PHONE_RELATION_LABELS,parsed.relation)?parsed.relation:'unknown';
+  await savePhoneRelationship('auto',relation,String(parsed.custom||''),String(parsed.details||''),String(parsed.source||''));
+ }catch(error){nodes.relationStatus.textContent='识别失败：'+String(error.message||error);}
+ finally{nodes.relationDetect.disabled=false;}
 }
 function phoneUserDisplayName(ctx=context()){
  const persona=currentPersona(ctx),key=String(ctx?.powerUserSettings?.persona||persona.name);
@@ -8188,9 +8267,34 @@ function makeUI() {
           <button type="button" class="lp-clear-logs" data-lp="clearDiagnostics">清空本次运行日志</button>
         </section>
         <div class="lp-profile-overlay" data-lp="profileRoleDialog" role="dialog" aria-modal="true" aria-label="查看角色设定" hidden>
-          <div class="lp-profile-overlay-panel">
+          <div class="lp-profile-overlay-panel lp-relationship-panel">
             <div class="lp-profile-overlay-heading"><strong data-lp="profileRoleTitle">角色设定</strong><button type="button" data-lp="profileRoleClose" aria-label="关闭角色设定">×</button></div>
-            <div class="lp-profile-role-content" data-lp="profileDescription"></div>
+            <div class="lp-relation-tabs">
+              <button type="button" data-lp="profileTabDetails">角色详细设定</button>
+              <button type="button" data-lp="profileTabRelation">角色与你的关系</button>
+            </div>
+            <div data-lp="profileDetailsPane" class="lp-profile-role-content" hidden><div data-lp="profileDescription"></div></div>
+            <div data-lp="profileRelationPane" class="lp-relation-form">
+              <div data-lp="profileRelationNames" class="lp-relation-names"></div>
+              <label class="lp-relation-radio"><input type="radio" name="lp-relation-mode" data-lp="relationAuto" value="auto" checked />自动识别</label>
+              <label class="lp-relation-radio"><input type="radio" name="lp-relation-mode" data-lp="relationManual" value="manual" />手动指定</label>
+              <div data-lp="relationManualFields" hidden>
+                <label>当前关系<select data-lp="relationChoice">
+                  <option value="unfamiliar">不熟</option><option value="acquaintance">熟人</option>
+                  <option value="friend">朋友</option><option value="ambiguous">暧昧</option>
+                  <option value="lover">恋人</option><option value="family">家人</option>
+                  <option value="hostile">敌对</option><option value="enemy">仇人</option>
+                  <option value="ex">前任</option><option value="crush">暗恋对象（角色暗恋 user）</option>
+                  <option value="custom">自定义</option>
+                </select></label>
+                <label data-lp="relationCustomLabel" hidden>自定义关系<input data-lp="relationCustom" maxlength="80" placeholder="填写关系名称" /></label>
+              </div>
+              <label>关系背景与当前阶段（选填）<textarea data-lp="relationDetails" rows="3" maxlength="800" placeholder="例如：青梅竹马；目前处于熟人阶段"></textarea></label>
+              <div data-lp="relationCurrent" class="lp-relation-current"></div>
+              <div data-lp="relationStatus" class="lp-relation-status" role="status"></div>
+              <button type="button" data-lp="relationSave">保存所选设置</button>
+              <button type="button" data-lp="relationDetect">重新自动识别</button>
+            </div>
           </div>
         </div>
         <div class="lp-profile-overlay lp-profile-avatar-overlay" data-lp="profileAvatarSheet" role="dialog" aria-modal="true" aria-label="更换角色头像" hidden>
@@ -8254,7 +8358,7 @@ function mount() {
         'weiboGenerate','weiboFeedback','weiboFeed','weiboHot','weiboNearby','weiboCompose','weiboMe','weiboDetail','weiboTabs','weiboComposeText','weiboPublish','weiboDetailBack','weiboRefreshBox',
         'desktopSortList','clockMode','clockRate','clockContinueClosed','clockCustomFields','clockSave','lockEnabled','lockSaveEnabled','notification','inlineNotification','calendarPrev','calendarNext','calendarHeading','calendarViews','calendarGrid','calendarSelected','calendarSummary','calendarSelectedTime','calendarStoryToday','calendarRealToday','calendarSaveTime','calendarExactSave',
         'momentsPost', 'momentsText', 'momentsFeed', 'momentFeedback','momentsPreview','momentImageUpload','momentRemovePhoto','momentCamera','momentComposer','momentCoverImage','momentCoverUpload','momentCoverName','momentCoverAvatar','momentHistoryOpen','momentHistoryOwner','momentHistoryTime','momentHistoryText','momentHistoryPhoto','momentHistoryPhotoPreview','momentHistoryRemovePhoto','momentHistoryManual','momentHistoryInstructions','momentHistoryCount','momentHistoryGenerate','momentHistoryStatus','momentHistoryList','myBio','myBioEdit','profileBio','profileBioEdit','contactMomentList','myAvatarUpload','myAvatarFallback','myAvatarStatus','myIdentity', 'myNameEdit', 'myAvatar', 'myPersona', 'messageBannerToggle','messageBannerStatus','autoMessagesMode','autoMessagesDays','autoMomentsMode','autoMomentsDays','relationAutoSync','phoneInPast','characterRequests','momentInteractions','autonomyStatus','autonomyFeedback','saveAutonomy','rescanRelations','testAutonomy', 'stickerUpload','stickerPackUpload', 'stickerStatus', 'stickerLibrary',
-        'friendLabel', 'friendActions','profileAvatar','profileAvatarAction','profileAvatarSheet','profileChooseAvatar','profileAvatarCancel','profileRoleDialog','profileRoleOpen','profileRoleClose','profileRoleTitle','profileName','profileDescription','contactEvidence','contactExchange','contactLinks','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcAiScanButton','npcClearScanButton','npcScanState','npcCandidates','npcSaveCandidates','storyPeopleList','viewPrimaryContact','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
+        'friendLabel', 'friendActions','profileAvatar','profileAvatarAction','profileAvatarSheet','profileChooseAvatar','profileAvatarCancel','profileRoleDialog','profileRoleOpen','profileRoleClose','profileRoleTitle','profileTabDetails','profileTabRelation','profileDetailsPane','profileRelationPane','profileRelationNames','relationAuto','relationManual','relationManualFields','relationChoice','relationCustomLabel','relationCustom','relationDetails','relationCurrent','relationStatus','relationSave','relationDetect','profileName','profileDescription','contactEvidence','contactExchange','contactLinks','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcAiScanButton','npcClearScanButton','npcScanState','npcCandidates','npcSaveCandidates','storyPeopleList','viewPrimaryContact','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','resetCharAvatar',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
         'settingsMenu','apiTask','apiProfile','apiProfileModel','apiProfileModelManual','apiReloadModels','apiProfileFields','apiProfileHint','apiTest',
@@ -8602,8 +8706,26 @@ function mount() {
     nodes.profileRoleOpen.addEventListener('click',()=>{
       nodes.profileAvatarSheet.hidden=true;
       nodes.profileRoleDialog.hidden=false;
+      showPhoneRelationTab('relation');
     });
     nodes.profileRoleClose.addEventListener('click',hideProfileOverlays);
+    nodes.profileTabDetails.addEventListener('click',()=>showPhoneRelationTab('details'));
+    nodes.profileTabRelation.addEventListener('click',()=>showPhoneRelationTab('relation'));
+    const relationMode=()=>{nodes.relationManualFields.hidden=!nodes.relationManual.checked;};
+    nodes.relationAuto.addEventListener('change',relationMode);
+    nodes.relationManual.addEventListener('change',relationMode);
+    nodes.relationChoice.addEventListener('change',()=>{nodes.relationCustomLabel.hidden=nodes.relationChoice.value!=='custom';});
+    nodes.relationDetect.addEventListener('click',()=>void detectPhoneRelationship());
+    nodes.relationSave.addEventListener('click',()=>{
+      const mode=nodes.relationManual.checked?'manual':'auto';
+      const relation=mode==='manual'?nodes.relationChoice.value:phoneRelationshipFor(context()).relation;
+      const custom=nodes.relationCustom.value.trim(),details=nodes.relationDetails.value.trim();
+      if(mode==='manual'&&relation==='custom'&&!custom){nodes.relationStatus.textContent='请填写自定义关系';return;}
+      if(mode==='manual'){
+       const enableAuto=window.confirm('手动关系不会随剧情自动更新。建议开启自动识别。\n\n点击「确定」保存当前关系并启用后续自动识别；点击「取消」保持手动关系。');
+       void savePhoneRelationship(enableAuto?'auto':'manual',relation,custom,details,enableAuto?'用户指定的初始关系':'手动设定');
+      }else void savePhoneRelationship('auto',relation,custom,details,'自动识别设置');
+    });
     nodes.profileAvatarAction.addEventListener('click',()=>{
       nodes.profileRoleDialog.hidden=true;
       nodes.profileAvatarSheet.hidden=false;
