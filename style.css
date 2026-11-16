@@ -5060,3 +5060,44 @@
  border:1px solid var(--lp-border);border-radius:10px;
  color:var(--lp-navy);font:inherit;cursor:pointer;
 }
+
+/* v0.36 — group composer media controls */
+#st-little-phone-root .lp-group-chat-compose .lp-group-tool-btn{
+ flex:0 0 29px;width:29px;min-width:29px;min-height:43px;
+ padding:0!important;background:transparent;border:0!important;
+ color:var(--lp-navy);font-size:22px;line-height:1;
+}
+#st-little-phone-root .lp-group-chat-compose .lp-group-emoji-panel{
+ max-height:242px;overflow-y:auto;min-height:0;
+ grid-template-columns:repeat(4,minmax(0,1fr));
+ padding:9px;gap:8px;border-radius:10px;
+ background:var(--lp-ice);
+}
+#st-little-phone-root .lp-group-chat-compose .lp-group-sticker-button{
+ min-width:0;padding:4px!important;border:0!important;
+ border-radius:10px;background:var(--lp-white);
+}
+#st-little-phone-root .lp-group-chat-compose .lp-group-sticker-button img{
+ width:100%;height:66px;object-fit:contain;border-radius:8px;
+}
+#st-little-phone-root .lp-group-tools-menu{
+ padding:10px;border-radius:10px;background:var(--lp-ice);
+}
+#st-little-phone-root .lp-group-choose-photo{
+ display:flex;align-items:center;justify-content:center;
+ flex-direction:column;gap:6px;padding:12px;min-height:50px;
+ box-sizing:border-box;background:var(--lp-white);
+ border:1px solid var(--lp-border);border-radius:10px;
+ color:var(--lp-navy);font-size:13px;
+}
+#st-little-phone-root .lp-group-choose-photo input{
+ max-width:100%;width:100%;font-size:12px;
+}
+#st-little-phone-root .lp-group-chat-row .lp-group-bubble.lp-sticker-only{
+ border:0!important;padding:0!important;background:transparent!important;
+ border-radius:0!important;box-shadow:none!important;
+}
+#st-little-phone-root .lp-group-chat-row .lp-group-bubble.lp-sticker-only .lp-chat-image{
+ margin:0!important;max-width:min(49vw,190px);max-height:190px;
+ border-radius:13px;
+}
