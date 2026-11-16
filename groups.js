@@ -157,7 +157,7 @@ export function createGroupsModule(api){
    const parsed=JSON.parse(match[0]);
    const messages=(Array.isArray(parsed.messages)?parsed.messages:[]).filter(m=>roster.some(p=>p.id===m.speaker)&&typeof m.text==='string'&&m.text.trim()).slice(0,8);
    if(messages.length)await mutate(all=>{
-    const g=all.find(x=>x.id===group.id);
+    const g=all.find(x=>x.id===group.id),newBatch=[];
     for(const message of messages){
      const memberPhotos=api.galleryPhotosForMember?.(message.speaker)||[];
      const match=message.text.match(/\[\[photo:([^\]\r\n]+)\]\]/);
@@ -165,11 +165,11 @@ export function createGroupsModule(api){
      const text=message.text.replace(/\[\[photo:[^\]\r\n]+\]\]/g,'').trim();
      if(text||photo){
       const ref=String(message.replyTo||'');
-      const list=(g.messages||[]).slice(-35);
-      const original=list.find(m=>m.id===ref)||(/^\d+$/.test(ref)?list[Number(ref)]:null);
-      g.messages.push({id:uid(),from:message.speaker,text:text.slice(0,1000),
+      const original=(g.messages||[]).find(m=>m.id===ref)||
+       (/^\d+$/.test(ref)?newBatch[Number(ref)]:null);
+      const saved={id:uid(),from:message.speaker,text:text.slice(0,1000),
         ...(original?{replyTo:original.id}:{}),
-       ...(photo?{images:[photo.image]}:{}),storyTime:root().storyTime||'',createdAt:new Date().toISOString()});}
+       ...(photo?{images:[photo.image]}:{}),storyTime:root().storyTime||'',createdAt:new Date().toISOString()};g.messages.push(saved);newBatch.push(saved);}
     }
     g.messages=g.messages.slice(-180);
    });
