@@ -4103,3 +4103,5 @@
  display:flex;flex-direction:column;gap:6px;
  max-height:none;overflow:visible;
 }
+
+#st-little-phone-root .lp-thread-context-menu.opens-up{top:auto;bottom:calc(100% - 7px);}
