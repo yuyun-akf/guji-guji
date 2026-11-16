@@ -4688,7 +4688,7 @@ async function savePhoneRelationship(mode,relation,custom='',details='',source='
  const ctx=context(),id=activeContactId,session=captureSession(ctx),data=structuredClone(readRootData(ctx));
  data.phoneRelationshipStates||={};
  data.phoneRelationshipStates[id]={mode,relation,custom:custom.slice(0,80),details:details.slice(0,800),source,updatedAt:data.storyTime||'',checkedMessages:readData(ctx,id).messages?.length||0,checkedMainline:ctx?.chat?.length||0};
- await writeData(ctx,{...data,__contactId:id});
+ await writeData(ctx,{...data,__contactId:PRIMARY_CONTACT_ID});
  if(sameSession(session)){render();showPhoneRelationTab('relation');notifyInteraction('人物关系已保存','success');}
 }
 async function detectPhoneRelationship(){
