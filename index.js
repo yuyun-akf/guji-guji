@@ -68,7 +68,7 @@ let bridgeNeedsSync=false;
 const bridgeListeners=[];
 let autoRequestWorking = false;
 let momentImageDraft = '';
-let momentHistoryGenerating=false,momentHistoryMessage='',momentHistoryPhotoDraft='';
+let momentHistoryGenerating=false,momentHistoryMessage='',momentHistoryPhotoDraft='',momentHistoryEditingId='';
 let pickerState = null;
 let pickerReturnTimer = null;
 let pickerGuardUntil = 0;
@@ -5283,33 +5283,52 @@ function renderMomentHistory(){
    const b=document.createElement('button');b.type='button';b.textContent=label;
    b.dataset.momentHistoryAction=type;b.dataset.momentHistoryId=p.id;actions.append(b);
   }
-  article.append(title,body,actions);list.append(article);
+  article.append(title,body,actions);
+  if(momentHistoryEditingId===p.id){
+   const editor=document.createElement('div');editor.className='lp-moment-history-edit';
+   const textLabel=document.createElement('label');textLabel.textContent='朋友圈正文';
+   const textInput=document.createElement('textarea');textInput.rows=4;textInput.maxLength=1000;
+   textInput.dataset.momentEditField='text';textInput.value=p.text||'';textLabel.append(textInput);
+   const dateLabel=document.createElement('label');dateLabel.textContent='发布时间';
+   const dateInput=document.createElement('input');dateInput.type='datetime-local';
+   dateInput.dataset.momentEditField='time';dateInput.value=p.storyTime||'';
+   dateLabel.append(dateInput);editor.append(textLabel,dateLabel);
+   const controls=document.createElement('div');controls.className='lp-moment-history-actions';
+   for(const [type,label] of [['save','保存修改'],['cancel','取消']]){
+    const btn=document.createElement('button');btn.type='button';btn.textContent=label;
+    btn.dataset.momentHistoryAction=type;btn.dataset.momentHistoryId=p.id;controls.append(btn);
+   }
+   editor.append(controls);article.append(editor);
+  }
+  list.append(article);
  }
  if(!posts.length)list.textContent='尚无补录的历史朋友圈';
 }
 async function changeHistoricMoment(type,id){
  const ctx=context(),p=(readRootData(ctx).moments||[]).find(x=>x.id===id&&x.historical===true);
  if(!p)return;
+ if(type==='edit'){momentHistoryEditingId=id;renderMomentHistory();return;}
+ if(type==='cancel'){momentHistoryEditingId='';renderMomentHistory();return;}
  let text=p.text,time=p.storyTime;
- if(type==='edit'){
-  const next=window.prompt('编辑历史朋友圈正文',p.text||'');
-  if(next===null)return;
-  text=next.trim().slice(0,1000);
-  const stamp=window.prompt('编辑发布时间，格式 YYYY-MM-DDTHH:mm',p.storyTime||'');
-  if(stamp===null)return;
-  time=stamp.trim();
+ if(type==='save'){
+  const editor=[...(nodes?.momentHistoryList?.querySelectorAll('.lp-moment-history-edit')||[])]
+   .find(node=>node.parentElement?.querySelector('[data-moment-history-id]')?.dataset.momentHistoryId===id);
+  if(!editor)return;
+  text=editor.querySelector('[data-moment-edit-field="text"]')?.value?.trim().slice(0,1000)||'';
+  time=editor.querySelector('[data-moment-edit-field="time"]')?.value||'';
   const current=readRootData(ctx).storyTime;
-  if(!historicTime(time,0)||Date.parse(time)>=Date.parse(current))return setStatus('发布时间必须早于当前剧情时间','error');
- }else if(type==='delete'){
+  if(!historicTime(time,0)||Date.parse(time)>=Date.parse(current))
+   return setStatus('发布时间必须早于当前剧情时间','error');
+  }else if(type==='delete'){
   if(!window.confirm('删除这条补录的历史朋友圈？'))return;
  }else return;
  await editMoments(ctx,data=>{
   data.moments=(data.moments||[]).filter(x=>type!=='delete'||x.id!==id);
   const target=data.moments.find(x=>x.id===id);
-  if(type==='edit'&&target){target.text=text;target.storyTime=time;}
+  if(type==='save'&&target){target.text=text;target.storyTime=time;}
   return true;
  });
- momentHistoryMessage=type==='edit'?'历史朋友圈已修改':'历史朋友圈已删除';
+ momentHistoryEditingId='';momentHistoryMessage=type==='save'?'历史朋友圈已修改':'历史朋友圈已删除';
  renderMomentHistory();notifyInteraction(momentHistoryMessage,'success');
 }
 async function manualHistoricMoment(){
@@ -7563,7 +7582,6 @@ function makeUI() {
         </section>
         <section class="lp-screen lp-chatlist" data-lp-screen="momentHistory" aria-label="历史朋友圈" hidden>
           <div class="lp-list-body lp-moment-history">
-            <h3>补录历史朋友圈</h3>
             <p class="lp-settings-hint">只补录小手机当前剧情时间以前的动态。手动添加无需 API；AI 批量生成需主动点击，当前剧情中尚未发生的内容不得提前发布。</p>
             <label>发布人物<select data-lp="momentHistoryOwner"></select></label>
             <label>发布时间（手动补录）<input data-lp="momentHistoryTime" type="datetime-local" /></label>
