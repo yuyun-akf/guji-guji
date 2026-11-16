@@ -7,6 +7,8 @@ export function createTakeoutModule(api){
   {id:'sample:sweet',name:'午后甜品屋',category:'甜品饮品',feeCents:300,packingCents:300,menu:[{id:'d1',name:'草莓奶油蛋糕',priceCents:2800},{id:'d2',name:'焦糖布丁',priceCents:1600},{id:'d3',name:'热可可',priceCents:1800}]}
  ];
  const state={scope:null,tab:'browse',view:'',shopId:'',addressId:'',returnCheckout:false,loading:false,message:'',error:''};
+ const scrollByRoute=new Map();let previousRoute='';
+ const routeKey=()=>[state.tab,state.view,state.shopId].join(':');
  const id=p=>p+':'+Date.now().toString(36)+':'+Math.random().toString(36).slice(2,9);
  const clean=(v,max=180)=>String(v??'').trim().slice(0,max);
  const money=c=>api.walletMoney(c);
@@ -56,6 +58,9 @@ export function createTakeoutModule(api){
   const n=api.getNodes();if(!n?.takeoutContent)return;
   n.takeoutTabs.querySelectorAll('[data-takeout-tab]').forEach(b=>b.classList.toggle('active',b.dataset.takeoutTab===state.tab));
   const host=n.takeoutContent,d=model(),body=create('div','lp-takeout-body');
+  const route=routeKey();
+  if(previousRoute&&previousRoute!==route)scrollByRoute.set(previousRoute,host.scrollTop);
+  const savedTop=previousRoute===route?host.scrollTop:(scrollByRoute.get(route)||0);
   if(state.error)body.append(create('p','lp-takeout-error',state.error));
   if(state.message)body.append(create('p','lp-takeout-note',state.message));
   if(state.view==='checkout')renderCheckout(body,d);
@@ -65,8 +70,7 @@ export function createTakeoutModule(api){
   else if(state.tab==='browse')state.shopId?renderShop(body,d):renderBrowse(body,d);
   else if(state.tab==='cart')renderCart(body,d);
   else renderMe(body,d);
-  const scroll=host.scrollTop;
-  host.replaceChildren(body);host.scrollTop=scroll;
+  host.replaceChildren(body);host.scrollTop=savedTop;previousRoute=route;
   reportFeedback();
  }
  function renderBrowse(host,d){
@@ -191,7 +195,7 @@ export function createTakeoutModule(api){
   const action=b.dataset.takeoutAction;
   const go=(tab,view='',shopId='')=>{
    state.tab=tab;state.view=view;state.shopId=shopId;state.error='';state.message='';
-   render();if(api.getNodes()?.takeoutContent)api.getNodes().takeoutContent.scrollTop=0;
+   render();
   };
   if(action==='shop'){go('browse','',b.dataset.shop);return true;}
   if(action==='browse'){go('browse');return true;}
@@ -284,10 +288,9 @@ export function createTakeoutModule(api){
  }
  function selectTab(tab){if(!['browse','cart','me'].includes(tab))return;
   state.tab=tab;state.view='';state.shopId='';state.error='';state.message='';render();
-  if(api.getNodes()?.takeoutContent)api.getNodes().takeoutContent.scrollTop=0;
  }
  function open(){const current=api.context()?.chatMetadata;
-  if(state.scope!==current){state.scope=current;state.tab='browse';state.view='';state.shopId='';state.message='';state.error='';}
+  if(state.scope!==current){state.scope=current;state.tab='browse';state.view='';state.shopId='';state.message='';state.error='';scrollByRoute.clear();previousRoute='';}
   render();
  }
  function back(){
