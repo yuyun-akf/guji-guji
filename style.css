@@ -4742,3 +4742,25 @@
  width:100%;box-sizing:border-box;padding:9px;border:1px solid var(--lp-border);
  border-radius:9px;background:var(--lp-white);color:var(--lp-navy);font:inherit;
 }
+
+
+#st-little-phone-root .lp-relation-confirm-overlay{
+ position:absolute;inset:0;z-index:175;display:grid;place-items:center;
+ box-sizing:border-box;padding:20px;background:rgba(20,29,46,.44);
+}
+#st-little-phone-root .lp-relation-confirm-dialog{
+ width:min(100%,410px);display:flex;flex-direction:column;gap:13px;
+ background:var(--lp-white);color:var(--lp-navy);border:1px solid var(--lp-border);
+ border-radius:17px;padding:18px;box-sizing:border-box;
+}
+#st-little-phone-root .lp-relation-confirm-dialog strong{font-size:17px;}
+#st-little-phone-root .lp-relation-confirm-dialog p{font-size:13px;line-height:1.55;margin:0;}
+#st-little-phone-root .lp-relation-confirm-dialog>div{display:flex;gap:8px;}
+#st-little-phone-root .lp-relation-confirm-dialog button{
+ flex:1;min-height:41px;min-width:0;padding:8px;
+ border:1px solid var(--lp-border);border-radius:10px;
+ background:var(--lp-ice);color:var(--lp-navy);font:inherit;font-size:12px;
+}
+#st-little-phone-root .lp-relation-confirm-dialog>div button:last-child{
+ background:var(--lp-slate);color:var(--lp-white);
+}
