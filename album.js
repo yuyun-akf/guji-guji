@@ -53,13 +53,14 @@ export function createAlbumModule(api){
    const zip=await lib.loadAsync(raw);
    for(const [name,entry] of Object.entries(zip.files)){
     if(entry.dir)continue;if(map.size>=70)throw Error('ZIP内文件数量超出限制');
+    if(Number(entry?._data?.uncompressedSize)||0>15*1024*1024)throw Error('ZIP单个文件过大');
     const normalized=name.replace(/^\.\//,'').replaceAll('\\','/');
     if(normalized.startsWith('/')||normalized.split('/').includes('..'))throw Error('ZIP包含不安全路径');
     map.set(normalized,new Uint8Array(await entry.async('uint8array')));
    }
    return map;
   }
-  const bytes=new Uint8Array(raw),view=new DataView(raw);
+  const bytes=new Uint8Array(raw),view=new DataView(raw);let totalUncompressed=0;
   let eocd=-1;
   for(let i=bytes.length-22;i>=Math.max(0,bytes.length-66000);i--)if(view.getUint32(i,true)===0x06054b50){eocd=i;break;}
   if(eocd<0)throw Error('ZIP中央目录无效');
@@ -77,7 +78,8 @@ export function createAlbumModule(api){
    pos+=46+nameLength+extra+comment;
    if(name.endsWith('/'))continue;
    if(name.startsWith('/')||name.split('/').includes('..'))throw Error('ZIP包含不安全路径');
-   if(uncompressed>15*1024*1024||!['manifest.json'].includes(name)&&uncompressed===0)throw Error('ZIP图片体积或内容无效');
+   totalUncompressed+=uncompressed;
+   if(totalUncompressed>72*1024*1024||uncompressed>15*1024*1024||!['manifest.json'].includes(name)&&uncompressed===0)throw Error('ZIP图片体积或内容无效');
    if(view.getUint32(offset,true)!==0x04034b50)throw Error('ZIP图片数据损坏');
    const start=offset+30+view.getUint16(offset+26,true)+view.getUint16(offset+28,true);
    const part=bytes.slice(start,start+compressed);
@@ -400,7 +402,8 @@ export function createAlbumModule(api){
   if(state.busy||!state.pending)return;
   const pending=state.pending;
   if(pending.signature!==api.albumScope?.())return hint('角色卡已切换，停止导入',true);
-  const wrap=host(),pictures=pending.images.map((image,index)=>{
+  let pictures=[];
+  try{const wrap=host();pictures=pending.images.map((image,index)=>{
    const val=key=>wrap?.querySelector('[data-album-review="'+key+'"][data-album-index="'+index+'"]')?.value?.trim()||'';
    const owner=pending.mapping?val('owner'):pending.owner;
    const folder=pending.mapping?val('folder'):pending.folder;
@@ -414,7 +417,6 @@ export function createAlbumModule(api){
     access:owner==='world'?'public':folder==='public'?'public':folder==='private'?'private':'chat',image};
   });
   state.busy=true;
-  try{
    const beforeWorld=api.worldPhotos?.()||[],beforePeople=api.sharedPhotos?.()||[];
    const toWorld=pictures.filter(p=>p.owner==='world'),toPeople=pictures.filter(p=>p.owner!=='world');
    if(beforeWorld.filter(p=>p.folder==='表情包').length+toWorld.filter(p=>p.folder==='表情包').length>100)
@@ -437,7 +439,7 @@ export function createAlbumModule(api){
     state.folder=pictures[0].folder;state.level='folder';
    }else{state.folder='';state.level='owner';}
    state.navReset=true;hint('已导入 '+pictures.length+' 张图片');
-  }catch(error){hint('保存识图结果失败：'+String(error.message||error),true);}
+  }catch(error){hint('保存图片资料失败：'+String(error.message||error),true);}
   finally{state.busy=false;}
  }
  async function handleClick(event){
