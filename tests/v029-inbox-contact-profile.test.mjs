@@ -9,8 +9,8 @@ const bootstrap=readFileSync(new URL('../bootstrap.js',import.meta.url),'utf8');
 const manifest=JSON.parse(readFileSync(new URL('../manifest.json',import.meta.url),'utf8'));
 const section=(start,end)=>index.slice(index.indexOf(start),index.indexOf(end,index.indexOf(start)));
 
-test('v0.36.1: scripts parse with matching dynamic import and manifest versions',()=>{
- assert.equal(manifest.version,'0.36.1');
+test('v0.36.2: scripts parse with matching dynamic import and manifest versions',()=>{
+ assert.equal(manifest.version,'0.36.2');
  for(const src of [index,groups,bootstrap])assert.doesNotThrow(()=>new Function(src.replace(/^export /gm,'')));
  assert.match(bootstrap,/index\.js\?v=0\.35\.0/);
  assert.match(index,/groups\.js\?v=0\.35\.0/);
