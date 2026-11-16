@@ -4281,28 +4281,45 @@ function validStickerImage(image) {
     return typeof image==='string' && image.length<=500000 && /^data:image\/(?:png|jpeg|webp|gif);base64,[A-Za-z0-9+/=\r\n]+$/.test(image);
 }
 function stickerLibrary(ctx=context()) {
-    const list=ctx?.extensionSettings?.[SETTINGS_KEY]?.stickers;
-    return Array.isArray(list)?list.filter(item=>item && /^[a-z0-9-]+$/.test(item.id) && validStickerImage(item.image) && typeof item.label==='string').slice(0,STICKER_LIMIT):[];
+ const saved=worldPhotos(ctx).filter(p=>p.folder==='表情包'&&validStickerImage(p.image))
+  .map(p=>({...p,label:String(p.label||p.title||'表情包').slice(0,60)}));
+ // Previous versions saved stickers globally under "stickers". Keep them
+ // available until the user next changes the library, then migrate in one save.
+ const legacy=ctx?.extensionSettings?.[SETTINGS_KEY]?.stickers;
+ const old=Array.isArray(legacy)?legacy.filter(item=>item&&typeof item.id==='string'&&validStickerImage(item.image)&&typeof item.label==='string'):[];
+ const seen=new Set(saved.map(p=>p.image));
+ return [...saved,...old.filter(p=>!seen.has(p.image))].slice(0,STICKER_LIMIT);
 }
-function saveStickerLibrary(list,ctx=context()) {
-    if(!ctx?.extensionSettings||typeof ctx.saveSettingsDebounced!=='function')throw new Error('酒馆设置尚未就绪');
-    if(list.length>STICKER_LIMIT || list.reduce((n,item)=>n+item.image.length,0)>STICKER_TOTAL_CHARS)
-        throw new Error('表情包库达到安全上限（最多100张、图片数据合计约3MB）；请分批挑选更小的图片，避免手机内存耗尽。');
-    const old=ctx.extensionSettings[SETTINGS_KEY];
-    ctx.extensionSettings[SETTINGS_KEY]={...(old||{}),stickers:list};
-    try{ctx.saveSettingsDebounced();}catch(error){ctx.extensionSettings[SETTINGS_KEY]=old;throw error;}
+function saveStickerLibrary(list,ctx=context()){
+ if(!ctx?.extensionSettings||typeof ctx.saveSettingsDebounced!=='function')
+  throw Error('酒馆设置尚未就绪');
+ if(list.length>STICKER_LIMIT||list.reduce((n,item)=>n+(item.image?.length||0),0)>STICKER_TOTAL_CHARS)
+  throw Error('表情包库达到安全上限（100张、合计约3MB），请分批导入更小的图片');
+ const all=worldPhotos(ctx),rest=all.filter(p=>p.folder!=='表情包');
+ const stickers=list.map(item=>({
+  ...item,owner:'world',ownerName:'世界相册',folder:'表情包',access:'public',
+  title:String(item.label||item.title||'表情包').slice(0,60),
+  label:String(item.label||item.title||'表情包').slice(0,60),
+  description:String(item.description||'').slice(0,500),
+  usage:String(item.usage||'').slice(0,160)
+ }));
+ saveWorldPhotos([...rest,...stickers],ctx);
+ // Remove the legacy copy after successfully saving; no duplicate storage.
+ const settings=ctx.extensionSettings[SETTINGS_KEY];
+ if(settings&&Object.prototype.hasOwnProperty.call(settings,'stickers')){
+  delete settings.stickers;ctx.saveSettingsDebounced();
+ }
 }
-function saveSticker(image,label,ctx=context(),usage='') {
-    if(!validStickerImage(image))throw new Error('请使用350KB以内的 PNG、JPG、WebP 或 GIF 图片');
-    label=String(label||'').trim().slice(0,60);
-    if(!label)throw new Error('请填写表情包名称／关键词，方便角色选用');
-    const list=stickerLibrary(ctx);
-    const duplicate=list.find(item=>item.image===image);
-    if(duplicate)return duplicate;
-    const item={id:'s-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,10),label,image,
-        ...(usage?{usage:String(usage).slice(0,120)}:{})};
-    saveStickerLibrary([...list,item],ctx);
-    return item;
+function saveSticker(image,label,ctx=context(),usage=''){
+ if(!validStickerImage(image))throw Error('请使用350KB以内的PNG、JPG、WebP或GIF图片');
+ label=String(label||'').trim().slice(0,60);
+ if(!label)throw Error('请填写表情包名称／关键词，方便角色选用');
+ const list=stickerLibrary(ctx),duplicate=list.find(item=>item.image===image);
+ if(duplicate)return duplicate;
+ const item={id:'s-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,10),
+  owner:'world',ownerName:'世界相册',folder:'表情包',access:'public',
+  label,title:label,description:'',image,...(usage?{usage:String(usage).slice(0,120)}:{})};
+ saveStickerLibrary([...list,item],ctx);return item;
 }
 function chooseStickerCandidates(catalog,data){
     if(!catalog.length)return [];
@@ -4352,7 +4369,7 @@ function renderStickerLibrary() {
     for(const [container,manage] of [[nodes.stickerLibrary,true],[nodes.emojiPanel,false]]) {
         container.replaceChildren();
         if(!list.length) {
-            const empty=document.createElement('p');empty.textContent=manage?'还没有表情包，上传你喜欢的图片吧':'还没有表情包，到「我」添加图片';container.append(empty);
+            const empty=document.createElement('p');empty.textContent=manage?'还没有表情包，可到「相册 → 世界相册 → 表情包」添加':'还没有表情包，请到世界相册添加';container.append(empty);
         }
         const pageKey=manage?'manage':'send';
         for(const item of list.slice(0,stickerPages[pageKey]*STICKER_PAGE_SIZE)) {
