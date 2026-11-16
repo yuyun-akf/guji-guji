@@ -28,14 +28,15 @@ test('followers are a social count, not 人, with compact 万/亿 labels',()=>{
  assert.doesNotMatch(weibo,/\['person','人'\]/);
 });
 
-test('album has a recognizable tappable upload zone and a working file-change preview',()=>{
- assert.match(album,/lp-album-picker-icon/);
+test('album has a unified one-to-ten photo picker with folder destination and preview',()=>{
+ assert.match(album,/lp-album-picker/);
  assert.match(album,/file\.multiple=true/);
  assert.match(album,/function handleChange\(event\)/);
- assert.match(album,/handleChange\};/);
+ assert.match(album,/data-album-field="target"/);
+ assert.match(album,/state\.selectedFiles/);
+ assert.match(album,/lp-album-preview/);
  assert.match(index,/albumController\?\.handleChange\(event\)/);
- assert.match(css,/\.lp-album-file-input\{[\s\S]*opacity:0/);
- assert.match(css,/\.lp-album-preview-grid/);
+ assert.match(css,/\.lp-album-folder-grid/);
 });
 
 test('settings no longer contain the duplicate run-log entry or inactive API apps',()=>{
