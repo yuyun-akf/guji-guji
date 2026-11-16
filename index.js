@@ -7880,9 +7880,9 @@ function makeUI() {
     </div>
     <div data-lp="myAvatarStatus" class="lp-me-avatar-status" role="status" aria-live="polite"></div>
     <div class="lp-me-links lp-social-nav-list">
-      <button type="button" data-lp-open="meProfile">▤ 资料 <span>当前 user 人设与个人资料　›</span></button>
-      <button type="button" data-lp-open="momentHistory">◉ 历史朋友圈 <span>生成、补录和编辑　›</span></button>
-      <button type="button" data-lp-open="meSettings">⚙ 设置 <span>自主活动、朋友圈与提醒　›</span></button>
+      <button type="button" data-lp-open="meProfile">▤ 个人资料 <span aria-hidden="true">›</span></button>
+      <button type="button" data-lp-open="momentHistory">◉ 历史朋友圈 <span aria-hidden="true">›</span></button>
+      <button type="button" data-lp-open="meSettings">⚙ 设置 <span aria-hidden="true">›</span></button>
       
       
       
