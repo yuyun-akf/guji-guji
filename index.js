@@ -3820,6 +3820,7 @@ function setScreen(screen, options={}) {
         else void loadWeiboController().then(w=>{if(w&&activeScreen==='weibo')w.open(options);});
     }
     if (screen === 'diagnostics') renderDiagnostics();
+    if (screen === 'chatList' && previous !== 'chatList') renderChatLists(context(),selectedCharacter(context()),readData(context()));
     if (screen === 'album')void loadAlbumController().then(m=>{if(activeScreen==='album')m?.open();});
     if (screen === 'groups')void loadGroupsController().then(m=>{if(activeScreen==='groups')m?.render();});
     if (screen === 'sharePicker')renderQunxingSharePicker();
@@ -5066,75 +5067,128 @@ async function uploadMyAvatar(file) {
     }
 }
 
+const phoneThreadPinKey=(kind,id)=>kind+':'+id;
+let phonePinQueue=Promise.resolve();
+function pinnedChatIds(data){
+ return Array.isArray(data?.pinnedChats)?[...new Set(data.pinnedChats.filter(x=>typeof x==='string'))]:[];
+}
+async function togglePhoneThreadPin(key){
+ if(busy)return;
+ const ctx=context(),metadata=ctx?.chatMetadata;
+ phonePinQueue=phonePinQueue.catch(()=>{}).then(async()=>{
+  if(!selectedCharacter(ctx)||ctx.chatMetadata!==metadata||context()?.chatMetadata!==metadata)return;
+  const data=structuredClone(readRootData(ctx));
+  const previous=pinnedChatIds(data);
+  data.pinnedChats=previous.includes(key)?previous.filter(x=>x!==key):[key,...previous];
+  await writeData(ctx,{...data,__contactId:PRIMARY_CONTACT_ID});
+  if(mounted&&context()?.chatMetadata===metadata)
+   renderChatLists(ctx,contactCharacter(ctx),readData(ctx));
+ });
+ try{await phonePinQueue;}catch(e){setStatus(recordError('会话置顶',e),'error');}
+}
+function phoneThreadWrap(openRow,key,pinned){
+ const wrap=document.createElement('div');wrap.className='lp-thread-wrap'+(pinned?' is-pinned':'');
+ wrap.append(openRow);
+ const pin=document.createElement('button');pin.type='button';pin.className='lp-thread-pin';
+ pin.textContent=pinned?'取消置顶':'置顶';
+ pin.setAttribute('aria-label',(pinned?'取消置顶 ':'置顶 ')+(openRow.querySelector('strong')?.textContent||'会话'));
+ pin.setAttribute('aria-pressed',String(pinned));
+ pin.addEventListener('click',()=>void togglePhoneThreadPin(key));
+ wrap.append(pin);return wrap;
+}
+async function openGroupFromChatList(id){
+ const ctx=context(),metadata=ctx?.chatMetadata;
+ if(busy||!id)return;
+ try{
+  const controller=await loadGroupsController();
+  if(!controller||context()?.chatMetadata!==metadata)return;
+  controller.open({groupId:id,origin:'messages'});
+  setScreen('groups');
+ }catch(error){setStatus(recordError('打开群聊',error),'error');}
+}
 function renderChatLists(ctx,char,data) {
-    for (const key of ['recentChats','contactsList','requestsList','storyPeopleList']) nodes[key]?.replaceChildren();
-    if (!char||!data) return;
-    const story=readRootData(ctx);
-    const ids=[PRIMARY_CONTACT_ID,...story.contacts.map(c=>c.id)];
-    let requests=0, conversations=0;
-    for (const id of ids) {
-        const person=contactCharacter(ctx,id);
-        const view=readData(ctx,id);
-        const info=getContactInfo(ctx,id);
-        const label=info.remark || info.name;
-        const {last,state}=contactSummary(ctx,id);
-        const summary=last?.text?.slice(0,64) || (state==='friends'?'点击开始聊天':FRIEND_LABELS[state]);
-        if (!view.chatDeleted && state==='friends') {
-            const row=makeListContact(person,view,summary,()=>void openContactChat(id),label);
-            const unread=unreadCount(story,id);
-            if(unread){const badge=document.createElement('span');badge.className='lp-unread-badge';badge.textContent=String(unread);row.append(badge);}
-            nodes.recentChats.append(row);
-            conversations++;
-        }
-        if(state==='friends')nodes.contactsList.append(makeListContact(person,view,FRIEND_LABELS[state],()=>switchContact(id,'profile'),label));
-        else nodes.storyPeopleList.append(makeListContact(person,view,'',()=>switchContact(id,'profile'),label));
-        if (state==='incoming' || state==='outgoing') {
-            if(state==='incoming'){
-                const group=document.createElement('div');group.className='lp-request-entry';
-                group.append(makeListContact(person,view,'对方向你发送了好友申请',()=>switchContact(id,'profile'),label));
-                const choices=document.createElement('div');choices.className='lp-request-actions';
-                for(const [action,title] of [['friends','同意'],['stranger','拒绝']]){
-                    const button=document.createElement('button');button.type='button';button.textContent=title;
-                    button.addEventListener('click',async()=>{
-                        if(busy)return;
-                        activeContactId=id;
-                        const notice=action==='friends'?'你同意了对方的好友申请':'你拒绝了对方的好友申请';
-                        if(await changeFriendship(action,notice))setScreen('requests');
-                    });
-                    choices.append(button);
-                }
-                group.append(choices);nodes.requestsList.append(group);
-            }else{
-                nodes.requestsList.append(makeListContact(person,view,'旧版：我向对方发送申请（可在资料页改为对方申请）',()=>switchContact(id,'profile'),label));
-            }
-            requests++;
-        }
+ for(const key of ['recentChats','contactsList','requestsList','storyPeopleList'])nodes[key]?.replaceChildren();
+ if(!char||!data)return;
+ const story=readRootData(ctx),ids=[PRIMARY_CONTACT_ID,...story.contacts.map(c=>c.id)];
+ const pins=pinnedChatIds(story),threads=[];
+ const orderFor=key=>{const index=pins.indexOf(key);return index<0?Number.POSITIVE_INFINITY:index;};
+ const timestamp=message=>{
+  const date=message?.createdAt||message?.at||message?.storyTime||'';
+  const value=Date.parse(date);return Number.isFinite(value)?value:0;
+ };
+ let requests=0;
+ for(const id of ids){
+  const person=contactCharacter(ctx,id),view=readData(ctx,id),info=getContactInfo(ctx,id);
+  const label=info.remark||info.name,{last,state}=contactSummary(ctx,id);
+  const summary=last?.text?.slice(0,64)||(state==='friends'?'点击开始聊天':FRIEND_LABELS[state]);
+  if(!view.chatDeleted&&state==='friends'){
+   const row=makeListContact(person,view,summary,()=>void openContactChat(id),label);
+   const unread=unreadCount(story,id);
+   if(unread){const badge=document.createElement('span');badge.className='lp-unread-badge';badge.textContent=String(unread);row.append(badge);}
+   const key=phoneThreadPinKey('contact',id);
+   threads.push({key,when:timestamp(last),row:phoneThreadWrap(row,key,pins.includes(key)),order:threads.length});
+  }
+  if(state==='friends')nodes.contactsList.append(makeListContact(person,view,FRIEND_LABELS[state],()=>switchContact(id,'profile'),label));
+  else nodes.storyPeopleList.append(makeListContact(person,view,'',()=>switchContact(id,'profile'),label));
+  if(state==='incoming'||state==='outgoing'){
+   if(state==='incoming'){
+    const group=document.createElement('div');group.className='lp-request-entry';
+    group.append(makeListContact(person,view,'对方向你发送了好友申请',()=>switchContact(id,'profile'),label));
+    const choices=document.createElement('div');choices.className='lp-request-actions';
+    for(const [action,title]of [['friends','同意'],['stranger','拒绝']]){
+     const button=document.createElement('button');button.type='button';button.textContent=title;
+     button.addEventListener('click',async()=>{
+      if(busy)return;
+      activeContactId=id;
+      const notice=action==='friends'?'你同意了对方的好友申请':'你拒绝了对方的好友申请';
+      if(await changeFriendship(action,notice))setScreen('requests');
+     });choices.append(button);
     }
-    const incomingCount=ids.filter(id=>friendshipState(readData(ctx,id))==='incoming').length;
-    nodes.requestBadge.textContent=incomingCount ? String(incomingCount) : '';
-    nodes.requestBadge.hidden=!incomingCount;
-    root.querySelectorAll('.lp-tabbar button[data-lp-open="contacts"]').forEach(button=>{
-        button.classList.toggle('lp-has-requests',incomingCount>0);
-    });
-    root.querySelectorAll('[data-lp-open="requests"]').forEach(button=>button.classList.toggle('lp-has-requests',incomingCount>0));
-    const unread=totalUnread(story);
-    if(nodes.homeUnreadCount){nodes.homeUnreadCount.textContent=unread?`${unread} 条未读`:'可使用';nodes.homeUnreadCount.classList.toggle('lp-has-unread',unread>0);}
-    root.querySelectorAll('.lp-tabbar button[data-lp-open="chatList"]').forEach(button=>button.classList.toggle('lp-has-unread',unread>0));
-    const news=unreadMoments(story);
-    root.querySelectorAll('.lp-tabbar button[data-lp-open="discover"]').forEach(button=>button.classList.toggle('lp-has-unread',news>0));
-    if (!nodes.requestsList.children.length) {
-        const empty=document.createElement('p');
-        empty.className='lp-list-empty';
-        empty.textContent='暂无好友申请';
-        nodes.requestsList.append(empty);
-    }
-    if (!nodes.contactsList.children.length)nodes.contactsList.textContent='暂无好友';
-    if (!conversations) {
-        const empty=document.createElement('p');
-        empty.className='lp-list-empty';
-        empty.textContent='还没有聊天，去通讯录找朋友吧';
-        nodes.recentChats.append(empty);
-    }
+    group.append(choices);nodes.requestsList.append(group);
+   }else nodes.requestsList.append(makeListContact(person,view,'我已发送申请',()=>switchContact(id,'profile'),label));
+   requests++;
+  }
+ }
+ // Group conversations are first-class message threads, not just entries in
+ // the separate group-management screen. Groups stay within this story save.
+ for(const group of Array.isArray(story.groupChats)?story.groupChats:[]){
+  if(!group||!group.id)continue;
+  const row=document.createElement('button');row.type='button';row.className='lp-conversation-row lp-thread-group-open';
+  row.setAttribute('aria-label','打开群聊 '+(group.name||'群聊'));
+  const avatar=group.avatar?makeAvatarElement(group.avatar,group.name||'群聊'):document.createElement('span');
+  if(!group.avatar){avatar.className='lp-thread-group-avatar';avatar.textContent='群';}
+  const info=document.createElement('div');info.className='lp-conversation-text';
+  const name=document.createElement('strong');name.textContent=group.name||'群聊';
+  const last=Array.isArray(group.messages)?group.messages.at(-1):null;
+  const preview=document.createElement('small');
+  const speaker=last?.from==='user'?'我':last?.from&&validContactId(story,last.from)?getContactInfo(ctx,last.from).name:'成员';
+  preview.textContent=last?(speaker+'：'+String(last.text||'[分享／图片]').slice(0,64)):(group.members?.length||0)+'位群成员 · 暂无消息';
+  const chevron=document.createElement('span');chevron.textContent='›';chevron.className='lp-chevron';
+  info.append(name,preview);row.append(avatar,info,chevron);
+  row.addEventListener('click',()=>void openGroupFromChatList(group.id));
+  const key=phoneThreadPinKey('group',group.id);
+  threads.push({key,when:timestamp(last)||timestamp(group),row:phoneThreadWrap(row,key,pins.includes(key)),order:threads.length});
+ }
+ threads.sort((a,b)=>{
+  const pa=orderFor(a.key),pb=orderFor(b.key);
+  if(pa!==pb)return pa-pb;
+  if(Number.isFinite(pa))return a.order-b.order;
+  return b.when-a.when||a.order-b.order;
+ });
+ for(const thread of threads)nodes.recentChats.append(thread.row);
+ const incomingCount=ids.filter(id=>friendshipState(readData(ctx,id))==='incoming').length;
+ nodes.requestBadge.textContent=incomingCount?String(incomingCount):'';
+ nodes.requestBadge.hidden=!incomingCount;
+ root.querySelectorAll('.lp-tabbar button[data-lp-open="contacts"]').forEach(button=>button.classList.toggle('lp-has-requests',incomingCount>0));
+ root.querySelectorAll('[data-lp-open="requests"]').forEach(button=>button.classList.toggle('lp-has-requests',incomingCount>0));
+ const unread=totalUnread(story);
+ if(nodes.homeUnreadCount){nodes.homeUnreadCount.textContent=unread?unread+' 条未读':'可使用';nodes.homeUnreadCount.classList.toggle('lp-has-unread',unread>0);}
+ root.querySelectorAll('.lp-tabbar button[data-lp-open="chatList"]').forEach(button=>button.classList.toggle('lp-has-unread',unread>0));
+ const news=unreadMoments(story);
+ root.querySelectorAll('.lp-tabbar button[data-lp-open="discover"]').forEach(button=>button.classList.toggle('lp-has-unread',news>0));
+ if(!nodes.requestsList.children.length)nodes.requestsList.textContent='暂无好友申请';
+ if(!nodes.contactsList.children.length)nodes.contactsList.textContent='暂无好友';
+ if(!threads.length)nodes.recentChats.textContent='还没有聊天，去通讯录找朋友或创建群聊吧';
 }
 
 const NPC_RELATIONS = '父亲|母亲|爸爸|妈妈|养父|养母|哥哥|姐姐|弟弟|妹妹|兄长|兄弟|妻子|丈夫|老师|导师|教授|同学|室友|朋友|闺蜜|同事|上司|下属|邻居|管家|助理|经纪人|秘书|儿子|女儿|表哥|表姐|舅舅|姑姑|叔叔|阿姨|恋人|未婚夫|未婚妻';
@@ -5512,17 +5566,17 @@ async function saveSelectedNpcCandidates() {
         additions.push({id,kind:'npc',name,remark:'',relationship:relation,description,source:candidate.source,createdAt:new Date().toISOString()});
     }
     if(!additions.length)return setStatus('这些人物已存在，或联系人数量已达上限','error');
-    if(!window.confirm('将选中的 '+additions.length+' 位人物加入当前存档？设定明确为长期好友的将直接加入好友，其余人物保持未添加。'))return;
+    if(!window.confirm('将选中的 '+additions.length+' 位 NPC 导入当前存档，并由他们向你发送好友申请？申请需要你逐一同意或拒绝。'))return;
     for(const person of additions){
         root.contacts.push(person);
-        root.conversations[person.id]={messages:[],friendship:{state:knownOldFriend(person.relationship+'\n'+person.description)?'friends':'stranger'},friendEvents:[],chatDeleted:false};
+        root.conversations[person.id]={messages:[],friendship:{state:'incoming'},friendEvents:[{from:'stranger',to:'incoming',at:new Date().toISOString(),notice:'NPC 向你发送了好友申请'}],chatDeleted:false};
     }
     try {
         await writeData(ctx,{...root,__contactId:PRIMARY_CONTACT_ID});
         npcCandidates=[];npcScanSession=null;
         renderNpcCandidates();
         render();setScreen('addNpc');
-        setStatus('已添加 '+additions.length+' 位 NPC 联系人');
+        setStatus('已导入 '+additions.length+' 位 NPC，好友申请已送达「新的朋友」');
     } catch(e){setStatus(recordError('保存扫描人物',e),'error');}
 }
 function populateNpcWorldSelect() {
