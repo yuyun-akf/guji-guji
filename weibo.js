@@ -2110,24 +2110,34 @@ if(type==='settingsSection'){
    const photos=api.photosForAccount?.(account.name)||[];
    const subjectContext=clean(api.accountSubjectContext?.(subjectOfAccount(account))||account.roleBrief||'',1400);
    const albumGuide=photos.slice(0,12).map(p=>p.id+'：'+(p.description||p.title||'照片')).join('；');
-   const raw=await api.phoneGenerate(context(),{task:'autonomy',systemPrompt:'扮演指定账号主体（故事人物或组织）在剧情世界的公开社交账号上自主发帖；只输出正文或 [SKIP]。遵守账号绑定人物的职业、已知设定或组织性质，不混淆不同人物身份。如有适合的账号主体公开相册照片，可以在文末加 [[photo:照片ID]]；不能编造照片ID。',prompt:[{role:'user',
+   const previousPosts=accountHistory(account).slice(0,22).map(p=>({
+    time:p.time||'',text:clean(p.text,250),
+    comments:(p.comments||[]).slice(0,2).map(c=>clean(c.text,65))
+   }));
+   const raw=await api.phoneGenerate(context(),{task:'autonomy',maxTokens:2200,
+    systemPrompt:'扮演指定故事人物或组织的群星账号自主发布。必须读取已有帖子，尤其是宠物归属、家人朋友、物品和事件，不能将借来的宠物写成自己养的。可以输出 [SKIP]，否则只输出严格 JSON：{"text":"正文","photoId":"已授权照片ID或空字符串","comments":[{"name":"评论昵称","text":"自然评论"}]}。必须带至少两条不同评论，不代替 user 发言，不编造未发生关系。',prompt:[{role:'user',
     content:'故事时间：'+scene+'。群星账号：'+account.name+'，职业／公开资料 '+publicAccountDescription(account)+'，账号主体 '+(subjectOfAccount(account).type==='organization'?'组织账号':'故事人物')+'，公众人物：'+(account.publicFigure?'是':'否')+
      '。账号运营方式：'+accountOperatorGuide(account)+'。账号身份公开程度：'+(account.identityVisibility||'public')+
       '；知情者：'+(account.identityKnownTo||'无')+'。绑定人物设定（仅用于保持角色一致，不代表全部内容可公开）：'+subjectContext+
+      '。已有公开帖子（必须保持事实连续）：'+JSON.stringify(previousPosts).slice(0,3600)+
       '。可用公开相册照片：'+albumGuide+'。照片必须和当前发帖主题相关；可以引用别人公开照片报道、宣传、吐槽或批评，但不得拿别人的照片冒充自己的自拍。没有合适照片时只发文字。近期剧情：'+clean(api.storyContext?.()||'',1400)+
-      '。结合职业、性格、公共活动和时间线决定是否发布。私人小号不得自动暴露和绑定人物、官方大号的关系。不得公开私聊秘密，不得杜撰用户行为、未发生事件或已确定恋情。可以不发，输出 [SKIP]。否则只输出一条 20～180 字的社交动态，不要额外解释。'}]},api.readData(context()));
+      '。结合职业、性格、公共活动和时间线决定是否发布。私人小号不得自动暴露和绑定人物、官方大号的关系。不得公开私聊秘密，不得杜撰用户行为、未发生事件或已确定恋情。不想发则输出 [SKIP]，否则以 JSON 生成一条 20～180 字正文及至少两条不同人物的自然评论。'}]},api.readData(context()));
    if(scope()!==state.scope)return;
-   const reply=clean(api.stripModelReasoning(raw),450);
+   const reply=String(api.stripModelReasoning(raw)||'').trim();
    if(!reply||/^\[SKIP\]$/i.test(reply)){if(force)feedback(account.name+' 选择暂不发布');return;}
-   const requested=reply.match(/\[\[photo:([^\]\r\n]+)\]\]/);
-   const chosen=requested?photos.find(p=>p.id===requested[1]):null;
-   const body=reply.replace(/\[\[photo:[^\]\r\n]+\]\]/g,'').trim();
-   if(!body){if(force)feedback(account.name+' 本轮没有可发送内容');return;}
+   const parsed=parse(reply);
+   const text=clean(parsed.text,180);
+   if(!text)throw Error('模型未生成有效的正文');
+   const comments=(Array.isArray(parsed.comments)?parsed.comments:[]).slice(0,8).map(c=>({
+    id:uid('comment'),name:clean(c?.name||'网友',40),text:clean(c?.text,350)
+   })).filter(c=>c.text);
+   if(comments.length<2)throw Error('模型没有生成足够的自然评论，本轮未保存');
+   const chosen=photos.find(p=>p.id===clean(parsed.photoId,100));
    const fans=Number(account.followers)||0;
    const likes=fans?Math.max(1,Math.round(fans*(.0015+stableSeed(account.id+scene)*.009))):0;
-   const commentCount=likes?Math.round(likes*(.01+stableSeed(body)*.025)):0;
+   const estimated=likes?Math.round(likes*(.01+stableSeed(text)*.025)):0;
    const post={id:uid('post'),author:account.name,handle:account.handle,authorId:account.id,avatar:account.avatar||'',
-    category:account.kind,text:body,...(chosen?{image:chosen.image}:{}),comments:[],likes,commentCount,
+    category:account.kind,text,...(chosen?{image:chosen.image}:{}),comments,likes,commentCount:Math.max(comments.length,estimated),
     time:scene,zone:'world',autoPublished:true,actions:{}};
    await mutate(s=>{s.posts.push(post);s.posts=s.posts.slice(-180);});
    feedback(account.name+' 已发布新动态');api.recordActivity('群星主动发帖',account.name+' 发布动态','success');render();
