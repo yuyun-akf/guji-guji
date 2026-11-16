@@ -18,7 +18,7 @@ export function createAlbumModule(api){
  const photos=()=>ownerPhotos().filter(p=>photoFolder(p)===state.folder&&validImage(p.image));
  const button=(action,label,id='')=>{const b=el('button','lp-album-action',label);b.type='button';b.dataset.albumAction=action;if(id)b.dataset.albumId=id;return b;};
  const pane=(title,subtitle='')=>{const node=el('div','lp-album-header');node.append(el('strong','',title));if(subtitle)node.append(el('small','',subtitle));return node;};
- const hint=(message,error=false)=>{state.message=message;api.notifyInteraction?.(message,error?'error':'success');render();};
+ const hint=(message,error=false)=>{state.message='';api.notifyInteraction?.(message,error?'error':'success');render();};
  const tile=(title,sub,action,id='',cover='')=>{
   const b=button(action,'',id);b.classList.add('lp-album-folder');
   if(validImage(cover)){const i=el('img','lp-album-folder-cover');i.src=cover;i.alt='';b.append(i);}
@@ -299,7 +299,7 @@ export function createAlbumModule(api){
    form.append(button('upload',state.busy?'正在处理…':state.mode==='ai'?'调用 API 识图并导入':state.mode==='files'?'解析导入文件并预览':'保存图片资料'));
    wrap.append(form);
   }
-  if(state.message)wrap.append(el('p','lp-album-feedback',state.message));
+  if(state.message&&!/正在|读取|识别/.test(state.message)){api.notifyInteraction?.(state.message,'info');state.message='';}
    renderDialog(wrap);
   wrap.scrollTop=state.navReset?0:oldTop;state.navReset=false;
  }
