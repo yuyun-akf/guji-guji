@@ -32,13 +32,24 @@ export function createGroupsModule(api){
     const heading=el('h3','','群聊设置');form.append(heading);
     const name=el('input');name.dataset.groupInput='editName';name.maxLength=40;name.value=group.name||'';name.placeholder='群名称';
     const remark=el('input');remark.dataset.groupInput='editRemark';remark.maxLength=40;remark.value=group.remark||'';remark.placeholder='群聊备注';
-    const avatar=el('input');avatar.type='file';avatar.accept='image/png,image/jpeg,image/webp';avatar.dataset.groupAvatar='true';
+    const avatar=el('input');avatar.type='file';avatar.accept='image/png,image/jpeg,image/webp,image/gif';
+    avatar.dataset.groupAvatar='true';avatar.classList.add('lp-group-avatar-native-input');
+    avatar.setAttribute('aria-label','上传群聊头像');
+    // Direct change handling preserves the selected file on mobile WebViews and
+    // does not rely solely on the phone shell's delegated change listener.
+    avatar.addEventListener('change',event=>{event.stopPropagation();void handleFile(event);});
     const avatarRow=el('div','lp-group-avatar-editor');
     const preview=el('img','lp-group-avatar lp-group-avatar-preview');
     const avatarSource=state.avatarDraft||group.avatar||'';
     preview.alt='群头像预览';if(avatarSource)preview.src=avatarSource;
     preview.hidden=!avatarSource;
-    avatarRow.append(preview,avatar);
+    const empty=el('span','lp-group-avatar-placeholder','群');
+    empty.hidden=!!avatarSource;
+    const pick=button(avatarSource?'更换群头像':'上传群头像','chooseAvatar');
+    pick.classList.add('lp-group-avatar-pick');
+    const pickBox=el('div','lp-group-avatar-picker');
+    pickBox.append(pick,avatar,el('small','lp-group-avatar-hint',state.avatarDraft?'已选中图片，保存群设置后生效':'支持 JPG、PNG、WebP、GIF'));
+    avatarRow.append(preview,empty,pickBox);
     form.append(el('label','','群名称'),name,el('label','','群聊备注'),remark,el('label','','群头像'),avatarRow);
     const memberGrid=el('div','lp-group-member-grid');
     for(const id of group.members){
@@ -214,6 +225,11 @@ export function createGroupsModule(api){
  async function handleClick(e){
   const button=e.target.closest('button[data-group-action]');if(!button||state.busy)return false;
   const act=button.dataset.groupAction,id=button.dataset.groupId;
+  if(act==='chooseAvatar'){
+   const input=host()?.querySelector('input[data-group-avatar]');
+   if(!input){status('群头像选择控件不可用',true);return true;}
+   input.click();return true;
+  }
   if(act==='emoji'||act==='more'){
    state.tool=state.tool===act?'':act;render();
   }
@@ -296,7 +312,13 @@ export function createGroupsModule(api){
     state.avatarDraft=image;
     const preview=host()?.querySelector('.lp-group-avatar-preview');
     if(preview){preview.src=state.avatarDraft;preview.hidden=false;}
-    state.status='已选择头像，点击保存群资料后生效';
+    const placeholder=host()?.querySelector('.lp-group-avatar-placeholder');
+    if(placeholder)placeholder.hidden=true;
+    const hint=host()?.querySelector('.lp-group-avatar-hint');
+    if(hint)hint.textContent='已选择图片，点击「保存群设置」生效';
+    const pick=host()?.querySelector('.lp-group-avatar-pick');
+    if(pick)pick.textContent='更换群头像';
+    state.status='已选择群头像，点击保存群设置后生效';
    }
   }catch(e){status((photo?'发送图片':'头像处理')+'失败：'+String(e.message||e),true);}
   return true;
