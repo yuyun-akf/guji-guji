@@ -4522,3 +4522,19 @@
 #st-little-phone-root .lp-album-dialog-actions button:last-child{
  color:var(--lp-white);background:var(--lp-slate);
 }
+
+
+#st-little-phone-root .lp-moment-history-edit{
+ display:flex;flex-direction:column;gap:11px;margin-top:10px;
+ padding:11px;background:var(--lp-ice);border:1px solid var(--lp-border);border-radius:12px;
+}
+#st-little-phone-root .lp-moment-history-edit label{
+ display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--lp-navy);
+}
+#st-little-phone-root .lp-moment-history-edit textarea,
+#st-little-phone-root .lp-moment-history-edit input{
+ width:100%;min-height:41px;box-sizing:border-box;
+ padding:8px;border-radius:9px;border:1px solid var(--lp-border);
+ background:var(--lp-white);color:var(--lp-navy);font:inherit;
+}
+#st-little-phone-root .lp-moment-history-edit textarea{min-height:96px;resize:vertical;}
