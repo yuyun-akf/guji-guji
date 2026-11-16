@@ -31,7 +31,7 @@ test('pin buttons are removed; long press opens a menu and scroll memory exists 
  assert.match(weibo,/function restoreCurrentView\(/);
  for(const path of ['takeout.js','shopping.js','groups.js'])
   assert.match(files[path],/scrollBy/);
- assert.match(files['album.js'],/wrap\.scrollTop=previousTop/);
+ assert.match(files['album.js'],/wrap\.scrollTop=state\.navReset\?0:oldTop/);
 });
 
 const commentParts=section(weibo,' function isOwnComment(',' function card(');
@@ -46,7 +46,10 @@ test('homepage shows only three original preview comments plus every user commen
  assert.deepEqual(shown.filter(c=>c.isMine).map(c=>c.id),['a','b']);
  assert.match(weibo,/function card\(p,detailed=false\)/);
  assert.match(weibo,/detailed\?\(p\.comments\|\|\[\]\):commentPreview\(p\)/);
- assert.match(weibo,/加载完整评论区/);
+ const card=section(weibo,' function card(p,detailed=false){',' function heading(');
+ assert.doesNotMatch(card,/加载完整评论区/);
+ assert.match(weibo,/if\(type==='detail'\)/);
+ assert.match(weibo,/if\(hasMine&&!action\.commentsLoaded\)await loadFullComments\(p\)/);
  assert.match(weibo,/commentBusy\.has\(p\.id\)/);
 });
 
