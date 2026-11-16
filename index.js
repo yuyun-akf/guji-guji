@@ -1262,7 +1262,8 @@ async function loadAlbumController(){
    worldPhotos,saveWorldPhotos,worldFolders:worldAlbumFolders,saveWorldFolders:saveWorldAlbumFolders,
    coverFor:albumCoverFor,saveCover:saveAlbumCover,
    identifyPhotos:identifyAlbumPhotos,albumScope:()=>qunxingAccountCardKey(context()),
-   galleryPeople,notifyInteraction,albumSendToChat,albumPostMoment,albumPostWeibo});
+   galleryPeople,notifyInteraction,albumSendToChat,albumPostMoment,albumPostWeibo,
+   resolveAlbumText:text=>resolvePhonePlaceholders(text,context(),contactCharacter(context()))});
   return albumController;
  }).catch(e=>{recordError('加载相册',e);albumLoadPromise=null;if(nodes?.albumContent)nodes.albumContent.textContent='相册加载失败：'+e.message;return null;});
  return albumLoadPromise;
@@ -7813,15 +7814,14 @@ function makeUI() {
         <section class="lp-screen lp-chatlist" data-lp-screen="momentHistory" aria-label="历史朋友圈" hidden>
           <div class="lp-list-body lp-moment-history">
             
-            <label>历史朋友圈生成对象<select data-lp="momentHistoryMode">
-  <option value="single">指定角色</option><option value="random">从已有联系人随机生成</option>
- </select></label><label data-lp="momentHistoryOwnerLabel">发布人物<select data-lp="momentHistoryOwner"></select></label>
+            <label data-lp="momentHistoryOwnerLabel">发布人物<select data-lp="momentHistoryOwner"></select></label>
             <label>发布时间（手动补录）<input data-lp="momentHistoryTime" type="datetime-local" /></label>
             <label>朋友圈正文<textarea data-lp="momentHistoryText" rows="3" maxlength="1000" placeholder="写一条已发生的过去动态"></textarea></label>
             <label>配图（可选）<input type="file" data-lp="momentHistoryPhoto" accept="image/png,image/jpeg,image/webp" /></label>
             <div data-lp="momentHistoryPhotoPreview" class="lp-moment-history-photo-preview"></div>
             <button type="button" data-lp="momentHistoryRemovePhoto">移除补录配图</button>
             <button type="button" data-lp="momentHistoryManual">手动补录这条朋友圈</button>
+            <label>AI 生成方式<select data-lp="momentHistoryMode"><option value="single">指定人物</option><option value="random">随机已有联系人</option></select></label>
             <label>AI 生成额外要求<textarea data-lp="momentHistoryInstructions" rows="3" placeholder="例如生成三条日常朋友圈，言行符合人物设定，不虚构重大事件"></textarea></label>
             <label>一次生成几条<select data-lp="momentHistoryCount"><option value="1">1 条</option><option value="3" selected>3 条</option><option value="5">5 条</option></select></label>
             <button type="button" data-lp="momentHistoryGenerate">按要求生成过去的朋友圈（一次 API 调用）</button>
@@ -8660,7 +8660,7 @@ function mount() {
       momentHistoryPhotoDraft='';nodes.momentHistoryPhotoPreview.replaceChildren();
     });
     nodes.momentHistoryGenerate.addEventListener('click',()=>void generateHistoricMoments());
-    nodes.momentHistoryMode.addEventListener('change',()=>{nodes.momentHistoryOwnerLabel.hidden=nodes.momentHistoryMode.value==='random';});
+    nodes.momentHistoryMode.addEventListener('change',()=>{nodes.momentHistoryOwnerLabel.hidden=false;});
     nodes.momentHistoryList.addEventListener('click',event=>{
       const b=event.target.closest('[data-moment-history-action]');
       if(b)void changeHistoricMoment(b.dataset.momentHistoryAction,b.dataset.momentHistoryId);
