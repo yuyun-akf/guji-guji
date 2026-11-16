@@ -5308,3 +5308,18 @@
  background:var(--lp-white);color:var(--lp-slate);
  font-size:21px;z-index:1;
 }
+
+/* Android WebView: file input receives the touch directly inside its native label. */
+#st-little-phone-root .lp-group-avatar-picker .lp-group-avatar-pick{
+ position:relative;display:flex;align-items:center;justify-content:center;
+ overflow:hidden;min-height:42px;cursor:pointer;box-sizing:border-box;
+}
+#st-little-phone-root .lp-group-avatar-picker .lp-group-avatar-native-input{
+ position:absolute!important;inset:0!important;
+ width:100%!important;height:100%!important;min-height:100%!important;
+ opacity:0!important;pointer-events:auto!important;
+ cursor:pointer!important;z-index:2;padding:0!important;
+}
+#st-little-phone-root .lp-group-avatar-picker .lp-group-avatar-pick-label{
+ display:block;pointer-events:none;position:relative;z-index:1;
+}
