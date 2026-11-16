@@ -158,7 +158,7 @@ export function createWeiboModule(api) {
   // must not be resurrected by an older story chat.
   api.ensureSharedAccounts?.();
   state.scope=next;state.tab='home';state.detail='';state.topic=null;state.profileAccount='';state.adminHistoryAccount='';state.historyEditingId='';state.historyFormOpen=false;state.searchQuery='';state.sharingId='';state.subview='';
-  state.candidates=[];state.scanMessage='';state.scanLoading=false;
+  state.candidates=[];state.scanCacheSignature='';state.scanMessage='';state.scanLoading=false;
   const stored=data().generated;
   const feeds=stored?.feeds||{};
   state.posts={
@@ -887,9 +887,17 @@ export function createWeiboModule(api) {
   }
   parent.append(control('＋ 新建账号','newAccount'));
    const scanner=el('div','lp-wb-scanner');
-   scanner.append(heading('从故事资料检测账号','读取角色卡与关联世界书，仅展示候选；勾选并确认后才会保存'));
+   const cached=typeof api.cachedScanAccounts==='function'?api.cachedScanAccounts():null;
+   const signature=JSON.stringify((cached?.candidates||[]).map(c=>[c.name,c.reference,c.source,c.followers]));
+   if(!state.scanLoading&&state.scanCacheSignature!==signature){
+    state.scanCacheSignature=signature;
+    state.candidates=Array.isArray(cached?.candidates)?cached.candidates.slice(0,45):[];
+    if(state.candidates.length&&!state.scanMessage)state.scanMessage='已读取同角色卡的共享检索结果；无需重复扫描。';
+   }
+   scanner.append(heading('从故事资料检测账号','可选本地规则检索（免费）或 AI 智能检索（一次 API 请求）。人物目录与咕叽聊及本角色卡其他对话存档共享；勾选后才创建群星账号。'));
    field(scanner,'额外世界书名称（选填）','scanWorldName',state.scanWorldName||'');
-   scanner.append(control(state.scanLoading?'正在检测…':'检测角色与世界书','scanAccounts'));
+   scanner.append(control(state.scanLoading?'正在检测…':'本地规则检索（不调用 API）','scanAccounts'));
+   scanner.append(control(state.scanLoading?'正在检测…':'AI 智能检索（调用一次 API）','scanAccountsAI'));
    if(state.scanMessage)scanner.append(el('p','lp-wb-scan-message',state.scanMessage));
    if(state.candidates.length){
     scanner.append(heading('待确认账号（'+state.candidates.length+'）','确认人物绑定、职业和个性签名后勾选；未勾选的不会保存'));
@@ -1076,18 +1084,18 @@ if(type==='clearInteractions'){
 if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';render();nodes().weiboMe.parentElement.scrollTop=0;return;}
   if(type==='backMe'){state.subview=state.subview==='accountEditor'?'settings':'';state.editing='';render();nodes().weiboMe.parentElement.scrollTop=0;return;}
   if(type==='retryTopic'){state.topic=null;state.tab='discover';await generateHot();return;}
-  if(type==='scanAccounts'){
+  if(type==='scanAccounts'||type==='scanAccountsAI'){
    if(state.scanLoading)return;
+   const mode=type==='scanAccountsAI'?'ai':'rules';
    if(typeof api.scanAccounts!=='function'){feedback('当前无法读取角色资料');return;}
    const input=nodes().weiboMe.querySelector('[data-wb-field="scanWorldName"]');
    state.scanWorldName=clean(input?.value,120);
-   const session=scope();state.scanLoading=true;state.scanMessage='正在读取角色卡和关联世界书…';render();
+   const session=scope();state.scanLoading=true;state.scanMessage=mode==='ai'?'正在调用一次 API 检索人物…':'正在进行本地规则检索…';render();
    try{
-    const scan=await api.scanAccounts(state.scanWorldName);
+    const scan=await api.scanAccounts(state.scanWorldName,mode);
     if(scope()!==session)return;
     state.candidates=Array.isArray(scan.candidates)?scan.candidates.slice(0,45):[];
-    state.scanMessage='已扫描 '+(scan.scanned||0)+' 段资料、'+(scan.worlds||0)+' 本世界书；找到 '+state.candidates.length+
-     ' 个候选账号。'+(scan.failures?.length?' 未读取：'+scan.failures.join('；'):'');
+    state.scanMessage=(mode==='ai'?'AI 检索':'规则检索')+'：读取 '+(scan.scanned||0)+' 段资料、'+(scan.worlds||0)+' 本世界书；共享目录可选 '+state.candidates.length+' 个候选账号。'+(scan.aiTruncated?' 部分资料超出单次输入上限。':'')+(scan.failures?.length?' 未读取：'+scan.failures.join('；'):'');
    }catch(e){state.scanMessage='检测失败：'+String(e.message||e);api.recordError('群星账号检测',e);}
    finally{state.scanLoading=false;if(scope()===session)render();}
    return;
