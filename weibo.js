@@ -983,14 +983,19 @@ export function createWeiboModule(api) {
  function renderManualAccountDrawer(parent,q){
   const panel=el('details','lp-wb-manual-disclosure');
   panel.open=!!state.manualExpanded;
-  panel.addEventListener('toggle',()=>{state.manualExpanded=panel.open;});
   panel.append(el('summary','lp-wb-scanner-entry','手动新建账号'));
-  if(state.manualExpanded){
-   state.editing='new';
-   const content=el('div','lp-wb-manual-content');
-   renderAccountEditor(content,q);
-   panel.append(content);
-  }
+  // The form must exist while closed: native <details> expands without a re-render.
+  const previousEditing=state.editing;
+  state.editing='new';
+  const content=el('div','lp-wb-manual-content');
+  renderAccountEditor(content,q);
+  state.editing=previousEditing;
+  panel.append(content);
+  panel.addEventListener('toggle',()=>{
+   if(!panel.isConnected)return;
+   state.manualExpanded=panel.open;
+   if(panel.open)state.editing='new';
+  });
   parent.append(panel);
  }
  function settingLink(label,section){
