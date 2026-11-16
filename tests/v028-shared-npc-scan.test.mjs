@@ -18,11 +18,11 @@ const merge=(items,root,primary)=>{
  }).slice(0,45);
 };
 
-test('v0.28.0: modules load with updated cache keys and two explicit scan modes',()=>{
- assert.equal(manifest.version,'0.28.0');
+test('v0.28.1: modules load with updated cache keys and two explicit scan modes',()=>{
+ assert.equal(manifest.version,'0.28.1');
  assert.doesNotThrow(()=>new Function(index.replace(/^export /gm,'')));
  assert.doesNotThrow(()=>new Function(weibo.replace(/^export /gm,'')));
- for(const p of ['weibo.js','album.js','groups.js'])assert.ok(index.includes(p+'?v=0.28.0'));
+ for(const p of ['weibo.js','album.js','groups.js'])assert.ok(index.includes(p+'?v=0.28.1'));
  assert.match(index,/data-lp="npcAiScanButton"/);
  assert.match(index,/scanNpcUI\('rules'\)/);
  assert.match(index,/scanNpcUI\('ai'\)/);
@@ -100,4 +100,36 @@ test('AI scan: a single explicit API call, no hallucinated name, and no auto acc
  assert.equal(result.aiTruncated,false);
  assert.match(index,/saveSharedNpcScan\(result.candidates,ctx\)/);
  assert.match(weibo,/保存勾选的账号/);
+});
+
+test('regression: aliases, sex preferences and abstract labels never become standalone people',()=>{
+ const source={profileEntry:true,title:'词条17｜关系｜方书言',
+  content:'姓名：方书言\n性别：男\n年龄：23岁\n身份/职业：计算机系学生\n性格：外向',
+  keys:['方书言','小方','方同学','方小友','城南随记'],name:'人物资料'};
+ assert.deepEqual(detector.npcEntryHeaderCandidates(source,'林知远').map(x=>x.name),['方书言']);
+ for(const [title,content,keys] of [
+  ['词条07｜成长｜晨练与方言习惯','日常生活，林知远记录了方言习惯。',['方言习惯']],
+  ['词条08｜职业｜社区馆开放安排','林知远提醒访客留意开放日期。',['开放日期']],
+  ['词条09｜职业｜社区馆与志愿服务','志愿小组负责书架整理。',['经纪团队']],
+  ['词条31｜亲密｜个人偏好','围棋是一种休闲爱好。',['围棋']]
+ ]){
+  assert.deepEqual(detector.npcEntryHeaderCandidates({profileEntry:true,title,content,keys,name:'test'},'林知远'),[]);
+  assert.deepEqual(detector.extractNpcCandidatesFromText(content,'test','林知远'),[]);
+ }
+ assert.deepEqual(detector.extractNpcCandidatesFromText('林知远的同事，习惯早起散步。','test','林知远'),[]);
+});
+test('old surname-keyword cache cannot reappear after new scan',()=>{
+ const ctx={extensionSettings:{gujiguji:{npcRoleScanCatalog:{
+  'card:7':{candidates:[{name:'小方'},{name:'开放日期'},{name:'围棋'}]}
+ }}},characterId:7,chatId:'c',saveSettingsDebounced(){}};
+ const facade=new Function('qunxingAccountCardKey','mergeNpcCandidates','getCharacterName',
+  'selectedCharacter','readRootData','personaNames','scanNpcSources','context','SETTINGS_KEY',
+  part('const NPC_SCAN_CATALOG_VERSION=','function sameNpcScanSession(')+
+  'return {readSharedNpcScan,saveSharedNpcScan};')(
+   c=>'card:'+c.characterId,merge,()=> '林知远',()=>({name:'林知远'}),
+   ()=>({contacts:[]}),()=>new Set(),async()=>({candidates:[]}),()=>ctx,'gujiguji');
+ assert.deepEqual(facade.readSharedNpcScan(ctx),[]);
+ facade.saveSharedNpcScan([{name:'方书言',description:'具名人物',source:'NPC'}],ctx);
+ assert.deepEqual(facade.readSharedNpcScan(ctx).map(c=>c.name),['方书言']);
+ assert.equal(ctx.extensionSettings.gujiguji.npcRoleScanCatalog['card:7'].version,2);
 });
