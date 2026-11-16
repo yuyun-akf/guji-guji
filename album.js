@@ -480,12 +480,34 @@ export function createAlbumModule(api){
   if(world())await api.saveWorldPhotos(next);else await api.saveSharedPhotos(next);
   state.dialog=null;hint('已移动到「'+labelOf(target)+'」');
  }
+ function rememberReviewFields(){
+  const pending=state.pending,wrap=host();if(!pending||!wrap)return;
+  pending.images.forEach((_,index)=>{
+   const val=key=>wrap.querySelector('[data-album-review="'+key+'"][data-album-index="'+index+'"]')?.value?.trim();
+   pending.labels[index]={...(pending.labels[index]||{}),
+    title:val('title')??pending.labels[index]?.title,
+    description:val('description')??pending.labels[index]?.description,
+    usage:val('usage')??pending.labels[index]?.usage};
+   if(pending.mapping?.[index]){
+    pending.mapping[index]={owner:val('owner')||pending.mapping[index].owner,
+     folder:val('folder')||pending.mapping[index].folder};
+   }
+  });
+ }
  async function saveReview(){
   if(state.busy||!state.pending)return;
   const pending=state.pending;
   if(pending.signature!==api.albumScope?.())return hint('角色卡已切换，停止导入',true);
   let pictures=[];
-  try{const wrap=host();pictures=pending.images.map((image,index)=>{
+  try{
+   rememberReviewFields();
+   const wrap=host(),invalid=[];
+   wrap?.querySelectorAll('.lp-album-review-card').forEach(card=>{
+    card.classList.remove('lp-album-invalid');
+    card.querySelector('.lp-album-file-error')?.remove();
+   });
+   pictures=pending.images.map((image,index)=>{
+    try{
    const val=key=>wrap?.querySelector('[data-album-review="'+key+'"][data-album-index="'+index+'"]')?.value?.trim()||'';
    const owner=pending.mapping?val('owner'):pending.owner;
    const folder=pending.mapping?val('folder'):pending.folder;
@@ -497,7 +519,19 @@ export function createAlbumModule(api){
     title:val('title').slice(0,60),description:val('description').slice(0,500),
     ...(folder==='表情包'?{usage:val('usage').slice(0,160)}:{}),
     access:owner==='world'?'public':folder==='public'?'public':folder==='private'?'private':'chat',image};
-  });
+    }catch(error){
+     invalid.push({index,message:String(error.message||error)});
+     return null;
+    }
+   });
+   if(invalid.length){
+    for(const issue of invalid){
+     const card=wrap?.querySelectorAll('.lp-album-review-card')?.[issue.index];
+     if(card){card.classList.add('lp-album-invalid');card.append(el('small','lp-album-file-error',issue.message));}
+    }
+    api.notifyInteraction?.('已标出 '+invalid.length+' 张资料有误的图片，可调整或移出后保存其他图片','error');
+    return;
+   }
   state.busy=true;
    const beforeWorld=api.worldPhotos?.()||[],beforePeople=api.sharedPhotos?.()||[];
    const toWorld=pictures.filter(p=>p.owner==='world'),toPeople=pictures.filter(p=>p.owner!=='world');
@@ -544,6 +578,7 @@ export function createAlbumModule(api){
   if(type==='removeReviewCandidate'){
    const index=Number(id),pending=state.pending;
    if(!pending||!pending.images[index])return true;
+   rememberReviewFields();
    const original=pending.files[index];
    for(const key of ['images','files','labels','mapping'])
     if(Array.isArray(pending[key]))pending[key].splice(index,1);
