@@ -1103,53 +1103,93 @@ async function copyThemeSelectors(){
 }
 
 
-/* 相册随角色卡保存；普通照片不写入每个剧情存档的公共根数据。 */
+/* 人物相册随角色卡保存；现代世界相册跨所有角色卡共享。 */
+const ALBUM_IMAGE_RE=/^data:image\/(?:jpeg|png|webp|gif);base64,/;
+const MODERN_WORLD_FOLDERS=['风景','家居','美食','游戏','角色图','表情包'];
 function characterPhotos(ctx=context()){
  const key=qunxingAccountCardKey(ctx);
- const all=ctx?.extensionSettings?.[SETTINGS_KEY]?.characterPhotoAlbums||{};
- const photos=key&&all[key];
- return Array.isArray(photos)?photos.filter(p=>p&&typeof p.id==='string'&&/^data:image\/(?:jpeg|png|webp);base64,/.test(p.image||'')).slice(0,40):[];
+ const photos=ctx?.extensionSettings?.[SETTINGS_KEY]?.characterPhotoAlbums?.[key];
+ return Array.isArray(photos)?photos.filter(p=>p&&typeof p.id==='string'&&ALBUM_IMAGE_RE.test(p.image||'')).slice(0,120):[];
 }
 function saveCharacterPhotos(photos,ctx=context()){
  const key=qunxingAccountCardKey(ctx);
  if(!key||!ctx?.extensionSettings||typeof ctx.saveSettingsDebounced!=='function')
   throw Error('无法保存相册：酒馆扩展设置不可用');
- const selected=Array.isArray(photos)?photos.slice(0,40):[];
- if(selected.reduce((n,p)=>n+(p.image?.length||0),0)>4000000)
-  throw Error('相册图片合计超过约3MB的存储上限');
+ const selected=Array.isArray(photos)?photos.slice(0,120):[];
+ if(selected.reduce((n,p)=>n+(p.image?.length||0),0)>12000000)throw Error('人物相册图片数据超过12MB的安全上限');
  const settings=ctx.extensionSettings[SETTINGS_KEY]||={};
  const albums=settings.characterPhotoAlbums||={};
  const old=albums[key];albums[key]=selected;
  try{ctx.saveSettingsDebounced();}catch(error){if(old===undefined)delete albums[key];else albums[key]=old;throw error;}
  return true;
 }
+function worldPhotos(ctx=context()){
+ const photos=ctx?.extensionSettings?.[SETTINGS_KEY]?.worldPhotoAlbums?.modern;
+ return Array.isArray(photos)?photos.filter(p=>p&&typeof p.id==='string'&&ALBUM_IMAGE_RE.test(p.image||'')).slice(0,150):[];
+}
+function saveWorldPhotos(photos,ctx=context()){
+ if(!ctx?.extensionSettings||typeof ctx.saveSettingsDebounced!=='function')throw Error('酒馆扩展设置不可用');
+ const selected=Array.isArray(photos)?photos.slice(0,150):[];
+ if(selected.reduce((n,p)=>n+(p.image?.length||0),0)>15000000)throw Error('现代世界相册图片数据超过15MB的安全上限');
+ const setting=ctx.extensionSettings[SETTINGS_KEY]||={};
+ const old=setting.worldPhotoAlbums||{};
+ setting.worldPhotoAlbums={...old,modern:selected};
+ try{ctx.saveSettingsDebounced();}catch(e){setting.worldPhotoAlbums=old;throw e;}
+ return true;
+}
+function worldAlbumFolders(ctx=context()){
+ const list=ctx?.extensionSettings?.[SETTINGS_KEY]?.worldAlbumFolders?.modern;
+ return [...new Set([...MODERN_WORLD_FOLDERS,...(Array.isArray(list)?list:[])])]
+  .filter(name=>typeof name==='string'&&name.length<=20).slice(0,35);
+}
+function saveWorldAlbumFolders(list,ctx=context()){
+ if(!ctx?.extensionSettings||typeof ctx.saveSettingsDebounced!=='function')throw Error('无法保存世界子相册');
+ const setting=ctx.extensionSettings[SETTINGS_KEY]||={};
+ setting.worldAlbumFolders={...(setting.worldAlbumFolders||{}),modern:[...new Set([...MODERN_WORLD_FOLDERS,...list])].slice(0,35)};
+ ctx.saveSettingsDebounced();
+}
 function galleryPeople(ctx=context()){
  if(!selectedCharacter(ctx))return [];
  const r=readRootData(ctx);
- return [
-  {id:'user',name:currentPersona(ctx)?.name||ctx?.name1||'我'},
+ return [{id:'user',name:currentPersona(ctx)?.name||ctx?.name1||'我'},
   {id:PRIMARY_CONTACT_ID,name:getCharacterName(selectedCharacter(ctx))},
-  ...r.contacts.map(p=>({id:p.id,name:p.name}))
- ];
+  ...r.contacts.map(p=>({id:p.id,name:p.name}))];
+}
+function photoFolder(photo){
+ return photo.folder||(photo.access==='public'?'public':'daily');
+}
+function photoTextMatches(photo,text){
+ const body=String(text||'').trim();if(!body)return false;
+ const terms=[photo.title,photo.description,photo.ownerName].filter(Boolean).join(' ').slice(0,500);
+ if(!terms)return false;
+ const pieces=terms.split(/[\s，、。；：,.!！？\/｜|（）()]+/).filter(t=>t.length>=2);
+ return pieces.some(t=>body.includes(t))||body.includes(photo.ownerName||'\u0000');
 }
 function photosForActor(actorId,access='chat',ctx=context()){
- const people=galleryPeople(ctx),person=people.find(p=>p.id===actorId);
- if(!person)return [];
- return characterPhotos(ctx).filter(p=>(p.owner===actorId||(p.ownerName===person.name&&p.owner!=='user'))&&
-   (access==='private'||p.access==='public'||(access==='chat'&&p.access==='chat')));
+ const person=galleryPeople(ctx).find(p=>p.id===actorId);
+ const own=characterPhotos(ctx).filter(p=>p.owner===actorId||(person&&p.ownerName===person.name&&p.owner!=='user'));
+ const pool=characterPhotos(ctx).filter(p=>photoFolder(p)==='public');
+ const world=worldPhotos(ctx).filter(p=>p.folder!=='表情包');
+ // Public photos may be quoted by unrelated actors, provided the generated
+ // message actually concerns the pictured subject. Authorization is by album,
+ // not a relationship check. Private photos never enter public/group flows.
+ const eligible=[...world,...pool,...own].filter((p,i,arr)=>arr.findIndex(x=>x.id===p.id)===i)
+  .filter(p=>p.owner=== 'world'||photoFolder(p)==='public'||
+   (own.includes(p)&&(access==='private'||access==='chat'||access==='group'&&photoFolder(p)!=='private')));
+ return eligible.slice(0,50);
 }
 function albumIdentityPrompt(actorId,ctx=context()){
- const ownerPhotos=photosForActor(actorId,'private',ctx).slice(0,20);
- if(!ownerPhotos.length)return '';
- return '[角色本人的相册档案（仅用户确认的文字描述，不代表视觉模型已识别真实图片；不得拿它推断其他角色的照片）]\n'+
-  ownerPhotos.map(p=>((p.title||'照片')+'：'+(p.description||'未填写外貌描述')).slice(0,280)).join('；');
+ const photos=characterPhotos(ctx).filter(p=>p.owner===actorId).slice(0,20);
+ if(!photos.length)return '';
+ return '[角色本人的照片文字资料，仅来源于用户填写，不意味着模型看过照片]\n'+
+  photos.map(p=>((p.title||'照片')+'：'+(p.description||'暂无描述')).slice(0,280)).join('；');
 }
 function albumCatalogPrompt(actorId,access='chat'){
- const photos=photosForActor(actorId,access).slice(0,12);
+ const photos=photosForActor(actorId,access).slice(0,24);
  if(!photos.length)return '';
- return '【已确认的角色相册资料；仅文字标签，不代表模型已看到照片】'+photos.map(p=>
-   p.id+'：'+(p.title||'照片')+'；'+(p.description||'尚无图片描述')).join('；')+
-   '。角色可在适合的时机选择自己的照片，输出 [[photo:照片ID]] 作为独立图片消息；只能使用列出的ID，不能臆测未描述的细节。';
+ return '【授权相册：只能根据正在表述的内容关联照片，绝不随机配图；公开相册/世界相册照片可以被任何角色在相关内容中引用，日常相册只有所属角色自己可用；私密照片仅所属角色与 user 私聊可用】'+photos.map(p=>
+  p.id+'：'+(p.title||'照片')+'；'+(p.description||'尚无描述')+'；所属 '+(p.ownerName||'世界')).join('；')+
+  '。只有内容确实涉及图片主体或场景时，才可输出 [[photo:照片ID]]；无相关照片就发文字；不得用别人的照片假冒自己的自拍。';
 }
 function photoByOwnerId(id,actorId,access='chat'){
  return photosForActor(actorId,access).find(p=>p.id===id)||null;
@@ -1158,32 +1198,44 @@ function isPhoneFriend(id){
  const ctx=context();return validContactId(readRootData(ctx),id)&&friendshipState(readData(ctx,id))==='friends';
 }
 async function albumSendToChat(photo){
- if(photo.access!=='public'&&photo.access!=='chat')throw Error('照片未允许发送');
  if(!isPhoneFriend(activeContactId))throw Error('当前联系人尚不是好友，不能发送照片');
  await sendUserMessage('[图片]'+(photo.description?' '+photo.description:''),'',null,{images:[photo.image]});
  setScreen('chat');
 }
 async function albumPostMoment(photo){
- if(photo.owner!=='user'||photo.access!=='public')throw Error('只有允许公开的本人照片才能由 user 发布');
  const caption=window.prompt('朋友圈配文（可留空）','');
  if(caption===null)return;
  momentImageDraft=photo.image;nodes.momentsText.value=caption;
  await postMoment();setScreen('discover');
 }
 async function albumPostWeibo(photo){
- if(photo.owner!=='user'||photo.access!=='public')throw Error('只有允许公开的本人照片才能由 user 发布');
  const caption=window.prompt('群星动态配文',photo.title||'分享照片');
  if(caption===null)return;
  const controller=await loadWeiboController();
  if(!controller)throw Error('群星尚未加载');
  await controller.publishAlbumPhoto(photo,caption);setScreen('weibo');
 }
+async function identifyAlbumPhotos(images,names,isSticker=false,ctx=context()){
+ if(!images.length||images.length>10)throw Error('每次识图应选择1～10张图片');
+ const payload=[{type:'text',text:'请识别以下 '+images.length+' 张图片。按下标顺序为每张生成具体名称、实际可见内容描述'+(isSticker?'和表情包情绪用途':'')+'，不得编造看不见的角色身份、剧情、拍摄原因；不得自行决定图片权限。只返回紧凑JSON：{"photos":[{"title":"名称","description":"可见内容描述","usage":"表情包用途（如适用）"}]}。图片依次为：'+names.map((n,i)=>(i+1)+'.'+n).join('；')}];
+ for(const image of images)payload.push({type:'image_url',image_url:{url:image,detail:'auto'}});
+ const raw=await phoneGenerate(ctx,{task:'chat',maxTokens:Math.min(5000,600+images.length*250),
+  systemPrompt:'你是图片资料整理助手，必须实际阅读提供的视觉输入。按图片顺序返回合法JSON，不要输出Markdown或分析。',
+  prompt:[{role:'user',content:payload}]},readData(ctx));
+ const output=stripModelReasoning(String(raw||'')),start=output.indexOf('{'),end=output.lastIndexOf('}');
+ if(start<0||end<=start)throw Error('模型没有返回有效识图 JSON');
+ const parsed=JSON.parse(output.slice(start,end+1));
+ return Array.isArray(parsed.photos)?parsed.photos.slice(0,images.length):[];
+}
 async function loadAlbumController(){
  if(albumController)return albumController;
  if(albumLoadPromise)return albumLoadPromise;
- albumLoadPromise=import('./album.js?v=0.31.0').then(mod=>{
-  albumController=mod.createAlbumModule({context,getNodes:()=>nodes,sharedPhotos:()=>characterPhotos(),saveSharedPhotos:saveCharacterPhotos,
-    albumScope:()=>qunxingAccountCardKey(context()),galleryPeople,notifyInteraction,albumSendToChat,albumPostMoment,albumPostWeibo});
+ albumLoadPromise=import('./album.js?v=0.32.0').then(mod=>{
+  albumController=mod.createAlbumModule({context,getNodes:()=>nodes,
+   sharedPhotos:()=>characterPhotos(),saveSharedPhotos:saveCharacterPhotos,
+   worldPhotos,saveWorldPhotos,worldFolders:worldAlbumFolders,saveWorldFolders:saveWorldAlbumFolders,
+   identifyPhotos:identifyAlbumPhotos,albumScope:()=>qunxingAccountCardKey(context()),
+   galleryPeople,notifyInteraction,albumSendToChat,albumPostMoment,albumPostWeibo});
   return albumController;
  }).catch(e=>{recordError('加载相册',e);albumLoadPromise=null;if(nodes?.albumContent)nodes.albumContent.textContent='相册加载失败：'+e.message;return null;});
  return albumLoadPromise;
