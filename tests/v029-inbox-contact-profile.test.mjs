@@ -20,11 +20,11 @@ test('unbounded pins persist independently for private conversations and group c
  const store={pinnedChats:Array.from({length:31},(_,i)=>'contact:npc:'+i)};
  const ctx={chatMetadata:{}};
  const pin=new Function('busy','context','selectedCharacter','readRootData','writeData','mounted',
-  'nodes','contactCharacter','readData','renderChatLists','recordError','setStatus','PRIMARY_CONTACT_ID',
+  'nodes','contactCharacter','readData','renderChatLists','recordError','setStatus','PRIMARY_CONTACT_ID','structuredClone',
   section('const phoneThreadPinKey=','function renderChatLists(')+
   'return {pinnedChatIds,togglePhoneThreadPin,phoneThreadPinKey};')(
    false,()=>ctx,()=>({name:'主角色'}),()=>store,async(_,data)=>{Object.assign(store,data);},
-   false,null,()=>({}),()=>({}),()=>{},()=>{},()=>{},'primary');
+   false,null,()=>({}),()=>({}),()=>{},()=>{},()=>{},'primary',value=>JSON.parse(JSON.stringify(value)));
  assert.equal(pin.pinnedChatIds(store).length,31);
  await pin.togglePhoneThreadPin(pin.phoneThreadPinKey('group','bedroom'));
  assert.equal(store.pinnedChats.length,32);
