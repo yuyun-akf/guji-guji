@@ -7,10 +7,10 @@ const index=read('index.js'),weibo=read('weibo.js'),
  album=read('album.js'),css=read('style.css'),bootstrap=read('bootstrap.js');
 const manifest=JSON.parse(read('manifest.json'));
 
-test('v0.36.1 cache keys and JS syntax',()=>{
- assert.equal(manifest.version,'0.36.1');
+test('v0.36.2 cache keys and JS syntax',()=>{
+ assert.equal(manifest.version,'0.36.2');
  assert.match(bootstrap,/index\.js\?v=0\.36\.1/);
- for(const name of ['album','groups','weibo'])assert.ok(index.includes(name+'.js?v=0.36.1'));
+ for(const name of ['album','groups','weibo'])assert.ok(index.includes(name+'.js?v=0.36.2'));
  for(const file of ['index.js','weibo.js','album.js','groups.js','bootstrap.js'])
   assert.doesNotThrow(()=>new Function(read(file).replace(/^export /gm,'')));
 });
