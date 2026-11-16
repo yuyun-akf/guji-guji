@@ -9,7 +9,7 @@ const manifest=JSON.parse(readFileSync(new URL('../manifest.json',import.meta.ur
 const part=(a,b)=>index.slice(index.indexOf(a),index.indexOf(b,index.indexOf(a)));
 
 const detector=new Function(part('const NPC_RELATIONS =','function mergeNpcCandidates(')+
-  'return {extractNpcCandidatesFromText,npcEntryKeywords,npcEntryHeaderCandidates,likelyNpcPersonalName,cleanNpcName};')();
+  'return {extractNpcCandidatesFromText,npcEntryKeywords,npcEntryHeaderCandidates,likelyNpcPersonalName,cleanNpcName,npcExplicitNames};')();
 const merge=(items,root,primary)=>{
  const seen=new Set([primary,...(root?.contacts||[]).map(c=>c.name)]);
  return items.filter(item=>{
@@ -57,7 +57,7 @@ test('shared scanner: the same character card works across distinct story chats 
  let active=one;
  const facade=new Function('qunxingAccountCardKey','mergeNpcCandidates','getCharacterName',
   'selectedCharacter','readRootData','personaNames','scanNpcSources','context','SETTINGS_KEY',
-  part('function readSharedNpcScan(','function sameNpcScanSession(')+
+  part('const NPC_SCAN_CATALOG_VERSION=','function sameNpcScanSession(')+
   'return {readSharedNpcScan,saveSharedNpcScan,visibleSharedNpcScan,clearSharedNpcScan};')(
     ctx=>'card:'+ctx.characterId,merge,()=> '林知远',()=>({name:'林知远'}),
     ctx=>({contacts:ctx.chatId==='two'?[{name:'人物乙'}]:[]}),()=>new Set(),
@@ -81,12 +81,12 @@ test('AI scan: a single explicit API call, no hallucinated name, and no auto acc
   async loadWorldInfo(){return {entries:[{comment:'词条03｜NPC｜人物乙',
    key:['人物乙','苏老师'],content:'人物乙，社区志愿者，林知远的母亲。'}]};}};
  const scan=new Function('selectedCharacter','personaNames','currentPersona','embeddedCharacterLore',
-  'getCharacterName','npcEntryKeywords','extractNpcCandidatesFromText','npcEntryHeaderCandidates',
+  'getCharacterName','npcEntryKeywords','extractNpcCandidatesFromText','npcEntryHeaderCandidates','npcExplicitNames',
   'cleanNpcName','mergeNpcCandidates','phoneGenerate','stripModelReasoning','readRootData',
   part('async function scanNpcSources(','function readSharedNpcScan(')+'return scanNpcSources;')(
    c=>c.characters[c.characterId],()=>new Set(),()=>({}),()=>[],
    c=>c.data?.name||c.name,detector.npcEntryKeywords,detector.extractNpcCandidatesFromText,
-   detector.npcEntryHeaderCandidates,detector.cleanNpcName,merge,
+   detector.npcEntryHeaderCandidates,detector.npcExplicitNames,detector.cleanNpcName,merge,
    async(c,opts)=>{count++;assert.equal(opts.task,'default');
     return JSON.stringify({people:[
       {name:'人物乙',relation:'林知远的母亲',description:'社区志愿者'},
