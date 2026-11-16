@@ -5333,16 +5333,28 @@ async function scanNpcSources(ctx,extraWorld='',mode='rules') {
     const verifiedNames=new Map(verified.map(c=>[c.name,c]));
     const aiCandidates=raw.slice(0,70).flatMap(item=>{
         const name=cleanNpcName(item?.name);
+        if(!name||name===getCharacterName(char)||selfNames.has(name))return [];
         const established=verifiedNames.get(name);
-        if(!name||name===getCharacterName(char)||selfNames.has(name)||!established)return [];
-        const profile=usableSources.find(source=>source.profileEntry&&npcExplicitNames(source.content).includes(name));
-        // Preserve original full dossiers rather than replacing them with
-        // possibly invented model paraphrases.
-        const description=String(profile?.content||established.description||'').slice(0,3500);
+        // AI can still find names missed by the deterministic parser, but
+        // must prove they appear in source TEXT as a person, not merely a
+        // keyword ("人气嘉宾") or nickname ("方同学").
+        const isVerified=source=>{
+            const text=String(source.content||source.text||'');
+            if(!text.includes(name))return false;
+            const bare=name;
+            const identityField=new RegExp('(?:姓名|本名|名叫|名字叫|名为|全名)[：:\\s]*'+bare+'(?=[，,；;。\\s（(]|$)');
+            const biography=new RegExp('(?:^|\\n)\\s*'+bare+'\\s*[，,]\\s*(?:男|女|\\d{1,3}岁)');
+            const roleLabel=new RegExp('(?:经纪人|执行经纪|助理|老师|教授|父亲|母亲|室友|同学|朋友)[：:]\\s*'+bare+'(?=[（(，,；;。\\s—-]|$)');
+            return identityField.test(text)||biography.test(text)||roleLabel.test(text);
+        };
+        const linked=usableSources.find(source=>source.profileEntry&&npcExplicitNames(source.content).includes(name))||
+            usableSources.find(isVerified);
+        if(!established&&!linked)return [];
+        const description=String(linked?.content||established?.description||'').slice(0,3500);
         if(!description)return [];
-        return [{name,relation:established.relation||String(item?.relation||'').slice(0,180),
-            description,source:profile?.name||established.source,
-            confidence:profile?'姓名字段':'AI 复核具名线索'}];
+        return [{name,relation:established?.relation||'',description,
+            source:linked?.name||established?.source||'AI 补充识别',
+            confidence:linked&&npcExplicitNames(linked.content).includes(name)?'姓名字段':'AI 具名证据'}];
     });
     return {candidates:mergeNpcCandidates([...aiCandidates,...verified],{contacts:[]},getCharacterName(char)),
         scanned:sources.length,worlds:loaded,failures,aiSources:pieces.length,
