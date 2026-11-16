@@ -32,7 +32,12 @@ export function createGroupsModule(api){
     const name=el('input');name.dataset.groupInput='editName';name.maxLength=40;name.value=group.name||'';name.placeholder='群名称';
     const remark=el('input');remark.dataset.groupInput='editRemark';remark.maxLength=40;remark.value=group.remark||'';remark.placeholder='群聊备注';
     const avatar=el('input');avatar.type='file';avatar.accept='image/png,image/jpeg,image/webp';avatar.dataset.groupAvatar='true';
-    form.append(el('label','','群名称'),name,el('label','','群聊备注'),remark,el('label','','群头像'),avatar);
+    const avatarRow=el('div','lp-group-avatar-editor');
+    const preview=el('img','lp-group-avatar lp-group-avatar-preview');
+    preview.alt='群头像预览';preview.src=state.avatarDraft||group.avatar||'';
+    preview.hidden=!preview.src;
+    avatarRow.append(preview,avatar);
+    form.append(el('label','','群名称'),name,el('label','','群聊备注'),remark,el('label','','群头像'),avatarRow);
     const memberGrid=el('div','lp-group-member-grid');
     for(const id of group.members){
      const member=el('div','lp-group-member-tile'),src=api.memberAvatar?.(id);
@@ -61,35 +66,40 @@ export function createGroupsModule(api){
     
     target.scrollTop=top;return;
    }
+   // Use the same row/body/bubble vocabulary and geometry as private chats.
    const feed=el('div','lp-group-messages lp-group-chat-feed'),messageMap=new Map((group.messages||[]).map(m=>[m.id,m]));
    for(const msg of group.messages||[]){
-    const row=el('div','lp-group-message-row'+(msg.from==='user'?' mine':''));
+    const mine=msg.from==='user';
+    const row=el('div','lp-message lp-group-chat-row '+(mine?'lp-mine':'lp-theirs'));
     const src=api.memberAvatar?.(msg.from);
-    if(src){const face=el('img','lp-group-sender-avatar');face.src=src;face.alt=who(msg.from);row.append(face);}
-    const item=el('article','lp-group-message'+(msg.from==='user'?' mine':''));
-    item.append(el('strong','lp-group-sender-name',who(msg.from)));
+    const face=el('img','lp-group-sender-avatar');face.src=src||'/img/ai4.png';face.alt=who(msg.from);
+    const body=el('div','lp-message-body');
+    if(!mine)body.append(el('small','lp-group-sender-name',who(msg.from)));
+    const bubble=el('div','lp-bubble lp-group-bubble');
     const parent=messageMap.get(msg.replyTo);
-    if(parent)item.append(el('div','lp-group-reply-quote',who(parent.from)+'：'+String(parent.text||'[图片]').slice(0,100)));
-    if(msg.text)item.append(el('p','lp-group-message-text',msg.text));
+    if(parent)bubble.append(el('div','lp-inline-quote',who(parent.from)+'：'+String(parent.text||'[图片]').slice(0,100)));
+    if(msg.text)bubble.append(el('span','lp-group-message-text',msg.text));
     if(msg.sharePost){
      const quote=el('div','lp-group-share');quote.append(el('strong','',msg.sharePost.author||'群星'),el('p','',msg.sharePost.text||''));
      if(msg.sharePost.image){const image=el('img');image.src=msg.sharePost.image;image.alt='群星分享图片';quote.append(image);}
-     item.append(quote,button('查看分享内容','view-share',msg.id));
+     bubble.append(quote,button('查看分享内容','view-share',msg.id));
     }
-    if(msg.images?.length)for(const image of msg.images){const img=el('img','lp-group-photo');img.src=image;img.alt='群聊照片';item.append(img);}
-    item.append(button('引用','quote',msg.id));row.append(item);feed.append(row);
+    if(msg.images?.length)for(const image of msg.images){const img=el('img','lp-chat-image lp-group-photo');img.src=image;img.alt='群聊照片';bubble.append(img);}
+    body.append(bubble);
+    const quoteButton=button('引用','quote',msg.id);quoteButton.classList.add('lp-group-quote-action');body.append(quoteButton);
+    row.append(face,body);feed.append(row);
    }
    if(!feed.children.length)feed.append(el('p','lp-album-empty','群聊刚刚建立。'));
    target.append(feed);
-   const compose=el('div','lp-group-composer');
+   const compose=el('div','lp-group-composer lp-group-chat-compose');
    const targetMsg=messageMap.get(state.quoteId);
    if(targetMsg){const quote=el('div','lp-group-compose-quote','引用 '+who(targetMsg.from)+'：'+String(targetMsg.text||'[图片]').slice(0,95));
     quote.append(button('×','cancel-quote'));compose.append(quote);}
-   const input=el('textarea');input.rows=2;input.maxLength=1000;input.dataset.groupInput='message';input.placeholder='发送群聊消息';
+   const controls=el('div','lp-group-composer-controls');
+   const input=el('textarea');input.rows=1;input.maxLength=1000;input.dataset.groupInput='message';input.placeholder='发送消息';
    const actions=el('div','lp-group-send-actions');
-   actions.append(button('发送','send'),button(state.busy?'正在生成…':'生成成员回复','generate'));
-   compose.append(input,actions);target.append(compose);
-   
+   actions.append(button('发送','send'),button(state.busy?'正在生成…':'生成','generate'));
+   controls.append(input,actions);compose.append(controls);target.append(compose);
    feed.scrollTop=feed.scrollHeight;
    target.scrollTop=top;return;
   }
@@ -233,8 +243,8 @@ export function createGroupsModule(api){
   const file=input.files?.[0];input.value='';if(!file)return false;
   try{
    state.avatarDraft=await api.encodeAvatarPhoto(file);
-   const header=host()?.querySelector('.lp-group-header');
-   if(header){let img=header.querySelector('.lp-group-avatar');if(!img){img=el('img','lp-group-avatar');header.prepend(img);}img.src=state.avatarDraft;img.alt='群聊新头像预览';}
+   const preview=host()?.querySelector('.lp-group-avatar-preview');
+   if(preview){preview.src=state.avatarDraft;preview.hidden=false;}
    state.status='已选择头像，点击保存群资料后生效';
   }catch(e){state.status='头像处理失败：'+String(e.message||e);}
   return true;
