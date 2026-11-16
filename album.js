@@ -101,7 +101,7 @@ export function createAlbumModule(api){
   }else{
    for(const file of files){if(file.size>15*1024*1024)throw Error('单个文件不能超过15MB');entries.set(file.webkitRelativePath||file.name,new Uint8Array(await file.arrayBuffer()));}
   }
-  const manifestBytes=entries.get('manifest.json')||[...entries].find(([name])=>/manifest\.json$/i.test(name))?.[1];
+  const manifestBytes=entries.get('manifest.json')||[...entries].find(([name])=>/\.json$/i.test(name))?.[1];
   if(!manifestBytes)throw Error('缺少 manifest.json，请先导出模板');
   let manifest;try{manifest=JSON.parse(decoder.decode(manifestBytes));}catch{throw Error('manifest.json 不是有效 JSON');}
   if(manifest.schema!=='gujiguji-album-v1'||manifest.version!==1||!Array.isArray(manifest.photos))throw Error('导入文件格式不匹配模板 v1');
@@ -402,20 +402,41 @@ export function createAlbumModule(api){
   if(pending.signature!==api.albumScope?.())return hint('角色卡已切换，停止导入',true);
   const wrap=host(),pictures=pending.images.map((image,index)=>{
    const val=key=>wrap?.querySelector('[data-album-review="'+key+'"][data-album-index="'+index+'"]')?.value?.trim()||'';
+   const owner=pending.mapping?val('owner'):pending.owner;
+   const folder=pending.mapping?val('folder'):pending.folder;
+   if(owner!=='world'&&!people().some(p=>p.id===owner))throw Error('无效的目标人物：'+owner);
+   const valid=owner==='world'?api.worldFolders?.()||[]:characterFolders.map(x=>x[0]);
+   if(!valid.includes(folder))throw Error('无效的目标分类：'+folder);
    return {id:'ph-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,10),
-    owner:pending.owner,ownerName:ownerName(),folder:pending.folder,
+    owner,ownerName:owner==='world'?'世界相册':people().find(p=>p.id===owner)?.name||'人物相册',folder,
     title:val('title').slice(0,60),description:val('description').slice(0,500),
-    ...(pending.folder==='表情包'?{usage:val('usage').slice(0,160)}:{}),
-    access:pending.owner==='world'?'public':pending.folder==='public'?'public':pending.folder==='private'?'private':'chat',image};
+    ...(folder==='表情包'?{usage:val('usage').slice(0,160)}:{}),
+    access:owner==='world'?'public':folder==='public'?'public':folder==='private'?'private':'chat',image};
   });
   state.busy=true;
   try{
-   if(pending.folder==='表情包'&&(api.worldPhotos?.()||[]).filter(p=>p.folder==='表情包').length+pictures.length>100)
+   const beforeWorld=api.worldPhotos?.()||[],beforePeople=api.sharedPhotos?.()||[];
+   const toWorld=pictures.filter(p=>p.owner==='world'),toPeople=pictures.filter(p=>p.owner!=='world');
+   if(beforeWorld.filter(p=>p.folder==='表情包').length+toWorld.filter(p=>p.folder==='表情包').length>100)
     throw Error('世界相册表情包最多100张');
-   if(world())await api.saveWorldPhotos([...(api.worldPhotos?.()||[]),...pictures]);
-   else await api.saveSharedPhotos([...(api.sharedPhotos?.()||[]),...pictures]);
-   state.pending=null;state.selectedFiles=[];state.folder=pending.folder;
-   state.level='folder';state.navReset=true;hint('已导入 '+pictures.length+' 张识图照片');
+   if(beforeWorld.length+toWorld.length>150||beforePeople.length+toPeople.length>120)
+    throw Error('超过当前相册最大图片数量');
+   if(beforeWorld.reduce((n,p)=>n+(p.image?.length||0),0)+toWorld.reduce((n,p)=>n+(p.image?.length||0),0)>15000000||
+      beforePeople.reduce((n,p)=>n+(p.image?.length||0),0)+toPeople.reduce((n,p)=>n+(p.image?.length||0),0)>12000000)
+    throw Error('超过当前角色卡相册存储上限，请分批导入');
+   let worldSaved=false;
+   try{
+    if(toWorld.length){await api.saveWorldPhotos([...beforeWorld,...toWorld]);worldSaved=true;}
+    if(toPeople.length)await api.saveSharedPhotos([...beforePeople,...toPeople]);
+   }catch(error){
+    if(worldSaved)try{await api.saveWorldPhotos(beforeWorld);}catch(rollback){throw Error(String(error.message||error)+'；回滚世界相册失败：'+String(rollback.message||rollback));}
+    throw error;
+   }
+   state.pending=null;state.selectedFiles=[];
+   if(pictures.length===1&&pictures[0].owner===state.owner){
+    state.folder=pictures[0].folder;state.level='folder';
+   }else{state.folder='';state.level='owner';}
+   state.navReset=true;hint('已导入 '+pictures.length+' 张图片');
   }catch(error){hint('保存识图结果失败：'+String(error.message||error),true);}
   finally{state.busy=false;}
  }
@@ -467,8 +488,17 @@ export function createAlbumModule(api){
   if(event.target?.matches?.('[data-album-field="target"]')){
    state.folder=event.target.value;render();return true;
   }
+  if(event.target?.matches?.('[data-album-review="owner"]')){
+   const i=event.target.dataset.albumIndex,owner=event.target.value;
+   const next=host()?.querySelector('[data-album-review="folder"][data-album-index="'+i+'"]');
+   if(next){next.replaceChildren();
+    const options=owner==='world'?api.worldFolders?.()||[]:characterFolders.map(x=>x[0]);
+    for(const item of options){const option=el('option','',labelOf(item));option.value=item;next.append(option);}
+   }
+   return true;
+  }
   if(!event.target?.matches?.('[data-album-field="files"]'))return false;
-  state.selectedFiles=[...(event.target.files||[])];if(state.selectedFiles.length>10){
+  state.selectedFiles=[...(event.target.files||[])];if(state.mode!=='files'&&state.selectedFiles.length>10){
    state.selectedFiles=state.selectedFiles.slice(0,10);state.message='一次最多选择10张图片，已取前10张';
   }
   render();return true;
