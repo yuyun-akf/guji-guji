@@ -6,10 +6,10 @@ const read=name=>readFileSync(new URL('../'+name,import.meta.url),'utf8');
 const code=read('index.js'),album=read('album.js'),css=read('style.css'),bootstrap=read('bootstrap.js');
 const manifest=JSON.parse(read('manifest.json'));
 
-test('0.35.0 version and JS module syntax stay aligned',()=>{
- assert.equal(manifest.version,'0.35.0');
+test('0.36.1 version and JS module syntax stay aligned',()=>{
+ assert.equal(manifest.version,'0.36.1');
  assert.match(bootstrap,/index\.js\?v=0\.35\.0/);
- for(const module of ['album','groups','weibo'])assert.ok(code.includes(module+'.js?v=0.35.0'));
+ for(const module of ['album','groups','weibo'])assert.ok(code.includes(module+'.js?v=0.36.1'));
  for(const source of [code,album,bootstrap])assert.doesNotThrow(()=>new Function(source.replace(/^export /gm,'')));
 });
 
