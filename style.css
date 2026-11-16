@@ -3427,15 +3427,22 @@
 #st-little-phone-root .lp-wb-account-stats small{font-size:11px;color:var(--lp-slate);}
 
 /* v0.24.0: full-width following links and role-authored history editor. */
-#st-little-phone-root .lp-wb-follow-row{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;}
+/* Stable action column: no name or handle length can shift the unfollow button. */
+#st-little-phone-root .lp-wb-follow-row{
+ display:grid;grid-template-columns:minmax(0,1fr) 96px;align-items:center;
+ gap:8px;min-width:0;
+}
 #st-little-phone-root .lp-wb-follow-row .lp-wb-follow-link{
- display:flex;align-items:center;gap:10px;flex:1;min-width:0;
+ display:flex;align-items:center;gap:10px;min-width:0;width:100%;
  padding:8px;border:0;text-align:left;background:transparent;
  color:var(--lp-navy);font:inherit;cursor:pointer;
 }
-#st-little-phone-root .lp-wb-follow-link>span:last-child{flex:1;min-width:0;overflow-wrap:anywhere;font-size:13px;}
+#st-little-phone-root .lp-wb-follow-link>span:last-child{
+ flex:1;min-width:0;overflow-wrap:anywhere;font-size:13px;line-height:1.45;
+}
 #st-little-phone-root .lp-wb-follow-row>.lp-wb-action{
- flex:0 0 auto;padding:8px 10px;
+ box-sizing:border-box;width:96px;min-width:96px;
+ justify-self:end;margin:0;padding:8px 6px;white-space:nowrap;
 }
 #st-little-phone-root .lp-wb-history-editor{
  margin:12px 0;padding:14px 12px;border-radius:14px;
