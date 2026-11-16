@@ -1259,7 +1259,8 @@ async function loadAlbumController(){
     (ctx.extensionSettings[SETTINGS_KEY]||={}).albumSafetyWarningDisabled=Boolean(disabled);
     ctx.saveSettingsDebounced();
    },
-   worldPhotos,saveWorldPhotos,worldFolders:worldAlbumFolders,saveWorldFolders:saveWorldAlbumFolders,
+   worldPhotos,saveWorldPhotos,legacyStickers:legacyAlbumStickers,
+   deleteLegacyStickersFrom:deleteLegacyStickersFrom,worldFolders:worldAlbumFolders,saveWorldFolders:saveWorldAlbumFolders,
    coverFor:albumCoverFor,saveCover:saveAlbumCover,
    identifyPhotos:identifyAlbumPhotos,albumScope:()=>qunxingAccountCardKey(context()),
    galleryPeople,notifyInteraction,albumSendToChat,albumPostMoment,albumPostWeibo,
@@ -2639,8 +2640,9 @@ function handleRoleFriendsAction(event){
  const ctx=context(),id=nodes.roleFriendsOwner?.value;
  if(!id)return;
  const entry=roleFriendsOf(ctx,id),action=b.dataset.roleFriendAction;
+ entry.known=[...nodes.roleFriendsContent.querySelectorAll('[data-role-friend-known]:checked')].map(node=>node.dataset.roleFriendKnown);
  if(action==='saveKnown'){
-  entry.known=[...nodes.roleFriendsContent.querySelectorAll('[data-role-friend-known]:checked')].map(node=>node.dataset.roleFriendKnown);
+  // The selection is already captured above.
  }else if(action==='addCustom'){
   const name=nodes.roleFriendsContent.querySelector('[data-role-friend-name]')?.value.trim().slice(0,40);
   const description=nodes.roleFriendsContent.querySelector('[data-role-friend-description]')?.value.trim().slice(0,300)||'';
@@ -4449,6 +4451,22 @@ function stickerLibrary(ctx=context()) {
  const old=Array.isArray(legacy)?legacy.filter(item=>item&&typeof item.id==='string'&&validStickerImage(item.image)&&typeof item.label==='string'):[];
  const seen=new Set(saved.map(p=>p.image));
  return [...saved,...old.filter(p=>!seen.has(p.image))].slice(0,STICKER_LIMIT);
+}
+function legacyAlbumStickers(ctx=context()){
+ const source=ctx?.extensionSettings?.[SETTINGS_KEY]?.stickers;
+ return Array.isArray(source)?source.filter(item=>item&&typeof item.id==='string'&&validStickerImage(item.image))
+  .map(item=>({...item,legacySticker:true,owner:'world',ownerName:'世界相册',folder:'表情包',
+   title:String(item.label||item.title||'表情包').slice(0,60)})):[];
+}
+function deleteLegacyStickersFrom(id,ctx=context()){
+ const settings=ctx?.extensionSettings?.[SETTINGS_KEY],list=settings?.stickers;
+ if(!Array.isArray(list)||typeof ctx.saveSettingsDebounced!=='function')throw Error('旧版表情包数据不可用');
+ const index=list.findIndex(item=>item.id===id);
+ if(index<0)throw Error('未找到所选旧版表情包');
+ const removed=list.length-index;
+ settings.stickers=list.slice(0,index);
+ ctx.saveSettingsDebounced();
+ return removed;
 }
 function migrateLegacyStickers(ctx=context()){
  const legacy=ctx?.extensionSettings?.[SETTINGS_KEY]?.stickers;
