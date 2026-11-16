@@ -1,5 +1,5 @@
 /**
- * GujiGuji v0.35.0: a modular phone shell with isolated per-chat context.
+ * GujiGuji v0.36.0: a modular phone shell with isolated per-chat context.
  * No direct host-module imports; uses only the documented context surface.
  */
 
@@ -1250,7 +1250,7 @@ async function identifyAlbumPhotos(images,names,isSticker=false,ctx=context()){
 async function loadAlbumController(){
  if(albumController)return albumController;
  if(albumLoadPromise)return albumLoadPromise;
- albumLoadPromise=import('./album.js?v=0.35.0').then(mod=>{
+ albumLoadPromise=import('./album.js?v=0.36.0').then(mod=>{
   albumController=mod.createAlbumModule({context,getNodes:()=>nodes,
    sharedPhotos:()=>characterPhotos(),saveSharedPhotos:saveCharacterPhotos,
    safetyWarningDisabled:()=>context()?.extensionSettings?.[SETTINGS_KEY]?.albumSafetyWarningDisabled===true,
@@ -1272,7 +1272,7 @@ async function loadAlbumController(){
 async function loadGroupsController(){
  if(groupsController)return groupsController;
  if(groupsLoadPromise)return groupsLoadPromise;
- groupsLoadPromise=import('./groups.js?v=0.35.0').then(mod=>{
+ groupsLoadPromise=import('./groups.js?v=0.36.0').then(mod=>{
   groupsController=mod.createGroupsModule({context,getNodes:()=>nodes,readRootData,writeData,galleryPeople,
    isPhoneFriend,contactCharacter,phoneGenerate,stripModelReasoning,notifyInteraction,openSharedPost,encodeAvatarPhoto,
    stickerLibrary:()=>stickerLibrary(context()),
@@ -3665,7 +3665,7 @@ function formatQunxingScan(ctx,result){
 async function loadWeiboController(){
  if(weiboController)return weiboController;
  if(weiboLoadPromise)return weiboLoadPromise;
- weiboLoadPromise=import('./weibo.js?v=0.35.0').then(module=>{
+ weiboLoadPromise=import('./weibo.js?v=0.36.0').then(module=>{
   weiboController=module.createWeiboModule({
    context,getNodes:()=>nodes,readRootData,writeData,readData,
    phoneGenerate:(ctx,options,data)=>phoneGenerate(ctx,{...options,task:options?.task||'weibo'},data),
@@ -3727,7 +3727,7 @@ async function loadWeiboController(){
 async function loadShoppingController(){
  if(shoppingController)return shoppingController;
  if(shoppingLoadPromise)return shoppingLoadPromise;
- shoppingLoadPromise=import('./shopping.js?v=0.35.0').then(module=>{
+ shoppingLoadPromise=import('./shopping.js?v=0.36.0').then(module=>{
   shoppingController=module.createShoppingModule({context,getNodes:()=>nodes});
   return shoppingController;
  }).catch(error=>{
@@ -3741,7 +3741,7 @@ async function loadShoppingController(){
 async function loadTakeoutController(){
  if(takeoutController)return takeoutController;
  if(takeoutLoadPromise)return takeoutLoadPromise;
- takeoutLoadPromise=import('./takeout.js?v=0.35.0').then(module=>{
+ takeoutLoadPromise=import('./takeout.js?v=0.36.0').then(module=>{
   takeoutController=module.createTakeoutModule({
    context,getNodes:()=>nodes,readRootData,writeData,readData,currentPersona,
    walletChargeOrder,walletRefundOrder,walletMoney,
@@ -3761,7 +3761,7 @@ async function loadTakeoutController(){
 async function loadPhoneMemoryController(){
  if(memoryController)return memoryController;
  if(memoryLoadPromise)return memoryLoadPromise;
- memoryLoadPromise=import('./memory.js?v=0.35.0').then(module=>{
+ memoryLoadPromise=import('./memory.js?v=0.36.0').then(module=>{
   memoryController=module.createPhoneMemoryModule({
    context,getNodes:()=>nodes,readRootData,writeData,recordError,recordActivity,
    stripModelReasoning,notifyInteraction,
