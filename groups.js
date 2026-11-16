@@ -1,7 +1,7 @@
 /* 咕叽聊群聊：群消息仅属于当前剧情存档，所有发言独立归属成员。 */
 export function createGroupsModule(api){
  const el=(tag,cls='',text='')=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text)n.textContent=text;return n;};
- const state={active:'',busy:false,status:'',manage:false,avatarDraft:'',fromMessageList:false,quoteId:''};
+ const state={active:'',busy:false,status:'',manage:false,avatarDraft:'',fromMessageList:false,quoteId:'',tool:'',draft:''};
  const scrollByGroup=new Map();let lastView='';
  const host=()=>api.getNodes()?.groupsContent;
  const ctx=()=>api.context();
@@ -76,10 +76,10 @@ export function createGroupsModule(api){
     const face=el('img','lp-group-sender-avatar');face.src=src||'/img/ai4.png';face.alt=who(msg.from);
     const body=el('div','lp-message-body');
     if(!mine)body.append(el('small','lp-group-sender-name',who(msg.from)));
-    const bubble=el('div','lp-bubble lp-group-bubble');
+    const bubble=el('div','lp-bubble lp-group-bubble'+(msg.sticker?' lp-sticker-only':''));
     const parent=messageMap.get(msg.replyTo);
     if(parent)bubble.append(el('div','lp-inline-quote',who(parent.from)+'：'+String(parent.text||'[图片]').slice(0,100)));
-    if(msg.text)bubble.append(el('span','lp-group-message-text',msg.text));
+    if(msg.text&&!msg.sticker)bubble.append(el('span','lp-group-message-text',msg.text));
     if(msg.sharePost){
      const quote=el('div','lp-group-share');quote.append(el('strong','',msg.sharePost.author||'群星'),el('p','',msg.sharePost.text||''));
      if(msg.sharePost.image){const image=el('img');image.src=msg.sharePost.image;image.alt='群星分享图片';quote.append(image);}
@@ -97,10 +97,31 @@ export function createGroupsModule(api){
    if(targetMsg){const quote=el('div','lp-group-compose-quote','引用 '+who(targetMsg.from)+'：'+String(targetMsg.text||'[图片]').slice(0,95));
     quote.append(button('×','cancel-quote'));compose.append(quote);}
    const controls=el('div','lp-group-composer-controls');
-   const input=el('textarea');input.rows=1;input.maxLength=1000;input.dataset.groupInput='message';input.placeholder='发送消息';
+   const emoji=button('☺','emoji');emoji.classList.add('lp-tool-btn','lp-group-tool-btn');
+   const input=el('textarea');input.rows=1;input.maxLength=1000;input.dataset.groupInput='message';
+   input.placeholder='发送消息';input.value=state.draft;
+   input.addEventListener('input',()=>{state.draft=input.value;});
+   const more=button('＋','more');more.classList.add('lp-tool-btn','lp-group-tool-btn');
    const actions=el('div','lp-group-send-actions');
    actions.append(button('发送','send'),button(state.busy?'正在生成…':'生成','generate'));
-   controls.append(input,actions);compose.append(controls);target.append(compose);
+   controls.append(emoji,input,more,actions);compose.append(controls);
+   if(state.tool==='emoji'){
+    const picker=el('div','lp-group-emoji-panel lp-emoji-panel');
+    for(const sticker of (api.stickerLibrary?.()||[])){
+     const choice=button('','sticker',sticker.id);choice.classList.add('lp-group-sticker-button');
+     choice.title=sticker.label;choice.setAttribute('aria-label','发送表情包：'+sticker.label);
+     const thumb=el('img');thumb.src=sticker.image;thumb.alt=sticker.label;choice.append(thumb);picker.append(choice);
+    }
+    if(!picker.children.length)picker.append(el('small','','相册中暂无表情包'));
+    compose.append(picker);
+   }
+   if(state.tool==='more'){
+    const tools=el('div','lp-group-tools-menu');
+    const picker=el('label','lp-group-choose-photo','＋ 发送图片');
+    const file=el('input');file.type='file';file.accept='image/png,image/jpeg,image/webp,image/gif';
+    file.dataset.groupPhoto='true';picker.append(file);tools.append(picker);compose.append(tools);
+   }
+   target.append(compose);
    feed.scrollTop=feed.scrollHeight;
    target.scrollTop=top;return;
   }
@@ -147,7 +168,7 @@ export function createGroupsModule(api){
    const g=all.find(x=>x.id===group.id);g.messages.push({id:uid(),from:'user',text:text.slice(0,1000),...(replyTo?{replyTo}:{}),storyTime:root().storyTime||'',createdAt:new Date().toISOString()});
    g.messages=g.messages.slice(-180);
   });
-  state.status='';state.quoteId='';render();
+  state.status='';state.quoteId='';state.draft='';state.tool='';render();
  }
  async function generate(){
   const group=groups().find(g=>g.id===state.active);if(!group||state.busy)return;
@@ -192,7 +213,22 @@ export function createGroupsModule(api){
  async function handleClick(e){
   const button=e.target.closest('button[data-group-action]');if(!button||state.busy)return false;
   const act=button.dataset.groupAction,id=button.dataset.groupId;
-  if(act==='manage'){state.manage=!state.manage;state.avatarDraft='';state.status='';render();}
+  if(act==='emoji'||act==='more'){
+   state.tool=state.tool===act?'':act;render();
+  }
+  else if(act==='sticker'){
+   const sticker=(api.stickerLibrary?.()||[]).find(p=>p.id===id);
+   if(sticker&&state.active){
+    try{await mutate(all=>{
+     const g=all.find(p=>p.id===state.active);if(!g)return;
+     g.messages.push({id:uid(),from:'user',text:'[表情包：'+sticker.label+']',
+      sticker:true,images:[sticker.image],storyTime:root().storyTime||'',createdAt:new Date().toISOString()});
+     g.messages=g.messages.slice(-180);
+    });state.tool='';render();}
+    catch(error){status('发送表情包失败：'+String(error.message||error),true);}
+   }
+  }
+  else if(act==='manage'){state.manage=!state.manage;state.avatarDraft='';state.status='';render();}
   else if(act==='save-manage'){
    const name=host()?.querySelector('[data-group-input="editName"]')?.value?.trim()||'群聊';
    const remark=host()?.querySelector('[data-group-input="editRemark"]')?.value?.trim()||'';
@@ -226,7 +262,7 @@ export function createGroupsModule(api){
    state.active='';state.manage=false;groupHeader('群聊');render();
   }
   else if(act==='view-share'){const group=groups().find(g=>g.id===state.active),msg=group?.messages?.find(m=>m.id===id);if(msg?.sharePost)api.openSharedPost?.(msg.sharePost,'groups');}
-  else if(act==='open'){state.active=id;state.manage=false;state.status='';render();}
+  else if(act==='open'){state.active=id;state.manage=false;state.status='';state.tool='';state.draft='';render();}
   else if(act==='back'){state.active='';state.manage=false;state.avatarDraft='';state.status='';render();}
   else if(act==='create'){
    const name=host()?.querySelector('[data-group-input="name"]')?.value?.trim()||'新的群聊';
@@ -240,21 +276,35 @@ export function createGroupsModule(api){
   return true;
  }
  async function handleFile(event){
-  const input=event.target.closest('input[data-group-avatar]');if(!input)return false;
-  const file=input.files?.[0];input.value='';if(!file)return false;
+  const input=event.target.closest('input[data-group-avatar],input[data-group-photo]');
+  if(!input)return false;
+  const file=input.files?.[0],photo=input.hasAttribute('data-group-photo');
+  input.value='';if(!file)return false;
   try{
-   state.avatarDraft=await api.encodeAvatarPhoto(file);
-   const preview=host()?.querySelector('.lp-group-avatar-preview');
-   if(preview){preview.src=state.avatarDraft;preview.hidden=false;}
-   state.status='已选择头像，点击保存群资料后生效';
-  }catch(e){state.status='头像处理失败：'+String(e.message||e);}
+   const image=await api.encodeAvatarPhoto(file);
+   if(photo){
+    if(!state.active)return true;
+    await mutate(all=>{
+     const g=all.find(p=>p.id===state.active);if(!g)return;
+     g.messages.push({id:uid(),from:'user',text:'[图片]',images:[image],
+      storyTime:root().storyTime||'',createdAt:new Date().toISOString()});
+     g.messages=g.messages.slice(-180);
+    });
+    state.tool='';render();
+   }else{
+    state.avatarDraft=image;
+    const preview=host()?.querySelector('.lp-group-avatar-preview');
+    if(preview){preview.src=state.avatarDraft;preview.hidden=false;}
+    state.status='已选择头像，点击保存群资料后生效';
+   }
+  }catch(e){status((photo?'发送图片':'头像处理')+'失败：'+String(e.message||e),true);}
   return true;
  }
  function open(options={}){
   const direct=options?.groupId&&groups().some(g=>g.id===options.groupId);
   state.active=direct?options.groupId:'';
   state.fromMessageList=!!(direct&&options.origin==='messages');
-  state.manage=false;state.quoteId='';state.status='';render();
+  state.manage=false;state.quoteId='';state.status='';state.tool='';state.draft='';render();
  }
  function openMenu(){if(!state.active)return;state.manage=true;state.status='';render();}
  function back(){
