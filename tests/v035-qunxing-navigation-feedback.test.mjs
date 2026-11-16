@@ -7,10 +7,10 @@ const index=read('index.js'),weibo=read('weibo.js'),album=read('album.js'),
  css=read('style.css'),bootstrap=read('bootstrap.js');
 const manifest=JSON.parse(read('manifest.json'));
 
-test('v0.35.0 release and navigational entrypoints',()=>{
- assert.equal(manifest.version,'0.35.0');
+test('v0.36.1 release and navigational entrypoints',()=>{
+ assert.equal(manifest.version,'0.36.1');
  assert.match(bootstrap,/index\.js\?v=0\.35\.0/);
- for(const item of ['album','groups','weibo'])assert.ok(index.includes(item+'.js?v=0.35.0'));
+ for(const item of ['album','groups','weibo'])assert.ok(index.includes(item+'.js?v=0.36.1'));
  for(const path of ['index.js','weibo.js','album.js','groups.js','bootstrap.js'])
   assert.doesNotThrow(()=>new Function(read(path).replace(/^export /gm,'')));
  assert.match(weibo,/\['新建账号','settingsScan'\]/);
@@ -19,7 +19,8 @@ test('v0.35.0 release and navigational entrypoints',()=>{
  assert.match(weibo,/\['管理群星账号','settingsAccounts'\]/);
  assert.match(weibo,/\['管理动态','settingsPosts'\]/);
  assert.match(weibo,/function renderSettingsScan\(/);
- assert.match(weibo,/control\('＋ 手动新建账号','newAccount'\)/);
+ assert.match(weibo,/function renderManualAccountDrawer\(/);
+ assert.match(weibo,/lp-wb-manual-disclosure/);
  assert.match(weibo,/function renderSettingsBatch\(/);
  assert.match(weibo,/function renderSettingsPosts\(/);
  assert.match(weibo,/control\('管理动态','manageHistory'/);
