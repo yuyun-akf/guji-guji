@@ -1804,7 +1804,8 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
   }
  }
  function back(){
-   if(state.adminHistoryAccount){state.adminHistoryAccount='';state.historyEditingId='';state.historyFormOpen=false;}
+   if(state.historyEditingId){state.historyEditingId='';render();return true;}
+   if(state.adminHistoryAccount){state.adminHistoryAccount='';state.historyEditingId='';state.historyFormOpen=false;state.historyStatus='';}
    else if(state.profileAccount)state.profileAccount='';
    else if(state.detail)state.detail='';
    else if(state.topic)state.topic=null;
