@@ -3479,6 +3479,7 @@ async function loadWeiboController(){
    saveSharedAccounts:(accounts,originalCtx)=>saveSharedQunxingAccounts(accounts,originalCtx||context()),
    ensureSharedAccounts:()=>ensureSharedQunxingAccounts(context()),
    storyContext:weiboStoryContext,scanAccounts:scanQunxingAccounts,cachedScanAccounts:cachedQunxingAccounts,
+   clearScanCatalog:()=>clearSharedNpcScan(context()),
     accountSubjects:()=>{
      const ctx=context(),main=selectedCharacter(ctx);
      if(!main)return [];
@@ -5365,6 +5366,15 @@ function saveSharedNpcScan(candidates,ctx=context()){
  try{ctx.saveSettingsDebounced();}catch(error){if(old===undefined)delete catalog[key];else catalog[key]=old;throw error;}
  return combined;
 }
+function clearSharedNpcScan(ctx=context()){
+ const key=qunxingAccountCardKey(ctx);
+ const catalog=ctx?.extensionSettings?.[SETTINGS_KEY]?.npcRoleScanCatalog;
+ if(!key||!catalog||!Object.prototype.hasOwnProperty.call(catalog,key))return false;
+ if(typeof ctx.saveSettingsDebounced!=='function')throw Error('酒馆扩展设置无法保存');
+ const previous=catalog[key];delete catalog[key];
+ try{ctx.saveSettingsDebounced();}catch(error){catalog[key]=previous;throw error;}
+ return true;
+}
 function visibleSharedNpcScan(ctx=context()){
  return mergeNpcCandidates(readSharedNpcScan(ctx),readRootData(ctx),getCharacterName(selectedCharacter(ctx)))
   .filter(c=>!personaNames(ctx).has(c.name));
@@ -5413,6 +5423,14 @@ function renderNpcCandidates() {
         summary.append(st,note);row.append(summary);
         nodes.npcCandidates.append(row);
     }
+}
+function confirmClearNpcScan(){
+ if(!window.confirm('清空当前角色卡共享的人物检索目录？已加入的联系人、群星账号和剧情数据不会删除。'))return;
+ try{
+  clearSharedNpcScan(context());
+  restoreSharedNpcPreview();
+  setStatus('已清空当前角色卡的共享检索目录');
+ }catch(error){setStatus(recordError('清空人物检索目录',error),'error');}
 }
 async function scanNpcUI(mode='rules') {
     if(npcScanning||busy)return;
@@ -7114,6 +7132,7 @@ function makeUI() {
             </label>
             <button type="button" data-lp="npcScanButton">本地规则检索（不调用 API）</button>
             <button type="button" data-lp="npcAiScanButton">AI 智能检索（调用一次 API）</button>
+            <button type="button" class="lp-npc-clear-scan" data-lp="npcClearScanButton">清空角色卡共享检索结果</button>
             <div class="lp-npc-scan-state" data-lp="npcScanState" role="status" aria-live="polite"></div>
             <div class="lp-npc-candidates" data-lp="npcCandidates"></div>
             <button type="button" data-lp="npcSaveCandidates">添加勾选的 NPC</button>
@@ -7599,7 +7618,7 @@ function mount() {
         'weiboGenerate','weiboFeedback','weiboFeed','weiboHot','weiboNearby','weiboCompose','weiboMe','weiboDetail','weiboTabs','weiboComposeText','weiboPublish','weiboDetailBack','weiboRefreshBox',
         'desktopSortList','clockMode','clockRate','clockContinueClosed','clockCustomFields','clockSave','lockEnabled','lockSaveEnabled','notification','inlineNotification','calendarPrev','calendarNext','calendarHeading','calendarViews','calendarGrid','calendarSelected','calendarSummary','calendarSelectedTime','calendarStoryToday','calendarRealToday','calendarSaveTime','calendarExactSave',
         'momentsPost', 'momentsText', 'momentsFeed', 'momentFeedback','momentsPreview','momentImageUpload','momentRemovePhoto','myAvatarUpload','myAvatarFallback','myAvatarStatus','myIdentity', 'myAvatar', 'myPersona', 'messageBannerToggle','messageBannerStatus','autoMessagesMode','autoMessagesDays','autoMomentsMode','autoMomentsDays','relationAutoSync','phoneInPast','characterRequests','momentInteractions','autonomyStatus','autonomyFeedback','saveAutonomy','rescanRelations','testAutonomy', 'stickerUpload','stickerPackUpload', 'stickerStatus', 'stickerLibrary',
-        'friendLabel', 'friendActions','profileAvatar','profileName','profileDescription','contactEvidence','contactExchange','contactLinks','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcAiScanButton','npcScanState','npcCandidates','npcSaveCandidates','storyPeopleList','viewPrimaryContact','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
+        'friendLabel', 'friendActions','profileAvatar','profileName','profileDescription','contactEvidence','contactExchange','contactLinks','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcAiScanButton','npcClearScanButton','npcScanState','npcCandidates','npcSaveCandidates','storyPeopleList','viewPrimaryContact','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','avatarUserFile','resetCharAvatar','resetUserAvatar',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
         'settingsMenu','apiTask','apiProfile','apiProfileModel','apiProfileModelManual','apiReloadModels','apiProfileFields','apiProfileHint','apiTest',
@@ -7887,6 +7906,7 @@ function mount() {
     nodes.viewPrimaryContact.addEventListener('click',()=>switchContact(PRIMARY_CONTACT_ID,'profile'));
     nodes.npcScanButton.addEventListener('click',()=>void scanNpcUI('rules'));
     nodes.npcAiScanButton.addEventListener('click',()=>void scanNpcUI('ai'));
+    nodes.npcClearScanButton.addEventListener('click',confirmClearNpcScan);
     nodes.npcSaveCandidates.addEventListener('click',()=>void saveSelectedNpcCandidates());
     nodes.saveContactRemark.addEventListener('click',()=>void saveContactRemark());
     nodes.deleteNpc.addEventListener('click',()=>void removeNpcContact());
