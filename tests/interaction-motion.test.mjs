@@ -57,7 +57,7 @@ test('all ten open apps use the shared event and page transition system',()=>{
  assert.match(index,/data-lp="interactionFeedback"/);
  assert.match(style,/\.lp-app-portal/);
  assert.match(style,/\.lp-press-bounce/);
- assert.equal(manifest.version,'0.36.1');
+ assert.equal(manifest.version,'0.36.2');
 });
 test('pointer and keyboard controls shade while held and flash after click',()=>{
  const h=harness();h.instance.bind(h.root);
