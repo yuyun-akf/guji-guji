@@ -145,6 +145,7 @@ export function createGroupsModule(api){
    const roster=group.members.filter(id=>api.isPhoneFriend(id)).map(id=>{
     const char=api.contactCharacter(ctx(),id);
     return {id,name:who(id),description:[char?.data?.description||char?.description,char?.data?.personality||char?.personality,char?.data?.scenario||char?.scenario].filter(Boolean).join('\n').slice(0,1600),
+     relationToUser:api.memberRelationship?.(id)||'',
      photos:(api.galleryPhotosForMember?.(id)||[]).slice(0,8).map(p=>({id:p.id,description:p.description||p.title||'照片'}))};
    });
    if(!roster.length)throw Error('群聊中没有可回复的好友');
