@@ -5182,3 +5182,38 @@
 #st-little-phone-root .lp-moment-comment-text{
  display:inline;flex:1 1 auto;min-width:0;overflow-wrap:anywhere;
 }
+
+/* Final balanced size: smaller than the oversized v0.36 cards, readable text. */
+#st-little-phone-root .lp-wb-settings-menu>.lp-wb-settings-link{
+ flex:0 0 88px!important;min-height:88px!important;height:88px!important;
+ font-size:17px!important;letter-spacing:0!important;
+}
+#st-little-phone-root .lp-wb-settings-menu{gap:14px!important;}
+/* Per-file album import validation and independent removal. */
+#st-little-phone-root .lp-album-file-name{
+ display:flex;align-items:center;gap:8px;justify-content:space-between;
+ padding:9px 10px;box-sizing:border-box;min-width:0;
+ border:1px solid var(--lp-border);border-radius:10px;
+ background:var(--lp-white);
+}
+#st-little-phone-root .lp-album-file-name.lp-album-invalid,
+#st-little-phone-root .lp-album-review-card.lp-album-invalid{
+ border:1px solid #c58b91;background:#f9e7e9;color:#8d3944;
+}
+#st-little-phone-root .lp-album-file-details{
+ display:flex;flex-direction:column;gap:4px;min-width:0;flex:1;
+}
+#st-little-phone-root .lp-album-file-details strong{
+ font-size:12px;overflow-wrap:anywhere;line-height:1.35;
+}
+#st-little-phone-root .lp-album-file-error{
+ font-size:11px;color:#8d3944;overflow-wrap:anywhere;
+}
+#st-little-phone-root .lp-album-remove-candidate,
+#st-little-phone-root .lp-album-review-remove{
+ flex:0 0 auto;border:1px solid var(--lp-border);border-radius:8px;
+ background:var(--lp-white);color:var(--lp-navy);
+ padding:6px 9px;font:inherit;cursor:pointer;
+}
+#st-little-phone-root .lp-album-remove-candidate{font-size:17px;min-width:32px;}
+#st-little-phone-root .lp-album-review-remove{font-size:12px;}
