@@ -3577,7 +3577,16 @@ async function loadWeiboController(){
      }
      return '';
     },
-    sharePost:openQunxingShare,photosForAccount:name=>{const person=galleryPeople().find(p=>p.name===name);return person?photosForActor(person.id,'public'):[];}
+    sharePost:openQunxingShare,
+    publicPhotos:()=>{
+     const publicRole=characterPhotos().filter(p=>photoFolder(p)==='public');
+     const world=worldPhotos().filter(p=>p.folder!=='表情包');
+     return [...publicRole,...world].slice(0,28);
+    },
+    photosForAccount:name=>{
+     const person=galleryPeople().find(p=>p.name===name);
+     return person?photosForActor(person.id,'public'):[...characterPhotos().filter(p=>photoFolder(p)==='public'),...worldPhotos().filter(p=>p.folder!=='表情包')].slice(0,28);
+    }
   });return weiboController;
  }).catch(error=>{
   if(nodes?.weiboFeedback)nodes.weiboFeedback.textContent='群星加载失败：'+String(error.message||error);
