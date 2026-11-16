@@ -68,6 +68,7 @@ let bridgeNeedsSync=false;
 const bridgeListeners=[];
 let autoRequestWorking = false;
 let momentImageDraft = '';
+let momentHistoryGenerating=false,momentHistoryMessage='';
 let pickerState = null;
 let pickerReturnTimer = null;
 let pickerGuardUntil = 0;
@@ -4942,6 +4943,8 @@ function renderMoments(ctx) {
     const posts=readRootData(ctx).moments||[];
     renderPersona(ctx);
     for(const post of [...posts].reverse()){
+        const authorId=momentAuthorId(ctx,post);
+        if(authorId&&authorId!=='user'&&friendshipState(readData(ctx,authorId))!=='friends')continue;
         const item=document.createElement('div');item.className='lp-moment';
         const author=document.createElement('strong');author.textContent=post.author||ctx?.name1||'user';
         const body=document.createElement('p');body.textContent=resolvePhonePlaceholders(post.text||'',ctx,contactCharacter(ctx));
@@ -5116,6 +5119,138 @@ async function tickMomentInteractions() {
     const post=(data.moments||[]).findLast(item=>item?.id&&!seen.has(item.id)&&momentCandidates(ctx,item).length);
     if(!post)return;
     await runMomentBatch(post.id,false);
+}
+
+function historicTime(source,days=1){
+ const m=String(source||'').match(/^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d)/);
+ if(!m)return '';
+ const date=new Date(Number(m[1]),Number(m[2])-1,Number(m[3]),Number(m[4]),Number(m[5]));
+ if(!Number.isFinite(date.getTime()))return '';
+ date.setDate(date.getDate()-Math.max(0,Number(days)||0));
+ const pad=n=>String(n).padStart(2,'0');
+ return date.getFullYear()+'-'+pad(date.getMonth()+1)+'-'+pad(date.getDate())+'T'+pad(date.getHours())+':'+pad(date.getMinutes());
+}
+function renderMomentHistory(){
+ if(!nodes?.momentHistoryOwner)return;
+ const ctx=context(),rootData=readRootData(ctx),select=nodes.momentHistoryOwner;
+ const last=select.value;
+ select.replaceChildren();
+ for(const p of galleryPeople(ctx)){
+  const option=document.createElement('option');option.value=p.id;option.textContent=p.name;
+  select.append(option);
+ }
+ if([...select.options].some(x=>x.value===last))select.value=last;
+ else select.value=PRIMARY_CONTACT_ID;
+ if(!nodes.momentHistoryTime.value)nodes.momentHistoryTime.value=historicTime(rootData.storyTime,1);
+ nodes.momentHistoryGenerate.disabled=momentHistoryGenerating;
+ nodes.momentHistoryGenerate.textContent=momentHistoryGenerating?'正在生成历史朋友圈…':'按要求生成过去的朋友圈（一次 API 调用）';
+ nodes.momentHistoryStatus.textContent=momentHistoryMessage;
+ const list=nodes.momentHistoryList;list.replaceChildren();
+ const posts=(rootData.moments||[]).filter(p=>p.historical===true).slice(-70).reverse();
+ for(const p of posts){
+  const article=document.createElement('div');article.className='lp-moment-history-item';
+  const title=document.createElement('strong');title.textContent=(p.author||'角色')+' · '+String(p.storyTime||'').replace('T',' ').slice(0,16);
+  const body=document.createElement('p');body.textContent=p.text||'（图片动态）';
+  const actions=document.createElement('div');actions.className='lp-moment-history-actions';
+  for(const [type,label] of [['edit','编辑'],['delete','删除']]){
+   const b=document.createElement('button');b.type='button';b.textContent=label;
+   b.dataset.momentHistoryAction=type;b.dataset.momentHistoryId=p.id;actions.append(b);
+  }
+  article.append(title,body,actions);list.append(article);
+ }
+ if(!posts.length)list.textContent='尚无补录的历史朋友圈';
+}
+async function changeHistoricMoment(type,id){
+ const ctx=context(),p=(readRootData(ctx).moments||[]).find(x=>x.id===id&&x.historical===true);
+ if(!p)return;
+ let text=p.text,time=p.storyTime;
+ if(type==='edit'){
+  const next=window.prompt('编辑历史朋友圈正文',p.text||'');
+  if(next===null)return;
+  text=next.trim().slice(0,1000);
+  const stamp=window.prompt('编辑发布时间，格式 YYYY-MM-DDTHH:mm',p.storyTime||'');
+  if(stamp===null)return;
+  time=stamp.trim();
+  const current=readRootData(ctx).storyTime;
+  if(!historicTime(time,0)||Date.parse(time)>=Date.parse(current))return setStatus('发布时间必须早于当前剧情时间','error');
+ }else if(type==='delete'){
+  if(!window.confirm('删除这条补录的历史朋友圈？'))return;
+ }else return;
+ await editMoments(ctx,data=>{
+  data.moments=(data.moments||[]).filter(x=>type!=='delete'||x.id!==id);
+  const target=data.moments.find(x=>x.id===id);
+  if(type==='edit'&&target){target.text=text;target.storyTime=time;}
+  return true;
+ });
+ momentHistoryMessage=type==='edit'?'历史朋友圈已修改':'历史朋友圈已删除';
+ renderMomentHistory();notifyInteraction(momentHistoryMessage,'success');
+}
+async function manualHistoricMoment(){
+ const ctx=context(),id=nodes.momentHistoryOwner.value,
+  text=nodes.momentHistoryText.value.trim().slice(0,1000),
+  time=nodes.momentHistoryTime.value;
+ if(!text)return setStatus('请填写历史朋友圈正文','error');
+ if(!historicTime(time,0)||Date.parse(time)>=Date.parse(readRootData(ctx).storyTime))
+  return setStatus('历史朋友圈发布时间必须早于当前剧情','error');
+ const author=id==='user'?currentPersona(ctx).name:contactDisplayName(ctx,id);
+ const added=await editMoments(ctx,data=>{
+  data.moments=Array.isArray(data.moments)?data.moments:[];
+  data.moments.push({id:'moment-'+Date.now()+'-'+Math.random().toString(36).slice(2,8),
+   authorId:id,author,text,storyTime:time,comments:[],likes:[],historical:true});
+  data.moments=data.moments.slice(-130);return true;
+ });
+ if(added){nodes.momentHistoryText.value='';momentHistoryMessage='历史朋友圈已补录';renderMomentHistory();notifyInteraction(momentHistoryMessage,'success');}
+}
+async function generateHistoricMoments(){
+ if(momentHistoryGenerating||busy)return;
+ const ctx=context(),owner=nodes.momentHistoryOwner.value,actor=galleryPeople(ctx).find(x=>x.id===owner);
+ if(!actor)return;
+ if(owner==='user')return setStatus('AI 不会代替 user 编写已发生的历史行为；可手动补录自己的朋友圈','error');
+ const r=readRootData(ctx),count=Math.max(1,Math.min(5,Number(nodes.momentHistoryCount.value)||3));
+ const settings=nodes.momentHistoryInstructions.value.trim().slice(0,1000);
+ const char=contactCharacter(ctx,owner);
+ const details=[char?.data?.description,char?.data?.personality,char?.description,char?.personality,
+  r.contacts.find(x=>x.id===owner)?.description].filter(Boolean).join('\n').slice(0,2300);
+ const prior=(r.moments||[]).filter(p=>momentAuthorId(ctx,p)===owner).slice(-10).map(p=>p.text).join('；');
+ const post={authorId:owner,author:actor.name,comments:[]};
+ const linked=momentCandidates(ctx,post).slice(0,8).map(id=>({id,name:contactDisplayName(ctx,id)}));
+ const session=captureSession(ctx);
+ momentHistoryGenerating=true;momentHistoryMessage='正在生成 '+count+' 条过去的朋友圈…';renderMomentHistory();
+ try{
+  const raw=await phoneGenerate(ctx,{
+   task:'autonomy',maxTokens:Math.min(7000,1200+count*800),
+   systemPrompt:'为故事世界人物编写曾经公开给朋友圈好友的历史动态；只输出严格合法JSON，不能代替 user 言行，不能发明重大未发生事实。人与人之间的互动仅限明确建立好友关系的人物。',
+   prompt:[{role:'user',content:[
+    '当前剧情时间：'+r.storyTime,'作者：'+actor.name,'明确人设：'+details,
+    '此前朋友圈，避免重复：'+prior,'本次要求：'+(settings||'自然生活日常'),
+    '可互动的人物（ID：姓名）：'+JSON.stringify(linked),
+    '写 '+count+' 条当前剧情时间之前、日期错开、符合人物设定的朋友圈。熟人互动量合理，可以没有点赞评论；不用编造大量陌生粉丝。',
+    '仅返回 JSON：{"posts":[{"text":"正文","daysAgo":2,"likes":["角色ID"],"comments":[{"actorId":"角色ID","text":"自然评论"}]}]}。daysAgo 为1至90的整数，点赞与评论只能使用允许互动的人物 ID；输出不能包含 user 的未写明言行。'
+   ].join('\n')}]},readData(ctx,owner));
+  if(!sameSession(session))return;
+  const rawText=stripModelReasoning(String(raw||'')),a=rawText.indexOf('{'),b=rawText.lastIndexOf('}');
+  if(a<0||b<=a)throw Error('模型未返回可解析 JSON');
+  const parsed=JSON.parse(rawText.slice(a,b+1));
+  const posts=Array.isArray(parsed.posts)?parsed.posts.slice(0,count):[];
+  const allowed=new Map(linked.map(p=>[p.id,p.name])),created=[];
+  for(const item of posts){
+   const text=String(item?.text||'').trim().slice(0,1000);
+   if(!text)continue;
+   const date=historicTime(r.storyTime,Math.max(1,Math.min(90,Number(item.daysAgo)||1)));
+   const id='moment-'+Date.now()+'-'+Math.random().toString(36).slice(2,8);
+   const likes=(Array.isArray(item.likes)?item.likes:[]).filter(v=>allowed.has(v))
+    .map(actorId=>({actorId,name:allowed.get(actorId),at:date}));
+   const comments=(Array.isArray(item.comments)?item.comments:[]).filter(c=>allowed.has(c.actorId)&&c.text)
+    .slice(0,10).map(c=>({id:'comment-'+Math.random().toString(36).slice(2,9),actorId:c.actorId,
+     author:allowed.get(c.actorId),text:String(c.text).slice(0,120),at:date}));
+   created.push({id,authorId:owner,author:actor.name,text,storyTime:date,likes,comments,historical:true});
+  }
+  if(!created.length)throw Error('模型没有返回可用的朋友圈正文');
+  await editMoments(ctx,data=>{data.moments=[...(data.moments||[]),...created].slice(-130);return true;});
+  momentHistoryMessage='已补录 '+created.length+' 条历史朋友圈';
+  notifyInteraction(momentHistoryMessage,'success');
+ }catch(error){momentHistoryMessage='生成历史朋友圈失败：'+String(error.message||error);notifyInteraction(momentHistoryMessage,'error');}
+ finally{momentHistoryGenerating=false;if(sameSession(session))renderMomentHistory();}
 }
 async function postMoment() {
     if(busy)return;
@@ -7293,6 +7428,21 @@ function makeUI() {
             <button data-lp-open="me" type="button">我</button>
           </nav>
         </section>
+        <section class="lp-screen lp-chatlist" data-lp-screen="momentHistory" aria-label="历史朋友圈" hidden>
+          <div class="lp-list-body lp-moment-history">
+            <h3>补录历史朋友圈</h3>
+            <p class="lp-settings-hint">只补录小手机当前剧情时间以前的动态。手动添加无需 API；AI 批量生成需主动点击，当前剧情中尚未发生的内容不得提前发布。</p>
+            <label>发布人物<select data-lp="momentHistoryOwner"></select></label>
+            <label>发布时间（手动补录）<input data-lp="momentHistoryTime" type="datetime-local" /></label>
+            <label>朋友圈正文<textarea data-lp="momentHistoryText" rows="3" maxlength="1000" placeholder="写一条已发生的过去动态"></textarea></label>
+            <button type="button" data-lp="momentHistoryManual">手动补录这条朋友圈</button>
+            <label>AI 生成额外要求<textarea data-lp="momentHistoryInstructions" rows="3" placeholder="例如生成三条日常朋友圈，言行符合人物设定，不虚构重大事件"></textarea></label>
+            <label>一次生成几条<select data-lp="momentHistoryCount"><option value="1">1 条</option><option value="3" selected>3 条</option><option value="5">5 条</option></select></label>
+            <button type="button" data-lp="momentHistoryGenerate">按要求生成过去的朋友圈（一次 API 调用）</button>
+            <div data-lp="momentHistoryStatus" role="status" aria-live="polite"></div>
+            <div data-lp="momentHistoryList" class="lp-moment-history-list"></div>
+          </div>
+        </section>
         <section class="lp-screen lp-chatlist lp-social-screen" data-lp-screen="discover" aria-label="发现" hidden>
   <div class="lp-list-body lp-discover">
     <div class="lp-discover-heading"><span>朋友圈</span><span class="lp-discover-actions"><button type="button" data-lp="momentHistoryOpen" class="lp-moment-history-link">历史朋友圈</button><button type="button" data-lp="momentCamera" class="lp-moment-camera" aria-label="发布朋友圈" title="发布朋友圈"><svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7.5h4l2-3h6l2 3h4v12H3z"/><circle cx="12" cy="13" r="3.2"/></svg></button></span></div>
@@ -7941,7 +8091,7 @@ function mount() {
         'albumContent','groupsContent','shareTargets','sharePreview',
         'weiboGenerate','weiboFeedback','weiboFeed','weiboHot','weiboNearby','weiboCompose','weiboMe','weiboDetail','weiboTabs','weiboComposeText','weiboPublish','weiboDetailBack','weiboRefreshBox',
         'desktopSortList','clockMode','clockRate','clockContinueClosed','clockCustomFields','clockSave','lockEnabled','lockSaveEnabled','notification','inlineNotification','calendarPrev','calendarNext','calendarHeading','calendarViews','calendarGrid','calendarSelected','calendarSummary','calendarSelectedTime','calendarStoryToday','calendarRealToday','calendarSaveTime','calendarExactSave',
-        'momentsPost', 'momentsText', 'momentsFeed', 'momentFeedback','momentsPreview','momentImageUpload','momentRemovePhoto','momentCamera','momentComposer','momentHistoryOpen','myBio','myBioEdit','profileBio','profileBioEdit','contactMomentList','myAvatarUpload','myAvatarFallback','myAvatarStatus','myIdentity', 'myAvatar', 'myPersona', 'messageBannerToggle','messageBannerStatus','autoMessagesMode','autoMessagesDays','autoMomentsMode','autoMomentsDays','relationAutoSync','phoneInPast','characterRequests','momentInteractions','autonomyStatus','autonomyFeedback','saveAutonomy','rescanRelations','testAutonomy', 'stickerUpload','stickerPackUpload', 'stickerStatus', 'stickerLibrary',
+        'momentsPost', 'momentsText', 'momentsFeed', 'momentFeedback','momentsPreview','momentImageUpload','momentRemovePhoto','momentCamera','momentComposer','momentHistoryOpen','momentHistoryOwner','momentHistoryTime','momentHistoryText','momentHistoryManual','momentHistoryInstructions','momentHistoryCount','momentHistoryGenerate','momentHistoryStatus','momentHistoryList','myBio','myBioEdit','profileBio','profileBioEdit','contactMomentList','myAvatarUpload','myAvatarFallback','myAvatarStatus','myIdentity', 'myAvatar', 'myPersona', 'messageBannerToggle','messageBannerStatus','autoMessagesMode','autoMessagesDays','autoMomentsMode','autoMomentsDays','relationAutoSync','phoneInPast','characterRequests','momentInteractions','autonomyStatus','autonomyFeedback','saveAutonomy','rescanRelations','testAutonomy', 'stickerUpload','stickerPackUpload', 'stickerStatus', 'stickerLibrary',
         'friendLabel', 'friendActions','profileAvatar','profileAvatarAction','profileAvatarSheet','profileChooseAvatar','profileAvatarCancel','profileRoleDialog','profileRoleOpen','profileRoleClose','profileRoleTitle','profileName','profileDescription','contactEvidence','contactExchange','contactLinks','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcAiScanButton','npcClearScanButton','npcScanState','npcCandidates','npcSaveCandidates','storyPeopleList','viewPrimaryContact','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','resetCharAvatar',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
@@ -8071,6 +8221,12 @@ function mount() {
       if(!nodes.momentComposer.hidden)nodes.momentsText.focus();
     });
     nodes.momentHistoryOpen.addEventListener('click',()=>setScreen('momentHistory'));
+    nodes.momentHistoryManual.addEventListener('click',()=>void manualHistoricMoment());
+    nodes.momentHistoryGenerate.addEventListener('click',()=>void generateHistoricMoments());
+    nodes.momentHistoryList.addEventListener('click',event=>{
+      const b=event.target.closest('[data-moment-history-action]');
+      if(b)void changeHistoricMoment(b.dataset.momentHistoryAction,b.dataset.momentHistoryId);
+    });
     nodes.myBioEdit.addEventListener('click',()=>editPhoneBio('user'));
     nodes.profileBioEdit.addEventListener('click',()=>editPhoneBio(activeContactId));
     nodes.momentImageUpload.addEventListener('change',event=>{void importMomentPhoto(event.target.files?.[0]);event.target.value='';});
