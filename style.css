@@ -5166,3 +5166,19 @@
 #st-little-phone-root .lp-wb-manual-content .lp-wb-editor{
  width:100%;max-width:100%;box-sizing:border-box;min-width:0;
 }
+
+/* v0.36.1 — Moment comment long-press reply affordance without reply buttons */
+#st-little-phone-root .lp-moment-comment{
+ display:flex;align-items:baseline;flex-wrap:wrap;gap:0;
+ min-width:0;overflow-wrap:anywhere;
+}
+#st-little-phone-root .lp-moment-comment-author{
+ display:inline;font-weight:600;white-space:normal;
+}
+#st-little-phone-root .lp-moment-comment-author.lp-moment-comment-quotable{
+ cursor:context-menu;user-select:none;-webkit-user-select:none;
+ touch-action:pan-y;
+}
+#st-little-phone-root .lp-moment-comment-text{
+ display:inline;flex:1 1 auto;min-width:0;overflow-wrap:anywhere;
+}
