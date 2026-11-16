@@ -4638,6 +4638,7 @@ function phoneRelationshipFor(ctx=context(),id=activeContactId){
   custom:String(saved.custom||''),
   details:String(saved.details||''),
   source:String(saved.source||''),
+  direction:saved.direction==='user'?'user':'char',
   updatedAt:String(saved.updatedAt||''),
   checkedMessages:Number(saved.checkedMessages)||0,
   checkedMainline:Number(saved.checkedMainline)||0
@@ -4646,7 +4647,10 @@ function phoneRelationshipFor(ctx=context(),id=activeContactId){
 function phoneRelationshipDescription(ctx=context(),id=activeContactId){
  const saved=phoneRelationshipFor(ctx,id);
  const name=saved.relation==='custom'?(saved.custom||'未指定'):(PHONE_RELATION_LABELS[saved.relation]||saved.relation);
- return name+(saved.relation==='crush'?'（角色暗恋 '+currentPersona(ctx).name+'）':'')+(saved.details?'；'+saved.details:'');
+ const direction=['boss','patron'].includes(saved.relation)?
+  '（'+(saved.direction==='user'?currentPersona(ctx).name+'是'+getContactInfo(ctx,id).name:
+   getContactInfo(ctx,id).name+'是'+currentPersona(ctx).name)+'的'+name+'）':'';
+ return name+(saved.relation==='crush'?'（角色暗恋 '+currentPersona(ctx).name+'）':direction)+(saved.details?'；'+saved.details:'');
 }
 function phoneRelationshipPrompt(ctx=context(),id=activeContactId){
  const saved=phoneRelationshipFor(ctx,id),label=phoneRelationshipDescription(ctx,id);
@@ -4654,6 +4658,25 @@ function phoneRelationshipPrompt(ctx=context(),id=activeContactId){
  return '【咕叽聊关系资料】当前 '+getContactInfo(ctx,id).name+' 与 '+currentPersona(ctx).name+
   ' 的关系：'+label+'。来源：'+(saved.mode==='manual'?'用户明确设定':'依据设定及已发生剧情自动识别')+
   '。按角色本人性格、世界书关系阶段／好感度阈值、当前时间线和已发生事实决定态度。关系不等于微信好友状态；不得把未来关系当作当前事实，不得替 user 补写心理或言行。';
+}
+function renderPhoneRelationshipChoices(){
+ const grid=nodes?.relationChoiceGrid,select=nodes?.relationChoice;
+ if(!grid||!select)return;
+ grid.replaceChildren();
+ for(const option of [...select.options].filter(item=>item.value!=='unknown')){
+  const btn=document.createElement('button');btn.type='button';
+  btn.dataset.relationOption=option.value;
+  btn.className='lp-relation-option'+(select.value===option.value?' selected':'')+
+   (option.value==='crush'?' wide':'');
+  btn.textContent=option.textContent;grid.append(btn);
+ }
+ const directed=['boss','patron'].includes(select.value);
+ nodes.relationDirectionFields.hidden=!directed;
+ if(directed){
+  const ctx=context(),name=PHONE_RELATION_LABELS[select.value];
+  nodes.relationDirectionCharText.textContent=getContactInfo(ctx).name+'是'+currentPersona(ctx).name+'的'+name;
+  nodes.relationDirectionUserText.textContent=currentPersona(ctx).name+'是'+getContactInfo(ctx).name+'的'+name;
+ }
 }
 function showPhoneRelationTab(tab='relation'){
  if(!nodes?.profileRoleDialog)return;
@@ -4670,6 +4693,8 @@ function showPhoneRelationTab(tab='relation'){
  nodes.relationChoice.value=Object.prototype.hasOwnProperty.call(PHONE_RELATION_LABELS,saved.relation)&&saved.relation!=='unknown'?saved.relation:'custom';
  nodes.relationCustom.value=saved.custom||(nodes.relationChoice.value==='custom'&&saved.relation!=='unknown'?saved.relation:'');
  nodes.relationCustomLabel.hidden=nodes.relationChoice.value!=='custom';
+ nodes.relationDirectionUser.checked=saved.direction==='user';nodes.relationDirectionChar.checked=saved.direction!=='user';
+ renderPhoneRelationshipChoices();
  nodes.relationDetails.value=saved.details;
  nodes.relationCurrent.textContent='当前：'+phoneRelationshipDescription(ctx);
  nodes.relationStatus.textContent='';
@@ -4680,7 +4705,7 @@ function showPhoneRelationTab(tab='relation'){
   if(changed)void detectPhoneRelationship();
  }
 }
-function confirmPhoneManualRelationship(relation,custom,details){
+function confirmPhoneManualRelationship(relation,custom,details,direction='char'){
  const old=root.querySelector('.lp-relation-confirm-overlay');old?.remove();
  const overlay=document.createElement('div');overlay.className='lp-relation-confirm-overlay';
  const dialog=document.createElement('section');dialog.className='lp-relation-confirm-dialog';
@@ -4690,16 +4715,16 @@ function confirmPhoneManualRelationship(relation,custom,details){
  const actions=document.createElement('div');
  const b=(label,handler)=>{const node=document.createElement('button');node.type='button';node.textContent=label;node.addEventListener('click',handler);return node;};
  actions.append(
-  b('保持手动',()=>{overlay.remove();void savePhoneRelationship('manual',relation,custom,details,'手动设定');}),
-  b('保存并开启自动更新',()=>{overlay.remove();void savePhoneRelationship('auto',relation,custom,details,'用户指定的初始关系');})
+  b('保持手动',()=>{overlay.remove();void savePhoneRelationship('manual',relation,custom,details,'手动设定',direction);}),
+  b('保存并开启自动更新',()=>{overlay.remove();void savePhoneRelationship('auto',relation,custom,details,'用户指定的初始关系',direction);})
  );
  dialog.append(title,text,actions,b('取消',()=>overlay.remove()));
  overlay.append(dialog);root.querySelector('.lp-panel')?.append(overlay);
 }
-async function savePhoneRelationship(mode,relation,custom='',details='',source=''){
+async function savePhoneRelationship(mode,relation,custom='',details='',source='',direction='char'){
  const ctx=context(),id=activeContactId,session=captureSession(ctx),data=structuredClone(readRootData(ctx));
  data.phoneRelationshipStates||={};
- data.phoneRelationshipStates[id]={mode,relation,custom:custom.slice(0,80),details:details.slice(0,800),source,updatedAt:data.storyTime||'',checkedMessages:readData(ctx,id).messages?.length||0,checkedMainline:ctx?.chat?.length||0};
+ data.phoneRelationshipStates[id]={mode,relation,direction,custom:custom.slice(0,80),details:details.slice(0,800),source,updatedAt:data.storyTime||'',checkedMessages:readData(ctx,id).messages?.length||0,checkedMainline:ctx?.chat?.length||0};
  await writeData(ctx,{...data,__contactId:PRIMARY_CONTACT_ID});
  if(sameSession(session)){render();showPhoneRelationTab('relation');notifyInteraction('人物关系已保存','success');}
 }
@@ -8462,6 +8487,11 @@ function makeUI() {
                   <option value="ex">前任</option><option value="crush">暗恋对象</option>
                   <option value="custom">自定义</option>
                 </select></label>
+                <div data-lp="relationChoiceGrid" class="lp-relation-choice-grid"></div>
+                <div data-lp="relationDirectionFields" class="lp-relation-direction-fields" hidden>
+                  <label><input type="radio" name="lp-role-direction" data-lp="relationDirectionChar" checked/><span data-lp="relationDirectionCharText"></span></label>
+                  <label><input type="radio" name="lp-role-direction" data-lp="relationDirectionUser"/><span data-lp="relationDirectionUserText"></span></label>
+                </div>
                 <label data-lp="relationCustomLabel" hidden>自定义关系<input data-lp="relationCustom" maxlength="80" placeholder="填写关系名称" /></label>
               </div>
               <label>关系背景与当前阶段（选填）<textarea data-lp="relationDetails" rows="3" maxlength="800" placeholder="例如：青梅竹马；目前处于熟人阶段"></textarea></label>
@@ -8533,7 +8563,7 @@ function mount() {
         'weiboGenerate','weiboFeedback','weiboFeed','weiboHot','weiboNearby','weiboCompose','weiboMe','weiboDetail','weiboTabs','weiboComposeText','weiboPublish','weiboDetailBack','weiboRefreshBox',
         'desktopSortList','clockMode','clockRate','clockContinueClosed','clockCustomFields','clockSave','lockEnabled','lockSaveEnabled','notification','inlineNotification','calendarPrev','calendarNext','calendarHeading','calendarViews','calendarGrid','calendarSelected','calendarSummary','calendarSelectedTime','calendarStoryToday','calendarRealToday','calendarSaveTime','calendarExactSave',
         'momentsPost', 'momentsText', 'momentsFeed', 'momentFeedback','momentsPreview','momentImageUpload','momentRemovePhoto','momentCamera','momentComposer','momentCoverImage','momentCoverUpload','momentCoverName','momentCoverAvatar','momentHistoryOpen','momentHistoryMode','momentHistoryOwnerLabel','momentHistoryOwner','momentHistoryTime','momentHistoryText','momentHistoryPhoto','momentHistoryPhotoPreview','momentHistoryRemovePhoto','momentHistoryManual','momentHistoryInstructions','momentHistoryCount','momentHistoryGenerate','momentHistoryStatus','momentHistoryList','myBio','myBioEdit','profileBio','profileBioEdit','contactMomentList','myAvatarUpload','myAvatarFallback','myAvatarStatus','myIdentity', 'myNameEdit', 'myAvatar', 'myPersona', 'messageBannerToggle','messageBannerStatus','autoMessagesMode','autoMessagesDays','autoMomentsMode','autoMomentsDays','relationAutoSync','phoneInPast','characterRequests','momentInteractions','autonomyStatus','autonomyFeedback','saveAutonomy','rescanRelations','testAutonomy', 'stickerUpload','stickerPackUpload', 'stickerStatus', 'stickerLibrary',
-        'friendLabel', 'friendActions','profileAvatar','profileAvatarAction','profileAvatarSheet','profileChooseAvatar','profileAvatarCancel','profileRoleDialog','profileRoleOpen','profileRoleClose','profileRoleTitle','profileTabDetails','profileTabRelation','profileDetailsPane','profileRelationPane','profileRelationNames','relationAuto','relationManual','relationManualFields','relationChoice','relationCustomLabel','relationCustom','relationDetails','relationCurrent','relationStatus','relationSave','relationDetect','profileName','profileDescription','contactEvidence','contactExchange','contactLinks','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcAiScanButton','npcClearScanButton','npcScanState','npcCandidates','npcSaveCandidates','storyPeopleList','viewPrimaryContact','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
+        'friendLabel', 'friendActions','profileAvatar','profileAvatarAction','profileAvatarSheet','profileChooseAvatar','profileAvatarCancel','profileRoleDialog','profileRoleOpen','profileRoleClose','profileRoleTitle','profileTabDetails','profileTabRelation','profileDetailsPane','profileRelationPane','profileRelationNames','relationAuto','relationManual','relationManualFields','relationChoice','relationChoiceGrid','relationDirectionFields','relationDirectionChar','relationDirectionUser','relationDirectionCharText','relationDirectionUserText','relationCustomLabel','relationCustom','relationDetails','relationCurrent','relationStatus','relationSave','relationDetect','profileName','profileDescription','contactEvidence','contactExchange','contactLinks','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcAiScanButton','npcClearScanButton','npcScanState','npcCandidates','npcSaveCandidates','storyPeopleList','viewPrimaryContact','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','resetCharAvatar',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
         'settingsMenu','apiTask','apiProfile','apiProfileModel','apiProfileModelManual','apiReloadModels','apiProfileFields','apiProfileHint','apiTest',
@@ -8892,7 +8922,13 @@ function mount() {
     const relationMode=()=>{nodes.relationManualFields.hidden=!nodes.relationManual.checked;};
     nodes.relationAuto.addEventListener('change',relationMode);
     nodes.relationManual.addEventListener('change',relationMode);
-    nodes.relationChoice.addEventListener('change',()=>{nodes.relationCustomLabel.hidden=nodes.relationChoice.value!=='custom';});
+    nodes.relationChoice.addEventListener('change',()=>{nodes.relationCustomLabel.hidden=nodes.relationChoice.value!=='custom';renderPhoneRelationshipChoices();});
+    nodes.relationChoiceGrid.addEventListener('click',event=>{
+      const item=event.target.closest('button[data-relation-option]');if(!item)return;
+      nodes.relationChoice.value=item.dataset.relationOption;
+      nodes.relationCustomLabel.hidden=nodes.relationChoice.value!=='custom';
+      renderPhoneRelationshipChoices();
+    });
     nodes.relationDetect.addEventListener('click',()=>void detectPhoneRelationship());
     nodes.relationSave.addEventListener('click',()=>{
       const mode=nodes.relationManual.checked?'manual':'auto';
@@ -8900,9 +8936,9 @@ function mount() {
       const custom=nodes.relationCustom.value.trim(),details=nodes.relationDetails.value.trim();
       if(mode==='manual'&&relation==='custom'&&!custom){notifyInteraction('请填写自定义关系','error');return;}
       if(mode==='manual'){
-       confirmPhoneManualRelationship(relation,custom,details);
+       confirmPhoneManualRelationship(relation,custom,details,nodes.relationDirectionUser.checked?'user':'char');
       }else{
-       void savePhoneRelationship('auto',relation,custom,details,'自动识别设置')
+       void savePhoneRelationship('auto',relation,custom,details,'自动识别设置',nodes.relationDirectionUser.checked?'user':'char')
         .then(()=>void detectPhoneRelationship());
       }
     });
