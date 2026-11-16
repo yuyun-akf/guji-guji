@@ -312,6 +312,7 @@ export function createWeiboModule(api) {
   const accounts=data().accounts,matching=accounts.filter(a=>a.name===author);
   const acct=accounts.find(a=>handle&&a.handle&&a.handle===handle)||(matching.length===1&&(!handle||!matching[0].handle)?matching[0]:null);
   if(acct&&acct.kind!=='网友'&&acct.source!=='follow'&&!acct.publicFigure&&subjectOfAccount(acct).type!=='organization')return null;
+  const publicPhoto=(api.publicPhotos?.()||[]).find(photo=>photo.id===clean(p.photoId,100));
   const comments=(Array.isArray(p.comments)?p.comments:[]).map(c=>
    typeof c==='string'?{id:uid('c'),name:'网友',text:clean(c,350)}:
    {id:uid('c'),name:clean(c?.name||c?.author||'网友',40),text:clean(c?.text||c?.content,350)}
@@ -328,7 +329,7 @@ export function createWeiboModule(api) {
    followingCount:acct?.followingCount??p.followingCount},{correctImplausible:!acct});
   const commentCount=Math.max(comments.length,countValue(p.commentCount)??Math.round(likes*(.015+stableSeed(text)*.032)));
   return {id:uid('post'),author,handle:acct?.handle||handle,authorId:acct?.id||'',avatar:acct?.avatar||'',category:clean(p.category||'日常',24),
-   text,comments,likes:Math.min(9999999999,likes),commentCount,
+   text,...(publicPhoto?{image:publicPhoto.image}:{}),comments,likes:Math.min(9999999999,likes),commentCount,
    followers,accountLikes:baseline.likesTotal,accountComments:baseline.commentsTotal,followingCount:baseline.followingCount,
    zone,time:storyMoment(p.publishedAt||p.time||root().storyTime)?.time||'',actions:{}};
  }
@@ -338,6 +339,8 @@ export function createWeiboModule(api) {
   const followed=q.accounts.filter(a=>q.following.includes(a.id)).map(a=>a.name).join('、');
   const known=(r.contacts||[]).slice(0,18).map(a=>a.name+'：'+clean(a.description,80)).join('；');
   const contextText=clean(api.storyContext?.()||'',2100);
+  const publicPhotos=(api.publicPhotos?.()||[]).slice(0,20)
+   .map(p=>({id:p.id,owner:p.ownerName||'世界',title:p.title||'',description:clean(p.description,120)}));
   return [
    '你正在生成完全虚构的剧情世界社交平台「群星」内容。故事日期：'+(r.storyTime||'未设定')+'。',
    '范围：'+(nearby?'周边与关注：同时包含身边人的动态和 user 关注的账号公开帖子；被关注者不要求位于附近。校园、公司、剧组、社团、邻里与朋友等':'世界：新闻、社会、影视、生活、时尚、体育、游戏、科技、音乐等公共动态')+'。',
@@ -347,15 +350,17 @@ export function createWeiboModule(api) {
    '允许陌生网友完全讨论无关主题，勿全围绕角色。已登记的非公众人物角色仅参与评论，不生成以该角色为作者的群星帖子；随机原创网友和普通博主仍可以发帖。公众人物可以合理上热搜，但不要每条都写成公共事件。',
    '营造真实复杂的互联网：多数网友正常且观点各异，偶尔可以有0至1个理直气壮、反常识到令人怀疑的“神人”发言，让其他网友有自然吐槽或反驳；题材随机覆盖职场、学习、生活、饭圈、科技、性别刻板印象等，不要总围绕男女关系，也不要把偏激观点当事实。',
    '每条帖子配2至5条不同语气的评论，允许争论与冷幽默、网络流行语，但不要每条都是段子。',
+   '允许引用公开素材库照片，只有帖子真实在谈论照片主体、人物或场景时才填写photoId，否则不填。公开照片可以被家人、媒体、粉丝、黑粉、陌生网友引用，无需相互认识。严禁在无关人物自拍/自述中配别人的头像。可用图片：'+JSON.stringify(publicPhotos)+'。',
    '账号早已在世界里长期运营，不是第一次刷到才注册！输出粉丝followers、历史累计获赞accountLikes、累计获评accountComments、关注followingCount、本帖likes和本帖评论总数commentCount。80万粉丝成熟媒体号累计获赞通常有几十万到千万以上，不能只计算本条新帖。评论列表展示2到5条样本即可，不等于评论总数。临时账号只属于本轮浏览，无需永久登记。',
    nearby?'若角色或 user 仍在校（从资料判断，不能直接假设已毕业），校园日常占多数：表白墙、选课考试、老师答疑、寝室、社团活动、求助和吐槽；其他帖子可来自已关注账号以及工作、剧组、生活圈。不得把远方已关注者说成就在附近；不凭空编造真实城市、学校名或隐私。':'全球动态有大小事之分，不要人人都在热榜。',
    topic?'帖子主题：'+topic:'',
-   '只输出合法紧凑 JSON：{"posts":[{"author":"作者昵称","handle":"@账号","category":"类别","text":"正文","followers":36000,"followingCount":80,"accountLikes":258000,"accountComments":5900,"likes":2300,"commentCount":128,"comments":[{"name":"评论昵称","text":"内容"}]}],"headline":"本轮公开热议话题"}。',
+   '只输出合法紧凑 JSON：{"posts":[{"author":"作者昵称","handle":"@账号","category":"类别","text":"正文","followers":36000,"followingCount":80,"accountLikes":258000,"accountComments":5900,"likes":2300,"commentCount":128,"photoId":"可选的公开素材ID","comments":[{"name":"评论昵称","text":"内容"}]}],"headline":"本轮公开热议话题"}。',
    '生成'+count+'条相互独立、有作者、正文和评论的帖子。headline仅是一个简短话题标题，用于小手机桌面入口，不要返回整张热榜。不要markdown、不要思维过程。'
   ].filter(Boolean).join('\n');
  }
  function hotPrompt(){
   const q=data(),r=root(),char=api.selectedCharacter(context());
+  const publicPhotos=(api.publicPhotos?.()||[]).slice(0,16).map(p=>({id:p.id,owner:p.ownerName||'世界',title:p.title||'',description:clean(p.description,110)}));
   return [
    '为完全虚构的剧情社交平台「群星」一次性生成完整世界热搜榜。剧情时间：'+(r.storyTime||'未设置')+'。',
    '主角：'+(char?.name||'未选择')+'；角色公开身份：'+clean(char?.description,650)+'。',
@@ -364,10 +369,11 @@ export function createWeiboModule(api) {
    '所有话题和帖子都是故事中的公开内容，严禁曝光私聊、未公开身份、用户内心或虚构尚未发生的事件；普通人不可无缘无故成为全国热点。',
    '热榜15条内容需分布在社会、影视、生活、搞笑、教育、科技、时尚、体育、游戏、音乐、娱乐等领域，不要15条都围绕主角。',
    '每条热搜都必须同时给出标题、摘要、至少1篇完整帖子以及对应2至3条不同立场的评论；允许部分热搜有2篇帖子，但请优先确保15条齐全。',
+   '可选公开素材照片：'+JSON.stringify(publicPhotos)+'。帖子内容确实关联人物、风景或事件时才填写photoId，其他情况不配图。任何账号都可引用公开素材，禁止无关角色拿别人的照片冒充自拍。',
    '所有账号早已存在，需分别生成followers、followingCount、accountLikes、accountComments、likes和commentCount非负整数。媒体号80万粉丝的历史累计获赞通常至少几十万，不能把累计当成单篇赞数；评论列表仅展示样本。临时账号不用永久登记。',
    '偶尔最多1条热搜或评论可以出现离谱却很自信的“神人”观点，其他网友可以反驳或吐槽；不能每条都刻意降智，不局限于性别话题。',
    '只能调用这一次生成完成热榜与其讨论内容，点击具体话题时不允许还需要额外生成。',
-   '请仅输出JSON，不要markdown：{"topics":[{"title":"热搜短标题","category":"分类","summary":"一两句背景","posts":[{"author":"网友昵称","handle":"@账号","category":"分类","text":"完整帖子","followers":120000,"followingCount":200,"accountLikes":400000,"accountComments":8000,"likes":12900,"commentCount":860,"comments":[{"name":"网友","text":"评论"}]}]}]}。',
+   '请仅输出JSON，不要markdown：{"topics":[{"title":"热搜短标题","category":"分类","summary":"一两句背景","posts":[{"author":"网友昵称","handle":"@账号","category":"分类","text":"完整帖子","followers":120000,"followingCount":200,"accountLikes":400000,"accountComments":8000,"likes":12900,"commentCount":860,"photoId":"可选公开素材ID","comments":[{"name":"网友","text":"评论"}]}]}]}。',
    '精确生成15个topics，标题互不重复，每个topic的posts必须非空。尽量紧凑。'
   ].join('\n');
  }
@@ -1911,7 +1917,7 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
     content:'故事时间：'+scene+'。群星账号：'+account.name+'，职业／公开资料 '+publicAccountDescription(account)+'，账号主体 '+(subjectOfAccount(account).type==='organization'?'组织账号':'故事人物')+'，公众人物：'+(account.publicFigure?'是':'否')+
      '。账号运营方式：'+accountOperatorGuide(account)+'。账号身份公开程度：'+(account.identityVisibility||'public')+
       '；知情者：'+(account.identityKnownTo||'无')+'。绑定人物设定（仅用于保持角色一致，不代表全部内容可公开）：'+subjectContext+
-      '。可用公开相册照片：'+albumGuide+'。近期剧情：'+clean(api.storyContext?.()||'',1400)+
+      '。可用公开相册照片：'+albumGuide+'。照片必须和当前发帖主题相关；可以引用别人公开照片报道、宣传、吐槽或批评，但不得拿别人的照片冒充自己的自拍。没有合适照片时只发文字。近期剧情：'+clean(api.storyContext?.()||'',1400)+
       '。结合职业、性格、公共活动和时间线决定是否发布。私人小号不得自动暴露和绑定人物、官方大号的关系。不得公开私聊秘密，不得杜撰用户行为、未发生事件或已确定恋情。可以不发，输出 [SKIP]。否则只输出一条 20～180 字的社交动态，不要额外解释。'}]},api.readData(context()));
    if(scope()!==state.scope)return;
    const reply=clean(api.stripModelReasoning(raw),450);
