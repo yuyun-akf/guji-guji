@@ -2564,8 +2564,7 @@ async function changeContactLink(otherId,enabled) {
         const action=momentWriteQueue.then(async()=>{
             if(ctx.chatMetadata!==original)return false;
             const data=structuredClone(readRootData(ctx));
-            if(!validContactId(data,from)||!validContactId(data,otherId)||from===otherId||
-                false)
+            if(!validContactId(data,from)||!validContactId(data,otherId)||from===otherId)
                 throw new Error('需要先导入两位人物');
             data.contactLinks={...(data.contactLinks||{})};
             const key=contactLinkKey(from,otherId);
