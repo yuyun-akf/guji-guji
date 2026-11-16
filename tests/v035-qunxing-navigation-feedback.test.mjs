@@ -26,7 +26,7 @@ test('v0.35.0 release and navigational entrypoints',()=>{
  assert.doesNotMatch(weibo.slice(weibo.indexOf('function renderSettings('),weibo.indexOf('function renderSettingsAutonomy(')),/互动记录管理/);
 });
 test('relationships, Worldview and inline Moments are actually wired',()=>{
- assert.match(index,/data-settings-nav-disabled/);
+ assert.match(index,/lp-settings-nav-disabled/);
  assert.match(index,/>世界观<small>世界观切换<\/small>/);
  assert.doesNotMatch(index,/>未开放<\/b>/);
  assert.match(index,/data-lp-screen="profileRole"/);
