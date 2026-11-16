@@ -4727,7 +4727,7 @@ async function detectPhoneRelationship(){
   const parsed=JSON.parse(cleaned.slice(first,last+1));
   const relation=Object.prototype.hasOwnProperty.call(PHONE_RELATION_LABELS,parsed.relation)?parsed.relation:'unknown';
   await savePhoneRelationship('auto',relation,String(parsed.custom||''),String(parsed.details||''),String(parsed.source||''));
- }catch(error){nodes.relationStatus.textContent='识别失败：'+String(error.message||error);}
+ }catch(error){nodes.relationStatus.textContent='';notifyInteraction('识别失败：'+String(error.message||error),'error');}
  finally{nodes.relationDetect.disabled=false;}
 }
 function phoneUserDisplayName(ctx=context()){
@@ -8619,7 +8619,7 @@ function mount() {
         const b=e.target.closest('[data-weibo-tab]');if(b)weiboController?.selectTab(b.dataset.weiboTab);
     });
     root.addEventListener('click',e=>{if(e.target.closest('[data-wb-action],[data-wb-topic]'))weiboController?.handleClick(e);});
-    root.addEventListener('input',e=>{if(e.target.matches?.('[data-wb-account-search]'))weiboController?.handleInput(e);});
+    root.addEventListener('input',e=>{if(e.target.matches?.('[data-wb-account-search],[data-wb-settings-search]'))weiboController?.handleInput(e);});
     root.addEventListener('keydown',e=>{if(e.target.matches?.('[data-wb-comment-for]'))weiboController?.handleKeydown(e);});
     root.addEventListener('change',e=>{if(e.target.closest('[data-wb-field="accountAvatar"],[data-wb-field="ownerAvatar"],[data-wb-field="composePhoto"]'))weiboController?.handleFile(e);});
     nodes.launcher.addEventListener('click', event => {
@@ -8898,7 +8898,7 @@ function mount() {
       const mode=nodes.relationManual.checked?'manual':'auto';
       const relation=mode==='manual'?nodes.relationChoice.value:phoneRelationshipFor(context()).relation;
       const custom=nodes.relationCustom.value.trim(),details=nodes.relationDetails.value.trim();
-      if(mode==='manual'&&relation==='custom'&&!custom){nodes.relationStatus.textContent='请填写自定义关系';return;}
+      if(mode==='manual'&&relation==='custom'&&!custom){notifyInteraction('请填写自定义关系','error');return;}
       if(mode==='manual'){
        confirmPhoneManualRelationship(relation,custom,details);
       }else{
