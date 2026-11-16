@@ -1,6 +1,6 @@
 /* 群星 · character-card accounts + per-story persistent generated feeds and interactions. */
 export function createWeiboModule(api) {
- const state={scope:'',tab:'home',detail:'',topic:null,profileAccount:'',adminHistoryAccount:'',historyEditingId:'',historyFormOpen:false,historyGenerating:false,historyStatus:'',historyInstructions:'',historyCount:'3',randomHistoryCount:'10',historyBatchQuantity:'default',historyBatchCustom:'10',historyBatchMode:'random',historyBatchSelectedIds:[],historyBatchInstructions:'',settingsAccountSearch:'',composePhoto:'',searchQuery:'',sharingId:'',subview:'',posts:{home:[],nearby:[]},trends:[],nearbyTrends:[],loading:false,hotLoading:false,refreshResult:{},attempted:{},token:0,sessionId:0,headline:'',hotBundles:{},queuedNearby:false,confirming:false,editing:'',avatarDraft:'',avatarOwnerDraft:'',candidates:[],scanLoading:false,scanMessage:'',scanExpanded:false,pendingExpanded:false,expandedCandidates:[]};
+ const state={scope:'',tab:'home',detail:'',topic:null,profileAccount:'',adminHistoryAccount:'',historyEditingId:'',historyFormOpen:false,historyGenerating:false,historyStatus:'',historyInstructions:'',historyCount:'3',randomHistoryCount:'10',historyBatchQuantity:'default',historyBatchCustom:'10',historyBatchMode:'random',historyBatchSelectedIds:[],historyBatchInstructions:'',settingsAccountSearch:'',composePhoto:'',searchQuery:'',sharingId:'',subview:'',posts:{home:[],nearby:[]},trends:[],nearbyTrends:[],loading:false,hotLoading:false,refreshResult:{},attempted:{},token:0,sessionId:0,headline:'',hotBundles:{},queuedNearby:false,confirming:false,editing:'',avatarDraft:'',avatarOwnerDraft:'',candidates:[],scanLoading:false,scanMessage:'',scanExpanded:false,pendingExpanded:false,expandedCandidates:[],manualExpanded:false};
  let writes=Promise.resolve(), autoBusy=false,closeHotConfirmation=null;
  const commentBusy=new Set(),commentNotices=new Map();
  const scrollViews=new Map();let renderedView='',renderedScope='';
@@ -859,14 +859,17 @@ export function createWeiboModule(api) {
   else if(state.subview==='accountEditor')renderAccountEditor(wrap,q);
   else if(state.subview==='profile')renderProfile(wrap,q);
   else if(state.subview==='following'){
-   wrap.append(heading('关注列表','取消关注不删除已经保存的账号资料'));
+   // The fixed header already identifies this page.
    const list=q.accounts.filter(a=>q.following.includes(a.id));
    for(const a of list){
     const line=el('div','lp-wb-account-line lp-wb-follow-row');
     const open=control('','openAccount',a.id);
     open.classList.add('lp-wb-follow-link');
     open.setAttribute('aria-label','打开 '+a.name+' 的个人主页');
-    open.append(avatar(a.avatar,a.name),el('span','',a.name+' '+(a.handle||'')));
+    const identity=el('span','lp-wb-follow-identity');
+    identity.append(el('strong','lp-wb-follow-name',a.name));
+    if(a.handle)identity.append(el('small','lp-wb-follow-handle',a.handle));
+    open.append(avatar(a.avatar,a.name),identity);
     line.append(open,control('取消关注','unfollowAccount',a.id));wrap.append(line);
    }
    if(!list.length)wrap.append(el('p','lp-wb-empty','还没有关注任何账号'));
@@ -977,6 +980,19 @@ export function createWeiboModule(api) {
    form.append(control('保存群星账号','saveAccount'));parent.append(form);
   }
  }
+ function renderManualAccountDrawer(parent,q){
+  const panel=el('details','lp-wb-manual-disclosure');
+  panel.open=!!state.manualExpanded;
+  panel.addEventListener('toggle',()=>{state.manualExpanded=panel.open;});
+  panel.append(el('summary','lp-wb-scanner-entry','手动新建账号'));
+  if(state.manualExpanded){
+   state.editing='new';
+   const content=el('div','lp-wb-manual-content');
+   renderAccountEditor(content,q);
+   panel.append(content);
+  }
+  parent.append(panel);
+ }
  function settingLink(label,section){
   const b=control(label,'settingsSection',section);b.classList.add('lp-wb-settings-link');
   b.append(el('span','lp-wb-menu-arrow','›'));return b;
@@ -998,9 +1014,7 @@ export function createWeiboModule(api) {
   parent.append(controls);
  }
  function renderSettingsScan(parent,q){
-  const manual=control('＋ 手动新建账号','newAccount');
-  manual.classList.add('lp-wb-scanner-entry');
-  parent.append(manual);
+  renderManualAccountDrawer(parent,q);
   const scanPanel=el('details','lp-wb-scanner-disclosure');
   scanPanel.open=!!state.scanExpanded;
   scanPanel.addEventListener('toggle',()=>{state.scanExpanded=scanPanel.open;});
@@ -1082,7 +1096,7 @@ export function createWeiboModule(api) {
     control('管理动态','manageHistory',a.id),control('删除','deleteAccount',a.id));
    line.append(identity,actions);parent.append(line);
   }
-  parent.append(control('＋ 新建账号','newAccount'));
+  renderManualAccountDrawer(parent,q);
   if(!q.accounts.length)parent.append(el('p','lp-wb-empty','暂无已保存账号'));
   applySettingsAccountFilter(parent);
  }
@@ -1563,7 +1577,10 @@ if(type==='settingsSection'){
      q.accounts=old?q.accounts.map(x=>x.id===old.id?next:x):[...q.accounts,next];
     }
    });
-   state.candidates=[];state.scanMessage='已保存 '+chosen.length+' 个已确认账号，未勾选的没有写入。';
+   // Keep all scanned candidates in the role-card catalog; account saves only
+   // change saved accounts, not the discovery results.
+   state.pendingExpanded=true;
+   state.scanMessage='已保存 '+chosen.length+' 个账号；其他候选仍保留，可继续添加。';
    feedback(state.scanMessage);render();return;
   }
   if(type==='manageHistory'){
@@ -1916,7 +1933,11 @@ if(type==='settingsSection'){
      followers,avatar:avatarDraft||old.avatar||'',source:'manual'};
     q.accounts=old.id?q.accounts.map(a=>a.id===old.id?next:a):[...q.accounts,next];
    });
-   state.editing='';state.avatarDraft='';state.subview=state.settingsAccountEditorReturn||'settingsAccounts';feedback('群星账号已保存');render();return;
+   const inline=state.manualExpanded&&['settingsScan','settingsAccounts'].includes(state.subview)&&edit==='new';
+   state.editing='';state.avatarDraft='';
+   if(inline)state.manualExpanded=false;
+   else state.subview=state.settingsAccountEditorReturn||'settingsAccounts';
+   feedback('群星账号已保存');render();return;
   }
   const p=byId(id);if(!p)return;
   if(type==='shareMenu'){state.sharingId=state.sharingId===p.id?'':p.id;render();return;}
