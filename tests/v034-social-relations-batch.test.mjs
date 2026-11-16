@@ -7,11 +7,11 @@ const index=read('index.js'),album=read('album.js'),groups=read('groups.js'),
  weibo=read('weibo.js'),bootstrap=read('bootstrap.js'),css=read('style.css');
 const manifest=JSON.parse(read('manifest.json'));
 
-test('v0.36.1 cache keys, module syntax and all new controls',()=>{
- assert.equal(manifest.version,'0.36.1');
+test('v0.36.2 cache keys, module syntax and all new controls',()=>{
+ assert.equal(manifest.version,'0.36.2');
  assert.match(bootstrap,/index\.js\?v=0\.35\.0/);
  for(const module of ['album','groups','weibo'])
-  assert.ok(index.includes(module+'.js?v=0.36.1'));
+  assert.ok(index.includes(module+'.js?v=0.36.2'));
  for(const source of [index,album,groups,weibo,bootstrap])
   assert.doesNotThrow(()=>new Function(source.replace(/^export /gm,'')));
  const controls=['profileTabDetails','profileTabRelation','profileRelationPane','relationAuto',
