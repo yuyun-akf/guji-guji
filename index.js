@@ -1,5 +1,5 @@
 /**
- * GujiGuji v0.32.0: a modular phone shell with isolated per-chat context.
+ * GujiGuji v0.33.0: a modular phone shell with isolated per-chat context.
  * No direct host-module imports; uses only the documented context surface.
  */
 
