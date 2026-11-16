@@ -138,7 +138,7 @@ let chatPhotoDrafts=[];
 let clockTicker=null;
 let clockTickBusy=false;
 const weiboState={scope:'',posts:[],trending:[],tab:'feed',loading:false,selectedId:'',generationId:0};
-const SCREENS = new Set(['lock', 'home', 'weibo', 'wallet', 'shopping', 'takeout', 'album', 'groups', 'sharePicker', 'shareViewer', 'chat', 'chatList', 'contacts', 'requests', 'profile', 'addNpc', 'discoverNpc', 'discover', 'me', 'chatOptions', 'settings', 'diagnostics', 'calendar', 'theme', 'presetPicker', 'worldPicker']);
+const SCREENS = new Set(['lock', 'home', 'weibo', 'wallet', 'shopping', 'takeout', 'album', 'groups', 'sharePicker', 'shareViewer', 'chat', 'chatList', 'contacts', 'requests', 'profile', 'addNpc', 'discoverNpc', 'discover', 'me', 'chatOptions', 'chatRecords', 'contactManage', 'meProfile', 'meSettings', 'momentHistory', 'settings', 'diagnostics', 'calendar', 'theme', 'presetPicker', 'worldPicker']);
 
 function context() {
     try {
@@ -2522,20 +2522,14 @@ function contactLinkKey(first,second) {
 function charactersHaveContact(ctx,first,second) {
     if(!first||!second||first===second||first===MOMENT_USER_ID||second===MOMENT_USER_ID)return false;
     const data=readRootData(ctx);
-    return validContactId(data,first)&&validContactId(data,second)&&
-        friendshipState(readData(ctx,first))==='friends'&&friendshipState(readData(ctx,second))==='friends'&&
-        data.contactLinks?.[contactLinkKey(first,second)]===true;
+    return validContactId(data,first)&&validContactId(data,second)&&data.contactLinks?.[contactLinkKey(first,second)]===true;
 }
 function renderContactLinks(ctx=context()) {
     if(!nodes?.contactLinks)return;
     nodes.contactLinks.replaceChildren();
     const current=activeContactId,data=readRootData(ctx);
-    if(friendshipState(readData(ctx,current))!=='friends') {
-        nodes.contactLinks.textContent='当前角色还不是你的好友；不能确认与其他角色互有联系方式。';return;
-    }
-    const others=[PRIMARY_CONTACT_ID,...data.contacts.map(c=>c.id)]
-        .filter(id=>id!==current&&friendshipState(readData(ctx,id))==='friends');
-    if(!others.length){nodes.contactLinks.textContent='暂无其他已添加的角色好友。';return;}
+    const others=[PRIMARY_CONTACT_ID,...data.contacts.map(c=>c.id)].filter(id=>id!==current);
+    if(!others.length){nodes.contactLinks.textContent='暂无其他已导入人物。';return;}
     for(const id of others){
         const label=document.createElement('label');label.className='lp-checkline';
         const checkbox=document.createElement('input');checkbox.type='checkbox';
@@ -2551,8 +2545,8 @@ async function changeContactLink(otherId,enabled) {
             if(ctx.chatMetadata!==original)return false;
             const data=structuredClone(readRootData(ctx));
             if(!validContactId(data,from)||!validContactId(data,otherId)||from===otherId||
-                friendshipState(readData(ctx,from))!=='friends'||friendshipState(readData(ctx,otherId))!=='friends')
-                throw new Error('需要双方都是已添加的联系人，才能确认互相有联系方式。');
+                false)
+                throw new Error('需要先导入两位人物');
             data.contactLinks={...(data.contactLinks||{})};
             const key=contactLinkKey(from,otherId);
             if(enabled)data.contactLinks[key]=true;
@@ -3893,7 +3887,7 @@ function setScreen(screen, options={}) {
     }
     nodes.back.hidden = screen === 'home'||screen==='lock';
     if(nodes.close)nodes.close.hidden=true;
-    const titles = {album:'相册',groups:'群聊',sharePicker:'分享动态',shareViewer:'动态详情',lock:'锁屏',home:'咕叽咕机',weibo:'群星',wallet:'吱付宝',shopping:'购物',takeout:'外卖',chat:'',chatList:'咕叽聊',contacts:'咕叽聊',discover:'咕叽聊',me:'咕叽聊',requests:'新的朋友',profile:'联系人资料',addNpc:'添加 NPC',discoverNpc:'发现故事人物',chatOptions:'聊天设置',settings:'设置',diagnostics:'运行日志',calendar:'日历',theme:'主题',presetPicker:'选择预设条目',worldPicker:'选择世界书条目' };
+    const titles = {album:'相册',groups:'群聊',sharePicker:'分享动态',shareViewer:'动态详情',lock:'锁屏',home:'咕叽咕机',weibo:'群星',wallet:'吱付宝',shopping:'购物',takeout:'外卖',chat:'',chatList:'咕叽聊',contacts:'咕叽聊',discover:'咕叽聊',me:'咕叽聊',meProfile:'我的资料',meSettings:'咕叽聊设置',momentHistory:'历史朋友圈',chatRecords:'管理聊天记录',contactManage:'管理联系人资料',requests:'新的朋友',profile:'联系人资料',addNpc:'添加 NPC',discoverNpc:'发现故事人物',chatOptions:'聊天设置',settings:'设置',diagnostics:'运行日志',calendar:'日历',theme:'主题',presetPicker:'选择预设条目',worldPicker:'选择世界书条目' };
     nodes.title.textContent = screen === 'chat' ? contactDisplayName(context()) : titles[screen];
     nodes.chatMenu.hidden = screen !== 'chat';
     if(nodes.homeExit)nodes.homeExit.hidden=screen!=='home';
@@ -3928,7 +3922,10 @@ function setScreen(screen, options={}) {
         if(previous!=='calendar')phoneCalendarReset(readData(context()));
         renderPhoneCalendar();
     }
-    if (screen === 'me') { renderPersona(context()); renderStickerLibrary(); loadAutonomyUI(context()); }
+    if (screen === 'me') { renderPersona(context()); }
+    if (screen === 'meProfile')renderPersona(context());
+    if (screen === 'meSettings')loadAutonomyUI(context());
+    if (screen === 'momentHistory')renderMomentHistory();
     if (screen === 'discover') renderMoments(context());
     if (screen === 'discover' && previous !== 'discover' && unreadMoments(readRootData(context())))
         void clearMomentsUnread();
@@ -4583,9 +4580,52 @@ function personaNames(ctx) {
     }
     return names;
 }
+/* Stable per-character-card signatures; do not overwrite actual character cards. */
+function phoneBioKey(id,ctx=context()){
+ if(id==='user')return 'user';
+ const p=galleryPeople(ctx).find(x=>x.id===id);
+ return 'person:'+(p?.name||String(id));
+}
+function phoneBio(id,ctx=context()){
+ const card=qunxingAccountCardKey(ctx);
+ const profiles=ctx?.extensionSettings?.[SETTINGS_KEY]?.phoneBios?.[card]||{};
+ return String(profiles[phoneBioKey(id,ctx)]||'').slice(0,150);
+}
+function savePhoneBio(id,text,ctx=context()){
+ if(!ctx?.extensionSettings||typeof ctx.saveSettingsDebounced!=='function')throw Error('酒馆扩展设置无法保存个性签名');
+ const card=qunxingAccountCardKey(ctx);if(!card)throw Error('请先选择角色卡');
+ const settings=ctx.extensionSettings[SETTINGS_KEY]||={};
+ const bios=settings.phoneBios||={};
+ bios[card]={...(bios[card]||{}),[phoneBioKey(id,ctx)]:String(text||'').trim().slice(0,150)};
+ ctx.saveSettingsDebounced();
+}
+function editPhoneBio(id){
+ const current=phoneBio(id),message=id==='user'?'编辑自己的个性签名':'编辑角色个性签名';
+ const next=window.prompt(message+'（清空即可删除签名）',current);
+ if(next===null)return;
+ try{savePhoneBio(id,next);render();notifyInteraction('个性签名已保存','success');}
+ catch(error){notifyInteraction('保存个性签名失败：'+String(error.message||error),'error');}
+}
+function renderContactMoments(ctx=context()){
+ const wrap=nodes?.contactMomentList;if(!wrap)return;
+ wrap.replaceChildren();
+ const posts=(readRootData(ctx).moments||[]).filter(p=>momentAuthorId(ctx,p)===activeContactId).slice(-25).reverse();
+ for(const post of posts){
+  const item=document.createElement('div');item.className='lp-contact-moment-preview';
+  const date=document.createElement('small');date.textContent=String(post.storyTime||'').replace('T',' ').slice(0,16);
+  const text=document.createElement('p');text.textContent=String(post.text||'').slice(0,240);
+  item.append(date,text);
+  if(post.image&&ALBUM_IMAGE_RE.test(post.image)){
+   const image=document.createElement('img');image.src=post.image;image.alt='朋友圈配图';item.append(image);
+  }
+  wrap.append(item);
+ }
+ if(!posts.length)wrap.textContent='暂无公开给你的朋友圈动态';
+}
 function renderPersona(ctx) {
     const persona=currentPersona(ctx);
     nodes.myIdentity.textContent=persona.name;
+    if(nodes.myBio)nodes.myBio.textContent=phoneBio('user',ctx)||'编辑个性签名';
     nodes.myPersona.textContent=resolvePhonePlaceholders(persona.description||'尚未填写人设',ctx,contactCharacter(ctx));
     nodes.myAvatarFallback.textContent=(persona.name||'U').slice(0,1);
     const image=nodes.myAvatar;
@@ -4810,8 +4850,9 @@ function momentCandidates(ctx,post) {
     const author=momentAuthorId(ctx,post),data=readRootData(ctx);
     if(!author)return [];
     return [PRIMARY_CONTACT_ID,...data.contacts.map(c=>c.id)].filter(id=>
-        friendshipState(readData(ctx,id))==='friends'&&id!==author&&
-        (author===MOMENT_USER_ID||charactersHaveContact(ctx,id,author)));
+        id!==author&&(
+         author===MOMENT_USER_ID?friendshipState(readData(ctx,id))==='friends':
+         charactersHaveContact(ctx,id,author)));
 }
 function momentBatchActors(ctx,post,replyComments=[]) {
     const eligible=momentCandidates(ctx,post);
@@ -4820,8 +4861,7 @@ function momentBatchActors(ctx,post,replyComments=[]) {
     const requested=replyComments.map(comment=>
         (post.comments||[]).find(old=>old.id===comment.replyTo)?.actorId).filter(Boolean);
     const choices=[...new Set([...requested,author,...eligible])].filter(id=>
-        id!==MOMENT_USER_ID&&friendshipState(readData(ctx,id))==='friends'&&
-        (id===author||eligible.includes(id)));
+        id!==MOMENT_USER_ID&&(id===author||eligible.includes(id)));
     return choices.slice(0,2);
 }
 function momentActorBrief(ctx,id) {
@@ -6538,6 +6578,8 @@ function render() {
     const data = primary ? readData(ctx) : null;
 
     nodes.profileName.textContent = char ? contactDisplayName(ctx) : '请先选择角色';
+    if(nodes.profileBio)nodes.profileBio.textContent=phoneBio(activeContactId,ctx)||'编辑个性签名';
+    renderContactMoments(ctx);
     nodes.contactRemark.value = getContactInfo(ctx).remark || '';
     const profileInfo=getContactInfo(ctx);
     const mainInfo=primary?.data||primary||{};
@@ -7421,7 +7463,7 @@ function makeUI() {
             <button type="button" class="lp-contact-exchange" data-lp="contactExchange">剧情中已交换联系方式（手动确认）</button>
             <details class="lp-profile-setup lp-contact-links">
               <summary>角色之间的联系方式</summary>
-              <p>两个人都在你的通讯录里，不代表他们彼此认识。确认双方确实交换联系方式后，他们才可以互相联系。</p>
+              <p>这里管理角色之间的好友关系，不要求他们都是 user 的好友；例如可以设置角色与家人、同事互相可见与评论朋友圈。</p>
               <div data-lp="contactLinks"></div>
             </details>
           </div>
@@ -8039,6 +8081,7 @@ function mount() {
         // The phone's fixed header is the universal "one level back" control.
         // App-specific detail pages must not turn a tap into an app exit.
         if(activeScreen==='weibo'&&weiboController?.back())return;
+        if(activeScreen==='album'&&albumController?.back?.())return;
         if(activeScreen==='shopping'&&shoppingController?.back())return;
         if(activeScreen==='takeout'&&takeoutController?.back())return;
         if(activeScreen==='groups'&&groupsController?.back())return;
@@ -8046,7 +8089,8 @@ function mount() {
         setScreen({
           wallet:'home',shopping:'home',takeout:'home',weibo:'home',album:'home',groups:groupsReturnScreen,sharePicker:'weibo',chat:'chatList',
           contacts:'chatList',discover:'chatList',me:'chatList',
-          profile:'contacts',requests:'contacts',addNpc:'contacts',
+          profile:'contacts',contactManage:'chatOptions',chatRecords:'chatOptions',meProfile:'me',meSettings:'me',momentHistory:'discover',
+          requests:'contacts',addNpc:'contacts',
           discoverNpc:'addNpc',chatOptions:'chat',
           presetPicker:'settings',worldPicker:'settings'
         }[activeScreen]||'home');
@@ -8201,7 +8245,6 @@ function mount() {
         if (button) handleFriendAction(button.dataset.friendAction);
     });
     nodes.copyDiagnostics.addEventListener('click', copyDiagnostics);
-    nodes.goProfile.addEventListener('click',()=>setScreen('profile'));
     nodes.exportChat.addEventListener('click',downloadChatExport);
     nodes.copyChat.addEventListener('click',()=>void copyChatExport());
     nodes.importChat.addEventListener('change',event=>{void importChatFile(event.target.files?.[0]);event.target.value='';});
