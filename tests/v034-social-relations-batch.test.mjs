@@ -7,11 +7,11 @@ const index=read('index.js'),album=read('album.js'),groups=read('groups.js'),
  weibo=read('weibo.js'),bootstrap=read('bootstrap.js'),css=read('style.css');
 const manifest=JSON.parse(read('manifest.json'));
 
-test('v0.34.0 cache keys, module syntax and all new controls',()=>{
- assert.equal(manifest.version,'0.34.0');
- assert.match(bootstrap,/index\.js\?v=0\.34\.0/);
+test('v0.35.0 cache keys, module syntax and all new controls',()=>{
+ assert.equal(manifest.version,'0.35.0');
+ assert.match(bootstrap,/index\.js\?v=0\.35\.0/);
  for(const module of ['album','groups','weibo'])
-  assert.ok(index.includes(module+'.js?v=0.34.0'));
+  assert.ok(index.includes(module+'.js?v=0.35.0'));
  for(const source of [index,album,groups,weibo,bootstrap])
   assert.doesNotThrow(()=>new Function(source.replace(/^export /gm,'')));
  const controls=['profileTabDetails','profileTabRelation','profileRelationPane','relationAuto',
@@ -35,7 +35,7 @@ test('contacts, persona display, saved manual/auto relationship and both timelin
  assert.match(index,/__contactId:PRIMARY_CONTACT_ID\}\);\s*if\(sameSession\(session\)\)/);
  assert.match(index,/ex:'前任'/);
  assert.match(index,/crush:'暗恋对象'/);
- assert.match(index,/角色暗恋 user/);
+ assert.match(index,/角色暗恋.*currentPersona\(ctx\)\.name/);
  assert.match(index,/小手机时间可能早于或晚于酒馆正文/);
  assert.match(index,/好感度阈值/);
  assert.match(index,/readExternalMemory\(/);
@@ -87,10 +87,10 @@ test('groups use actor quote IDs, manage records and allow invite; Qunxing rando
   assert.ok(groups.includes(token),token);
  assert.match(groups,/最多8条/);
  assert.match(weibo,/generateRandomHistory/);
- assert.match(weibo,/byPerson/);
- assert.match(weibo,/Math\.max\(10,Math\.min\(50/);
+ assert.match(weibo,/uniquePersonAccounts/);
+ assert.match(weibo,/batchSize=Math\.min\(10,count-generated\)/);
  assert.match(weibo,/subjectOfAccount\(a\)\.type!=='organization'/);
- assert.match(weibo,/valid\.length<10/);
+ assert.match(weibo,/if\(comments\.length<2\)/);
  assert.doesNotMatch(weibo,/feedback\('正在刷新'\+name\+'帖子…'\);render\(\)/);
 });
 
