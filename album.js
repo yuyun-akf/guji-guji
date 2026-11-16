@@ -1,7 +1,7 @@
 /* 咕叽咕机共享素材库：角色卡人物相册与现代世界公共相册。 */
 export function createAlbumModule(api){
  const el=(tag,cls='',value='')=>{const n=document.createElement(tag);if(cls)n.className=cls;if(value)n.textContent=value;return n;};
- const state={level:'root',owner:'',folder:'',mode:'files',busy:false,message:'',editing:'',selectedFiles:[]};
+ const state={level:'root',owner:'',folder:'',mode:'files',busy:false,message:'',editing:'',selectedFiles:[],pending:null,navReset:false};
  const host=()=>api.getNodes()?.albumContent;
  const people=()=>api.galleryPeople();
  const worldId='world';
@@ -29,15 +29,16 @@ export function createAlbumModule(api){
  function render(){
   const wrap=host();if(!wrap)return;
   const oldTop=wrap.scrollTop;
+  wrap.dataset.albumOwner=state.owner;wrap.dataset.albumLevel=state.level;
   wrap.replaceChildren();
   if(state.level==='root'){
    wrap.append(pane('相册','当前人物相册按角色卡保存；现代世界相册跨角色卡共享。'));
    const grid=el('div','lp-album-folder-grid');
    const shared=api.worldPhotos?.()||[];
-   grid.append(tile('世界相册',shared.length+' 张公共资源','owner',worldId,shared.find(p=>validImage(p.image))?.image));
+   grid.append(tile('世界相册',shared.length+' 张公共资源','owner',worldId,api.coverFor?.(worldId,'')||shared.find(p=>validImage(p.image))?.image));
    for(const person of people()){
     const entries=(api.sharedPhotos?.()||[]).filter(p=>p.owner===person.id||(p.ownerName===person.name&&p.owner!=='user'));
-    grid.append(tile(person.name,entries.length+' 张照片','owner',person.id,entries.find(p=>validImage(p.image))?.image));
+    grid.append(tile(person.name,entries.length+' 张照片','owner',person.id,api.coverFor?.(person.id,'')||entries.find(p=>validImage(p.image))?.image));
    }
    wrap.append(grid);
   }else if(state.level==='owner'){
@@ -47,7 +48,7 @@ export function createAlbumModule(api){
    const grid=el('div','lp-album-folder-grid');
    for(const key of folders()){
     const pics=entries.filter(p=>photoFolder(p)===key&&validImage(p.image));
-    grid.append(tile(labelOf(key),pics.length+' 张','folder',key,pics.find(p=>validImage(p.image))?.image));
+    grid.append(tile(labelOf(key),pics.length+' 张','folder',key,api.coverFor?.(state.owner,key)||pics.find(p=>validImage(p.image))?.image));
    }
    grid.append(tile('添加照片','手动录入／批量导入／AI 识图','import'));
    if(world())grid.append(tile('新建子相册','自定义名称','newFolder'));
@@ -64,7 +65,7 @@ export function createAlbumModule(api){
     if(photo.description)info.append(el('p','',photo.description));
     if(photo.usage)info.append(el('small','','用途：'+photo.usage));
     const actions=el('div','lp-album-actions');
-    actions.append(button('edit','编辑资料',photo.id),button('move','移动分类',photo.id),button('delete','删除',photo.id));
+    actions.append(button('edit','编辑资料',photo.id),button('move','移动分类',photo.id),button('cover','设为子相册封面',photo.id),button('ownerCover','设为人物封面',photo.id),button('delete','删除',photo.id));
     if(state.editing===photo.id){
      const form=el('div','lp-album-edit-form');
      for(const [key,label,value]of [['title','名称',photo.title],['description','描述',photo.description],...(state.folder==='表情包'?[['usage','表情包用途',photo.usage]]:[])]){
@@ -79,6 +80,28 @@ export function createAlbumModule(api){
    }
    if(!photos().length)list.append(el('p','lp-album-empty','这个子相册还没有图片。返回上一页，从「添加照片」导入即可。'));
    wrap.append(list);
+  }else if(state.level==='review'){
+   wrap.append(pane('检查 AI 识图结果','逐张修改名称与描述，确认后一次性保存。'));
+   const pending=state.pending;
+   if(!pending){state.level='owner';render();return;}
+   wrap.append(button('owner','‹ 放弃并返回'));
+   const list=el('div','lp-album-review-list');
+   pending.images.forEach((src,index)=>{
+    const card=el('div','lp-album-review-card'),img=el('img');img.src=src;img.alt='识图预览';
+    const fields=el('div','lp-album-review-fields');
+    for(const [key,label,value]of [
+      ['title','图片名称',pending.labels[index]?.title||pending.files[index].name.replace(/\.[^.]+$/,'')],
+      ['description','可见内容描述',pending.labels[index]?.description||''],
+      ...(pending.folder==='表情包'?[['usage','表情包用途',pending.labels[index]?.usage||'']]:[])
+    ]){
+     const field=el('label','lp-album-field',label);
+     const input=key==='description'?el('textarea'):el('input');
+     input.dataset.albumReview=key;input.dataset.albumIndex=String(index);input.value=String(value);
+     field.append(input);fields.append(field);
+    }
+    card.append(img,fields);list.append(card);
+   });
+   wrap.append(list,button('saveReview','确认导入 '+pending.images.length+' 张图片'));
   }else if(state.level==='import'){
    wrap.append(pane('添加照片','进入哪个相册就自动获得对应权限，导入后可移动。'));
    wrap.append(button('owner','‹ 返回子相册'));
@@ -107,7 +130,7 @@ export function createAlbumModule(api){
    wrap.append(form);
   }
   if(state.message)wrap.append(el('p','lp-album-feedback',state.message));
-  wrap.scrollTop=oldTop;
+  wrap.scrollTop=state.navReset?0:oldTop;state.navReset=false;
  }
  async function encode(file){
   if(!['image/jpeg','image/png','image/webp','image/gif'].includes(file?.type)||file.size>12*1024*1024)
@@ -143,7 +166,9 @@ export function createAlbumModule(api){
     state.message='正在一次识别 '+images.length+' 张图片…';render();
     labels=await api.identifyPhotos(images,files.map(f=>f.name),folder==='表情包');
     if(!Array.isArray(labels)||!labels.length)throw Error('识图没有返回可用结果，未保存图片');
-    if(typeof window!=='undefined'&&window.confirm&&!window.confirm('已识别 '+labels.length+' 张。确认保存到「'+labelOf(folder)+'」？保存后可以逐张修改名称与描述。'))return;
+    state.pending={images,files,labels,owner,folder,signature};
+    state.level='review';state.navReset=true;state.message='';
+    render();return;
    }
    const added=images.map((image,index)=>{
     const meta=labels[index]||{};
@@ -191,13 +216,34 @@ export function createAlbumModule(api){
   if(world())await api.saveWorldPhotos(next);else await api.saveSharedPhotos(next);
   hint('已移动到「'+labelOf(target)+'」');
  }
+ async function saveReview(){
+  if(state.busy||!state.pending)return;
+  const pending=state.pending;
+  if(pending.signature!==api.albumScope?.())return hint('角色卡已切换，停止导入',true);
+  const wrap=host(),pictures=pending.images.map((image,index)=>{
+   const val=key=>wrap?.querySelector('[data-album-review="'+key+'"][data-album-index="'+index+'"]')?.value?.trim()||'';
+   return {id:'ph-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,10),
+    owner:pending.owner,ownerName:ownerName(),folder:pending.folder,
+    title:val('title').slice(0,60),description:val('description').slice(0,500),
+    ...(pending.folder==='表情包'?{usage:val('usage').slice(0,160)}:{}),
+    access:pending.owner==='world'?'public':pending.folder==='public'?'public':pending.folder==='private'?'private':'chat',image};
+  });
+  state.busy=true;
+  try{
+   if(world())await api.saveWorldPhotos([...(api.worldPhotos?.()||[]),...pictures]);
+   else await api.saveSharedPhotos([...(api.sharedPhotos?.()||[]),...pictures]);
+   state.pending=null;state.selectedFiles=[];state.folder=pending.folder;
+   state.level='folder';state.navReset=true;hint('已导入 '+pictures.length+' 张识图照片');
+  }catch(error){hint('保存识图结果失败：'+String(error.message||error),true);}
+  finally{state.busy=false;}
+ }
  async function handleClick(event){
   const b=event.target.closest?.('[data-album-action]');if(!b||state.busy)return false;
   const type=b.dataset.albumAction,id=b.dataset.albumId;
-  if(type==='root'){state.level='root';state.owner='';state.folder='';state.message='';render();return true;}
-  if(type==='owner'){state.level='owner';state.folder='';state.editing='';render();return true;}
-  if(type==='folder'){state.folder=id;state.level='folder';state.editing='';render();return true;}
-  if(type==='import'){state.level='import';state.mode='files';state.selectedFiles=[];render();return true;}
+  if(type==='root'){state.level='root';state.owner='';state.folder='';state.message='';state.navReset=true;render();return true;}
+  if(type==='owner'){state.level='owner';state.folder='';state.editing='';state.pending=null;state.navReset=true;render();return true;}
+  if(type==='folder'){state.folder=id;state.level='folder';state.editing='';state.navReset=true;render();return true;}
+  if(type==='import'){state.level='import';state.mode='files';state.selectedFiles=[];state.navReset=true;render();return true;}
   if(type==='mode'){state.mode=id;render();return true;}
   if(type==='newFolder'){
    const name=window.prompt('输入世界相册子相册名称（不超过20字）','');
@@ -205,6 +251,7 @@ export function createAlbumModule(api){
    return true;
   }
   if(type==='upload'){await upload();return true;}
+  if(type==='saveReview'){await saveReview();return true;}
   if(type==='cancelEdit'){state.editing='';render();return true;}
   const photo=ownerPhotos().find(p=>p.id===id);if(!photo)return false;
   try{
@@ -212,6 +259,9 @@ export function createAlbumModule(api){
    else if(type==='saveEdit')await saveEdited(photo);
    else if(type==='delete')await remove(photo);
    else if(type==='move')await move(photo);
+   else if(type==='cover'||type==='ownerCover'){
+    await api.saveCover?.(state.owner,type==='cover'?state.folder:'',photo.id);hint('已设置相册封面');
+   }
    else return false;
   }catch(error){hint('照片操作失败：'+String(error.message||error),true);}
   return true;
@@ -223,6 +273,13 @@ export function createAlbumModule(api){
   }
   render();return true;
  }
- function open(){state.level='root';state.owner='';state.folder='';state.message='';render();}
- return {open,render,handleClick,handleChange,state};
+ function back(){
+  if(state.level==='root')return false;
+  if(state.level==='folder'||state.level==='import'||state.level==='review'){
+   state.level='owner';state.pending=null;state.editing='';state.folder='';state.navReset=true;
+  }else{state.level='root';state.owner='';state.folder='';state.navReset=true;}
+  render();return true;
+ }
+ function open(){state.level='root';state.owner='';state.folder='';state.message='';state.navReset=true;render();}
+ return {open,render,handleClick,handleChange,back,state};
 }
