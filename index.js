@@ -5554,8 +5554,10 @@ async function toggleMomentLike(id) {
         const post=(data.moments||[]).find(item=>item.id===id);if(!post)return false;
         post.likes=Array.isArray(post.likes)?post.likes:[];
         const exists=post.likes.some(like=>like.actorId===MOMENT_USER_ID);
+        const previousTotal=Math.max(post.likes.length,Number(post.likeCount)||0);
         post.likes=post.likes.filter(like=>like.actorId!==MOMENT_USER_ID);
         if(!exists)post.likes.push({actorId:MOMENT_USER_ID,name:phoneUserDisplayName(ctx),at:new Date().toISOString()});
+        if(post.likeCount!=null)post.likeCount=Math.max(post.likes.length,previousTotal+(exists?-1:1));
         return true;
     });
 }
