@@ -5050,6 +5050,7 @@ function momentBatchTask(ctx,post,actors,{writePost=false,replyComments=[]}={}) 
             '{"actorId":"角色ID","kind":"comment","text":"30字内的自然评论"},'+
             '{"actorId":"角色ID","kind":"reply","replyTo":"可见评论ID","text":"30字内回复"}]}。',
         '同一次输出中也可使用 replyToActor 指向前面刚发布评论的角色ID；只有双方确实互有联系方式才允许这种回复。',
+        '每个角色的反应要符合其独立性格与当前关系，允许正常聊天、点赞、赞美、好奇、轻微吐槽或不互动；禁止为了凑热闹让所有人集体嘲讽或攻击 user。',
         '不能代替别的角色决定，不能捏造联系方式，不能输出请求外的事件。若没人想互动则 actions 为空数组。'
     ].filter(Boolean).join('\n');
 }
