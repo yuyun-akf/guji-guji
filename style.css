@@ -4764,3 +4764,43 @@
 #st-little-phone-root .lp-relation-confirm-dialog>div button:last-child{
  background:var(--lp-slate);color:var(--lp-white);
 }
+
+
+/* v0.35 — full-page role settings and a single-line Moments toolbar */
+#st-little-phone-root .lp-relation-screen{
+ display:flex;flex-direction:column;min-height:0;overflow-y:auto;
+ padding:16px 14px 22px;background:var(--lp-ice);
+}
+#st-little-phone-root .lp-relation-screen[hidden]{display:none!important;}
+#st-little-phone-root .lp-relation-screen .lp-relationship-panel{
+ width:100%!important;max-width:none!important;max-height:none!important;
+ min-height:100%;overflow:visible;box-sizing:border-box;padding:14px;
+ background:var(--lp-white);border-radius:16px;box-shadow:none;
+ position:static!important;transform:none!important;
+}
+#st-little-phone-root .lp-relation-screen .lp-profile-overlay-heading{display:none;}
+#st-little-phone-root .lp-relation-screen .lp-relation-form{gap:16px;padding-bottom:24px;}
+#st-little-phone-root .lp-relation-screen .lp-relation-form textarea{
+ min-height:130px!important;resize:vertical;font-size:14px;line-height:1.55;
+}
+#st-little-phone-root .lp-relation-screen .lp-relation-form select{min-height:45px;font-size:14px;}
+#st-little-phone-root .lp-relation-screen .lp-relation-form button[data-lp="relationSave"]{
+ background:var(--lp-navy);color:var(--lp-white);
+}
+#st-little-phone-root .lp-moment-actions-inline{
+ display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;
+ align-items:center;gap:6px;width:100%;min-width:0;
+}
+#st-little-phone-root .lp-moment-actions-inline>button{
+ flex:0 0 auto;min-width:0;font-size:12px;padding:7px 5px;white-space:nowrap;
+}
+#st-little-phone-root .lp-moment-actions-inline .lp-moment-comment-input{
+ flex:1 1 0;min-width:0;display:flex;flex-wrap:nowrap;gap:5px;margin-top:0;
+}
+#st-little-phone-root .lp-moment-actions-inline .lp-moment-comment-input input{
+ flex:1 1 0;min-width:0;width:100%;min-height:36px;height:36px;padding:7px 8px;font-size:12px;
+}
+#st-little-phone-root .lp-moment-actions-inline .lp-moment-comment-input button{
+ min-height:36px;height:36px;white-space:nowrap;padding:6px 8px;font-size:12px;
+}
+#st-little-phone-root .lp-moment-owner-menu[hidden]{display:none!important;}
