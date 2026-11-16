@@ -4883,3 +4883,180 @@
 #st-little-phone-root .lp-relation-screen .lp-relation-form .lp-relation-direction-fields input[type=radio]{
  flex:0 0 auto;width:17px;height:17px;min-height:17px;
 }
+
+
+/* v0.36 — compact independent Qunxing navigation and collapsible scan controls */
+#st-little-phone-root .lp-wb-settings-menu{
+ display:flex!important;flex-direction:column!important;gap:12px!important;
+ padding:4px 2px 18px!important;border:0!important;overflow:visible!important;
+ background:transparent!important;height:min(66vh,690px);min-height:430px;
+}
+#st-little-phone-root .lp-wb-settings-menu>.lp-wb-settings-link{
+ flex:1 1 0;min-height:72px;width:100%;border:1px solid var(--lp-border)!important;
+ border-radius:15px!important;background:var(--lp-white)!important;
+ padding:15px 18px!important;box-sizing:border-box;
+}
+#st-little-phone-root .lp-wb-settings-menu>.lp-wb-settings-link:last-child{
+ border-bottom:1px solid var(--lp-border)!important;
+}
+#st-little-phone-root .lp-wb-scanner-entry{
+ box-sizing:border-box;width:100%;min-height:61px;padding:15px 17px!important;
+ display:flex;align-items:center;justify-content:space-between;
+ border:1px solid var(--lp-border)!important;border-radius:14px!important;
+ background:var(--lp-white)!important;color:var(--lp-navy)!important;
+ font:inherit;font-size:15px;text-align:left;cursor:pointer;
+}
+#st-little-phone-root .lp-wb-scanner-disclosure{margin-top:12px;}
+#st-little-phone-root .lp-wb-scanner-disclosure>summary,
+#st-little-phone-root .lp-wb-scan-pending>summary{list-style:none;}
+#st-little-phone-root .lp-wb-scanner-disclosure>summary::-webkit-details-marker,
+#st-little-phone-root .lp-wb-scan-pending>summary::-webkit-details-marker,
+#st-little-phone-root .lp-wb-candidate>summary::-webkit-details-marker{display:none;}
+#st-little-phone-root .lp-wb-scanner-disclosure>summary::after,
+#st-little-phone-root .lp-wb-scan-pending>summary::after{
+ content:'⌄';margin-left:auto;color:var(--lp-slate);font-size:20px;
+}
+#st-little-phone-root .lp-wb-scanner-disclosure[open]>summary::after,
+#st-little-phone-root .lp-wb-scan-pending[open]>summary::after{transform:rotate(180deg);}
+#st-little-phone-root .lp-wb-scanner-disclosure>.lp-wb-scanner{
+ margin-top:10px;padding:13px 11px;gap:11px;
+}
+#st-little-phone-root .lp-wb-scan-pending{display:block;margin-top:10px;}
+#st-little-phone-root .lp-wb-pending-content{display:flex;flex-direction:column;gap:11px;padding-top:10px;}
+#st-little-phone-root details.lp-wb-candidate{padding:0;display:block;}
+#st-little-phone-root .lp-wb-candidate>.lp-wb-candidate-title{
+ min-height:55px;display:flex;align-items:center;padding:12px 14px;
+ box-sizing:border-box;gap:12px;cursor:pointer;list-style:none;
+}
+#st-little-phone-root .lp-wb-candidate>.lp-wb-candidate-title::after{
+ content:'⌄';margin-left:auto;color:var(--lp-slate);font-size:17px;
+}
+#st-little-phone-root .lp-wb-candidate[open]>.lp-wb-candidate-title::after{transform:rotate(180deg);}
+#st-little-phone-root details.lp-wb-candidate>:not(summary){margin:0 13px 12px;}
+#st-little-phone-root .lp-wb-candidate-title input[type="checkbox"]{flex:none;}
+#st-little-phone-root .lp-wb-candidate:not([open])>:not(summary){display:none!important;}
+
+/* Group chat uses private-chat bubble and composer geometry, without horizontal overflow. */
+#st-little-phone-root .lp-group-content[data-group-view="chat"]{
+ flex:1;min-width:0;max-width:100%;padding:0!important;gap:0!important;
+ overflow:hidden;box-sizing:border-box;
+}
+#st-little-phone-root .lp-group-content[data-group-view="chat"] .lp-group-chat-feed{
+ flex:1 1 0;min-height:0;max-width:100%;overflow-x:hidden;overflow-y:auto;
+ box-sizing:border-box;background:transparent;border:0;border-radius:0;
+ padding:14px 12px 8px;gap:11px;
+}
+#st-little-phone-root .lp-group-chat-row{
+ display:flex;flex-direction:row;align-items:flex-start;align-self:flex-start;
+ gap:8px;max-width:95%;width:fit-content;min-width:0;
+}
+#st-little-phone-root .lp-group-chat-row.lp-mine{
+ flex-direction:row-reverse;align-self:flex-end;
+}
+#st-little-phone-root .lp-group-chat-row .lp-message-body{
+ max-width:min(70vw,270px);display:flex;flex-direction:column;
+ align-items:flex-start;min-width:0;gap:3px;
+}
+#st-little-phone-root .lp-group-chat-row.lp-mine .lp-message-body{align-items:flex-end;}
+#st-little-phone-root .lp-group-chat-row .lp-group-bubble{
+ box-sizing:border-box;width:fit-content;max-width:100%;padding:10px 12px;
+ border:1px solid var(--lp-ice);background:var(--lp-white);color:var(--lp-navy);
+ border-radius:5px var(--lp-bubble-radius,15px) var(--lp-bubble-radius,15px) var(--lp-bubble-radius,15px)!important;
+ box-shadow:none;white-space:pre-wrap;font-size:14px;line-height:1.55;overflow-wrap:anywhere;
+}
+#st-little-phone-root .lp-group-chat-row.lp-mine .lp-group-bubble{
+ background:var(--lp-ice);color:var(--lp-navy);border-color:var(--lp-ice);
+ border-radius:var(--lp-bubble-radius,15px) 5px var(--lp-bubble-radius,15px) var(--lp-bubble-radius,15px)!important;
+}
+#st-little-phone-root .lp-group-chat-row .lp-group-sender-name{
+ font-size:11px;color:var(--lp-slate);line-height:1.35;padding:1px 3px;
+}
+#st-little-phone-root .lp-group-chat-row .lp-group-message-text{
+ margin:0;white-space:pre-wrap;word-break:break-word;line-height:1.55;
+}
+#st-little-phone-root .lp-group-chat-row .lp-group-quote-action{
+ border:0;background:transparent;color:var(--lp-slate);font-size:11px;
+ padding:2px 3px;min-height:20px;line-height:1.4;
+}
+#st-little-phone-root .lp-group-chat-compose{
+ flex:0 0 auto;display:flex;flex-direction:column;gap:6px;
+ padding:7px 8px!important;box-sizing:border-box;width:100%;
+ max-width:100%;background:var(--lp-white);border-top:1px solid var(--lp-border);
+}
+#st-little-phone-root .lp-group-composer-controls{
+ display:flex;width:100%;align-items:center;gap:5px;min-width:0;
+}
+#st-little-phone-root .lp-group-chat-compose .lp-group-composer-controls textarea{
+ flex:1 1 auto;min-width:0;width:0;max-width:none;min-height:43px;height:43px;
+ padding:9px 11px;border-radius:10px;resize:none;box-sizing:border-box;
+ border:1px solid var(--lp-border);background:var(--lp-white);font-size:14px;
+}
+#st-little-phone-root .lp-group-chat-compose .lp-group-send-actions{
+ display:flex;flex:0 0 auto;gap:5px;max-width:44%;
+}
+#st-little-phone-root .lp-group-chat-compose .lp-group-send-actions button{
+ flex:0 0 auto;min-width:0;min-height:43px;height:43px;padding:0 9px;
+ background:var(--lp-slate);color:var(--lp-navy);font-size:12px;
+}
+#st-little-phone-root .lp-group-chat-compose .lp-group-send-actions button:last-child{
+ background:var(--lp-slate);color:var(--lp-white);
+}
+#st-little-phone-root .lp-group-avatar-editor{
+ display:flex;align-items:center;gap:12px;min-width:0;
+}
+#st-little-phone-root .lp-group-avatar-editor input{flex:1;min-width:0;}
+#st-little-phone-root .lp-group-avatar-preview{flex:0 0 52px;}
+#st-little-phone-root .lp-group-avatar-preview[hidden]{display:none!important;}
+
+/* Image-only reactions: labels remain in accessible button names and model prompts. */
+#st-little-phone-root .lp-emoji-panel .lp-sticker-card span{display:none!important;}
+#st-little-phone-root .lp-emoji-panel .lp-sticker-card button{
+ padding:5px;border-radius:11px;background:var(--lp-white);
+}
+#st-little-phone-root .lp-emoji-panel .lp-sticker-card img{
+ height:75px;width:100%;object-fit:contain;border-radius:9px;
+}
+#st-little-phone-root .lp-bubble.lp-sticker-only{
+ padding:0!important;border:0!important;background:transparent!important;
+ box-shadow:none!important;outline:0!important;border-radius:0!important;
+}
+#st-little-phone-root .lp-bubble.lp-sticker-only .lp-chat-image{
+ display:block;margin:0;max-width:min(49vw,190px);max-height:190px;
+ border-radius:13px;object-fit:contain;
+}
+
+/* Separate, role-owned friend networks. */
+#st-little-phone-root .lp-role-friends-page{
+ display:flex;flex-direction:column;gap:13px;padding:16px;
+ background:var(--lp-ice);overflow-y:auto;
+}
+#st-little-phone-root .lp-role-friend-label,
+#st-little-phone-root .lp-role-friends-page label{color:var(--lp-navy);}
+#st-little-phone-root .lp-role-friend-label select,
+#st-little-phone-root .lp-role-friends-page input[type="text"],
+#st-little-phone-root .lp-role-friends-page textarea{
+ display:block;width:100%;margin-top:7px;box-sizing:border-box;
+ border:1px solid var(--lp-border);border-radius:10px;padding:10px;
+ background:var(--lp-white);color:var(--lp-navy);font:inherit;
+}
+#st-little-phone-root .lp-role-friends-page [data-lp="roleFriendsContent"]{
+ display:flex;flex-direction:column;gap:12px;min-width:0;
+}
+#st-little-phone-root .lp-role-friend-note{
+ font-size:12px;line-height:1.65;margin:0;color:var(--lp-slate);
+}
+#st-little-phone-root .lp-role-friend-known{
+ display:flex;flex-direction:column;gap:8px;padding:12px;
+ border-radius:12px;background:var(--lp-white);
+}
+#st-little-phone-root .lp-role-friend-item{
+ display:flex;align-items:center;justify-content:space-between;gap:10px;
+ padding:10px;background:var(--lp-white);border-radius:11px;
+ font-size:13px;overflow-wrap:anywhere;
+}
+#st-little-phone-root .lp-role-friend-item span{min-width:0;flex:1;}
+#st-little-phone-root .lp-role-friends-page button{
+ padding:10px 14px;background:var(--lp-white);
+ border:1px solid var(--lp-border);border-radius:10px;
+ color:var(--lp-navy);font:inherit;cursor:pointer;
+}
