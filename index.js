@@ -3800,6 +3800,7 @@ function setScreen(screen, options={}) {
     if (!SCREENS.has(screen) || !nodes) return;
     if(root?.classList.contains('lp-open')&&phoneLockSettings().enabled&&!securityUnlocked&&screen!=='lock')screen='lock';
     const previous = activeScreen;
+    if(screen!=='profile'&&nodes.profileRoleDialog){nodes.profileRoleDialog.hidden=true;nodes.profileAvatarSheet.hidden=true;}
     if(screen==='groups'&&previous!=='groups')groupsReturnScreen=options.groupReturn||(['contacts','home','chatList'].includes(previous)?previous:'chatList');
     if(previous!==screen)phoneInteraction?.dismiss();
     const source=previous==='home'?phoneInteraction?.capture(options?.sourceTile):null;
@@ -6403,9 +6404,13 @@ function render() {
 
     nodes.profileName.textContent = char ? contactDisplayName(ctx) : '请先选择角色';
     nodes.contactRemark.value = getContactInfo(ctx).remark || '';
-    nodes.profileDescription.textContent = activeContactId===PRIMARY_CONTACT_ID
-        ? '当前酒馆角色卡'
-        : resolvePhonePlaceholders([getContactInfo(ctx).relationship,getContactInfo(ctx).description].filter(Boolean).join(' · ').slice(0,500),ctx,char);
+    const profileInfo=getContactInfo(ctx);
+    const mainInfo=primary?.data||primary||{};
+    const roleText=activeContactId===PRIMARY_CONTACT_ID
+        ? [mainInfo.description,mainInfo.personality,mainInfo.scenario].filter(x=>typeof x==='string'&&x.trim()).join('\n\n')
+        : [profileInfo.relationship ? '人物关系：'+profileInfo.relationship : '',profileInfo.description||''].filter(Boolean).join('\n\n');
+    nodes.profileDescription.textContent=resolvePhonePlaceholders(roleText||'暂无更多角色设定。',ctx,char);
+    nodes.profileRoleTitle.textContent=(profileInfo.remark||profileInfo.name||'角色')+' · 角色设定';
     nodes.deleteNpc.hidden = activeContactId===PRIMARY_CONTACT_ID;
     nodes.contactEvidence.textContent=contactAccess(ctx).evidence||contactAccess(ctx).source;
     nodes.profileAvatar.src = avatarSources(ctx,data).character;
@@ -7238,42 +7243,57 @@ function makeUI() {
           </div>
         </section>
         <section class="lp-screen lp-profile" data-lp-screen="profile" aria-label="联系人资料" hidden>
-          <div class="lp-profile-hero">
-            <img data-lp="profileAvatar" alt="角色头像" class="lp-profile-avatar" />
-            <div><strong data-lp="profileName"></strong><div data-lp="friendLabel" class="lp-profile-state"></div><div data-lp="profileDescription" class="lp-profile-state"></div></div>
+          <div class="lp-profile-summary-card">
+            <div class="lp-profile-hero">
+              <button type="button" class="lp-profile-avatar-button" data-lp="profileAvatarAction" aria-label="编辑此联系人的头像" title="点击更换角色头像">
+                <img data-lp="profileAvatar" alt="角色头像" class="lp-profile-avatar" />
+                <span class="lp-profile-avatar-mark" aria-hidden="true">✎</span>
+              </button>
+              <div class="lp-profile-identity">
+                <strong data-lp="profileName"></strong>
+                <span data-lp="friendLabel" class="lp-profile-state"></span>
+                <small>点击头像更换人物头像</small>
+              </div>
+            </div>
+            <button type="button" class="lp-profile-role-button" data-lp="profileRoleOpen">
+              <span>▤　查看角色设定</span><span aria-hidden="true">›</span>
+            </button>
           </div>
-          <div class="lp-profile-remark">
-            <label>联系人备注<input type="text" maxlength="60" data-lp="contactRemark" placeholder="备注名（可选）" /></label>
-            <button type="button" data-lp="saveContactRemark">保存备注</button>
+          <div class="lp-profile-card lp-profile-action-card">
+            <button type="button" class="lp-profile-chat" data-lp-open="chat">进入聊天</button>
+            <div class="lp-profile-actions" data-lp="friendActions"></div>
           </div>
-          <div class="lp-profile-actions" data-lp="friendActions"></div>
-          <div class="lp-contact-evidence" data-lp="contactEvidence"></div>
-          <button type="button" class="lp-contact-exchange" data-lp="contactExchange">剧情中已交换联系方式（手动确认）</button>
-          <button type="button" class="lp-profile-chat" data-lp-open="chat">进入聊天</button>
-          <details class="lp-profile-setup lp-contact-links">
-            <summary>角色之间的联系方式（确认后才可互动）</summary>
-            <p>两个人都在你的通讯录里，不代表他们彼此认识。只勾选剧情中明确交换过联系方式的角色；未确认的角色不能看到或评论对方的动态。</p>
-            <div data-lp="contactLinks"></div>
-          </details>
-          <details class="lp-profile-setup">
-            <summary>按照已有剧情设定关系</summary>
-            <select data-lp="friendSetup" aria-label="设定当前好友状态">
-              <option value="friends">已是好友</option>
-              <option value="stranger">未加好友</option>
-              <option value="outgoing">我已发送申请</option>
-              <option value="incoming">对方向我申请</option>
-              <option value="blocked">已拉黑</option>
-            </select>
-            <button type="button" data-lp="friendSave">保存关系设定</button>
-          </details>
+          <div class="lp-profile-card">
+            <div class="lp-profile-card-title">联系方式</div>
+            <div class="lp-contact-evidence" data-lp="contactEvidence"></div>
+            <button type="button" class="lp-contact-exchange" data-lp="contactExchange">剧情中已交换联系方式（手动确认）</button>
+            <details class="lp-profile-setup lp-contact-links">
+              <summary>角色之间的联系方式</summary>
+              <p>两个人都在你的通讯录里，不代表他们彼此认识。确认双方确实交换联系方式后，他们才可以互相联系。</p>
+              <div data-lp="contactLinks"></div>
+            </details>
+          </div>
+          <div class="lp-profile-card">
+            <div class="lp-profile-card-title">联系人管理</div>
+            <details class="lp-profile-remark lp-profile-setup">
+              <summary>设置联系人备注</summary>
+              <label>联系人备注<input type="text" maxlength="60" data-lp="contactRemark" placeholder="备注名（可选）" /></label>
+              <button type="button" data-lp="saveContactRemark">保存备注</button>
+            </details>
+            <details class="lp-profile-setup">
+              <summary>按已有剧情设置好友关系</summary>
+              <select data-lp="friendSetup" aria-label="设定当前好友状态">
+                <option value="friends">已是好友</option>
+                <option value="stranger">未加好友</option>
+                <option value="outgoing">我已发送申请</option>
+                <option value="incoming">对方向我申请</option>
+                <option value="blocked">已拉黑</option>
+              </select>
+              <button type="button" data-lp="friendSave">保存关系设定</button>
+            </details>
+          </div>
           <button type="button" class="lp-delete-npc" data-lp="deleteNpc" hidden>删除此 NPC 联系人</button>
           <div class="lp-inline-status" data-lp="profileStatus" role="status" aria-live="polite"></div>
-          <div class="lp-profile-upload">
-            <label>角色头像（默认读取酒馆角色）<input type="file" accept="image/*" data-lp="avatarCharFile" /></label>
-            <button type="button" data-lp="resetCharAvatar">恢复角色原头像</button>
-            <label>我的头像（默认读取酒馆人设）<input type="file" accept="image/*" data-lp="avatarUserFile" /></label>
-            <button type="button" data-lp="resetUserAvatar">恢复我的原头像</button>
-          </div>
         </section>
         <section class="lp-screen lp-chat" data-lp-screen="chat" aria-label="聊天" hidden>
           <div class="lp-chat-error" data-lp="chatError" hidden></div>
@@ -7651,6 +7671,22 @@ function makeUI() {
           <div class="lp-diagnostic-list" data-lp="diagnostics"></div>
           <button type="button" class="lp-clear-logs" data-lp="clearDiagnostics">清空本次运行日志</button>
         </section>
+        <div class="lp-profile-overlay" data-lp="profileRoleDialog" role="dialog" aria-modal="true" aria-label="查看角色设定" hidden>
+          <div class="lp-profile-overlay-panel">
+            <div class="lp-profile-overlay-heading"><strong data-lp="profileRoleTitle">角色设定</strong><button type="button" data-lp="profileRoleClose" aria-label="关闭角色设定">×</button></div>
+            <div class="lp-profile-role-content" data-lp="profileDescription"></div>
+          </div>
+        </div>
+        <div class="lp-profile-overlay lp-profile-avatar-overlay" data-lp="profileAvatarSheet" role="dialog" aria-modal="true" aria-label="更换角色头像" hidden>
+          <div class="lp-profile-avatar-options">
+            <strong>管理角色头像</strong>
+            <p>仅修改当前故事里这位联系人的头像，不影响酒馆原始角色卡。</p>
+            <button type="button" data-lp="profileChooseAvatar">从相册选择新头像</button>
+            <button type="button" data-lp="resetCharAvatar">恢复角色原头像</button>
+            <button type="button" data-lp="profileAvatarCancel">取消</button>
+            <input type="file" accept="image/png,image/jpeg,image/webp" data-lp="avatarCharFile" hidden />
+          </div>
+        </div>
       </dialog>
       <button type="button" class="lp-notification lp-message-banner" data-lp="notification" aria-label="查看新消息" hidden></button>
       `;
@@ -7702,8 +7738,8 @@ function mount() {
         'weiboGenerate','weiboFeedback','weiboFeed','weiboHot','weiboNearby','weiboCompose','weiboMe','weiboDetail','weiboTabs','weiboComposeText','weiboPublish','weiboDetailBack','weiboRefreshBox',
         'desktopSortList','clockMode','clockRate','clockContinueClosed','clockCustomFields','clockSave','lockEnabled','lockSaveEnabled','notification','inlineNotification','calendarPrev','calendarNext','calendarHeading','calendarViews','calendarGrid','calendarSelected','calendarSummary','calendarSelectedTime','calendarStoryToday','calendarRealToday','calendarSaveTime','calendarExactSave',
         'momentsPost', 'momentsText', 'momentsFeed', 'momentFeedback','momentsPreview','momentImageUpload','momentRemovePhoto','myAvatarUpload','myAvatarFallback','myAvatarStatus','myIdentity', 'myAvatar', 'myPersona', 'messageBannerToggle','messageBannerStatus','autoMessagesMode','autoMessagesDays','autoMomentsMode','autoMomentsDays','relationAutoSync','phoneInPast','characterRequests','momentInteractions','autonomyStatus','autonomyFeedback','saveAutonomy','rescanRelations','testAutonomy', 'stickerUpload','stickerPackUpload', 'stickerStatus', 'stickerLibrary',
-        'friendLabel', 'friendActions','profileAvatar','profileName','profileDescription','contactEvidence','contactExchange','contactLinks','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcAiScanButton','npcClearScanButton','npcScanState','npcCandidates','npcSaveCandidates','storyPeopleList','viewPrimaryContact','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
-        'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','avatarUserFile','resetCharAvatar','resetUserAvatar',
+        'friendLabel', 'friendActions','profileAvatar','profileAvatarAction','profileAvatarSheet','profileChooseAvatar','profileAvatarCancel','profileRoleDialog','profileRoleOpen','profileRoleClose','profileRoleTitle','profileName','profileDescription','contactEvidence','contactExchange','contactLinks','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcAiScanButton','npcClearScanButton','npcScanState','npcCandidates','npcSaveCandidates','storyPeopleList','viewPrimaryContact','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
+        'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','resetCharAvatar',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
         'settingsMenu','apiTask','apiProfile','apiProfileModel','apiProfileModelManual','apiReloadModels','apiProfileFields','apiProfileHint','apiTest',
         'phoneMemoryEnabled','phoneMemoryInterval','phoneMemoryInjectMainline','phoneMemorySchedule','phoneMemoryStatus','phoneMemorySave','phoneMemoryRun','phoneMemoryList',
@@ -8010,10 +8046,40 @@ function mount() {
     nodes.importChat.addEventListener('change',event=>{void importChatFile(event.target.files?.[0]);event.target.value='';});
     nodes.clearChat.addEventListener('click',()=>void clearOrDeleteChat(false));
     nodes.deleteChat.addEventListener('click',()=>void clearOrDeleteChat(true));
-    nodes.avatarCharFile.addEventListener('change',event=>{void updateAvatar('character',event.target.files?.[0]);event.target.value='';});
-    nodes.avatarUserFile.addEventListener('change',event=>{void updateAvatar('user',event.target.files?.[0]);event.target.value='';});
-    nodes.resetCharAvatar.addEventListener('click',()=>void resetAvatar('character'));
-    nodes.resetUserAvatar.addEventListener('click',()=>void resetAvatar('user'));
+    const hideProfileOverlays=()=>{
+      nodes.profileRoleDialog.hidden=true;
+      nodes.profileAvatarSheet.hidden=true;
+    };
+    nodes.profileRoleOpen.addEventListener('click',()=>{
+      nodes.profileAvatarSheet.hidden=true;
+      nodes.profileRoleDialog.hidden=false;
+    });
+    nodes.profileRoleClose.addEventListener('click',hideProfileOverlays);
+    nodes.profileAvatarAction.addEventListener('click',()=>{
+      nodes.profileRoleDialog.hidden=true;
+      nodes.profileAvatarSheet.hidden=false;
+    });
+    nodes.profileAvatarCancel.addEventListener('click',hideProfileOverlays);
+    for(const overlay of [nodes.profileRoleDialog,nodes.profileAvatarSheet])
+      overlay.addEventListener('click',event=>{if(event.target===overlay)hideProfileOverlays();});
+    root.addEventListener('keydown',event=>{
+      if(event.key==='Escape'&&(!nodes.profileRoleDialog.hidden||!nodes.profileAvatarSheet.hidden)){
+        event.preventDefault();event.stopPropagation();hideProfileOverlays();
+      }
+    });
+    nodes.profileChooseAvatar.addEventListener('click',()=>{
+      beginFilePicker();nodes.avatarCharFile.click();
+    });
+    nodes.avatarCharFile.addEventListener('change',event=>{
+      const file=event.target.files?.[0];event.target.value='';
+      nodes.profileAvatarSheet.hidden=true;
+      if(file)void updateAvatar('character',file);
+      else finishFilePicker();
+    });
+    nodes.avatarCharFile.addEventListener('cancel',finishFilePicker);
+    nodes.resetCharAvatar.addEventListener('click',()=>{
+      hideProfileOverlays();void resetAvatar('character');
+    });
     nodes.clearDiagnostics.addEventListener('click', () => {
         diagnostics.length = 0;
         renderDiagnostics();
