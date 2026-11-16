@@ -24,6 +24,7 @@ export function createGroupsModule(api){
   target.replaceChildren();
   lastView=view;target.scrollTop=top;
   const group=groups().find(g=>g.id===state.active);
+  target.dataset.groupView=group?(state.manage?'manage':'chat'):'directory';
   if(group){
    groupHeader(groupTitle(group));api.setGroupOptionsVisible?.(true);
    if(state.manage){
