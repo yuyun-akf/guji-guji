@@ -13,7 +13,9 @@ export function createAlbumModule(api){
  const action=(name,label,id)=>{const b=el('button','lp-album-action',label);b.type='button';b.dataset.albumAction=name;if(id)b.dataset.albumId=id;return b;};
  const field=(title,input)=>{const label=el('label','lp-album-field');label.append(document.createTextNode(title),input);return label;};
  function render(){
-  const wrap=host();if(!wrap)return;wrap.replaceChildren();
+  const wrap=host();if(!wrap)return;
+  const previousTop=wrap.scrollTop;
+  wrap.replaceChildren();
   const header=el('div','lp-album-header');
   header.append(el('strong','','故事相册'),el('small','','图片按角色卡保存；发送和发帖记录仍属于当前剧情存档。'));
   wrap.append(header);
@@ -71,6 +73,7 @@ export function createAlbumModule(api){
   }
   area.append(grid);
   return true;
+  wrap.scrollTop=previousTop;
  }
  async function encode(file){
   if(!['image/jpeg','image/png','image/webp'].includes(file?.type)||file.size>12*1024*1024)
