@@ -13,8 +13,8 @@ const slice=(text,a,b)=>{
 const dates=new Function(slice(weibo,' function storyMoment(',' const FOLLOWER_FACTORS=')+
  'return {storyMoment,postTimestamp,historyMomentFor};')();
 
-test('v0.32.0: all modules load with cache-busted matching version',()=>{
- assert.equal(JSON.parse(files['manifest.json']).version,'0.32.0');
+test('v0.33.0: all modules load with cache-busted matching version',()=>{
+ assert.equal(JSON.parse(files['manifest.json']).version,'0.33.0');
  assert.match(files['bootstrap.js'],/index\.js\?v=0\.32\.0/);
  assert.match(files['index.js'],/weibo\.js\?v=0\.32\.0/);
  for(const file of ['index.js','weibo.js','bootstrap.js'])
