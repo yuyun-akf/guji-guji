@@ -126,8 +126,14 @@ export function createAlbumModule(api){
   if(source){
    const zipped=await extractZipFiles(source);
    for(const [name,bytes] of zipped)entries.set(name,bytes);
-  }else{
-   for(const file of files){if(file.size>15*1024*1024)throw Error('单个文件不能超过15MB');entries.set(file.webkitRelativePath||file.name,new Uint8Array(await file.arrayBuffer()));}
+  }
+  // An extra loose image can replace one image inside a ZIP without replacing
+  // the manifest or any of the already valid archived images.
+  for(const file of files.filter(file=>file!==source)){
+   if(file.size>15*1024*1024)throw Error('图片 '+file.name+'：单个文件不能超过15MB');
+   const name=(file.webkitRelativePath||file.name).replaceAll('\\','/');
+   const existing=[...entries.keys()].find(key=>key===name||key.split('/').pop()===file.name);
+   entries.set(existing||name,new Uint8Array(await file.arrayBuffer()));
   }
   const manifestBytes=entries.get('manifest.json')||[...entries].find(([name])=>/\.json$/i.test(name))?.[1];
   if(!manifestBytes)throw Error('缺少 manifest.json，请先导出模板');
@@ -153,7 +159,8 @@ export function createAlbumModule(api){
    }
    if(!bytes)throw Error('找不到图片：'+filePath+'；请将图片与 manifest.json 一起导入或打包 ZIP');
    const blob=new File([bytes],filePath.split('/').pop(),{type});
-   images.push(await encode(blob,folder==='表情包'));
+   try{images.push(await encode(blob,folder==='表情包'));}
+   catch(error){throw Error('图片 '+filePath+'：'+String(error.message||error));}
    fileObjects.push(blob);
    mapping.push({owner,folder});
    labels.push({title:String(p.title||'').slice(0,60),description:String(p.description||'').slice(0,500),usage:String(p.usage||'').slice(0,160)});
@@ -418,6 +425,12 @@ export function createAlbumModule(api){
     state.message='正在一次识别 '+images.length+' 张图片…';render();
     labels=await api.identifyPhotos(images,files.map(f=>f.name),folder==='表情包');
     if(!Array.isArray(labels)||!labels.length)throw Error('识图没有返回可用结果，未保存图片');
+    const missing=files.filter((file,index)=>!labels[index]||typeof labels[index]!=='object');
+    if(missing.length){
+     for(const file of missing)state.fileErrors.set(file,'AI 未返回这张图片的识别资料；可以移出后重新选择');
+     hint('AI 识图缺少 '+missing.length+' 张图片的资料，已分别标记，其余候选保持不变',true);
+     return;
+    }
     state.pending={images,files,labels,owner,folder,signature};
     state.level='review';state.navReset=true;state.message='';
     render();return;
@@ -615,6 +628,9 @@ export function createAlbumModule(api){
    if(state.selectedFiles.some(existing=>fileKey(existing)===fileKey(file)))continue;
    state.selectedFiles.push(file);
   }
+  // A replacement image can satisfy an image entry from an existing ZIP.
+  // Re-check the package instead of forcing deletion of all valid ZIP images.
+  if(added.length)for(const file of state.selectedFiles.filter(f=>/\.zip$/i.test(f.name)))state.fileErrors.delete(file);
   validateCandidateFiles();
   render();return true;
  }
