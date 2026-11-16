@@ -7251,8 +7251,8 @@ function makeUI() {
         </section>
         <section class="lp-screen lp-chatlist lp-social-screen" data-lp-screen="discover" aria-label="发现" hidden>
   <div class="lp-list-body lp-discover">
-    <div class="lp-discover-heading"><span>朋友动态</span><span class="lp-muted">当前故事 · 朋友圈</span></div>
-    <div class="lp-moments-composer">
+    <div class="lp-discover-heading"><span>朋友圈</span><span class="lp-discover-actions"><button type="button" data-lp="momentHistoryOpen" class="lp-moment-history-link">历史朋友圈</button><button type="button" data-lp="momentCamera" class="lp-moment-camera" aria-label="发布朋友圈" title="发布朋友圈"><svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7.5h4l2-3h6l2 3h4v12H3z"/><circle cx="12" cy="13" r="3.2"/></svg></button></span></div>
+    <div class="lp-moments-composer" data-lp="momentComposer" hidden>
       <div class="lp-moments-caption">分享这一刻</div>
       <textarea data-lp="momentsText" rows="3" maxlength="1000" placeholder="写点什么，或分享一张照片…"></textarea>
       <div class="lp-moments-preview" data-lp="momentsPreview"></div>
@@ -7281,22 +7281,37 @@ function makeUI() {
         <span>更换</span>
         <input data-lp="myAvatarUpload" class="lp-me-avatar-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" />
       </label>
-      <div class="lp-me-profile">
-        <strong data-lp="myIdentity">user</strong>
-        <span>我的故事 · 个人主页</span>
+      <div class="lp-me-profile"><strong data-lp="myIdentity">user</strong>
+        <button type="button" data-lp="myBioEdit" class="lp-me-bio" data-lp-bio="self"><span data-lp="myBio">编辑个性签名</span></button>
       </div>
     </div>
     <div data-lp="myAvatarStatus" class="lp-me-avatar-status" role="status" aria-live="polite"></div>
-    <details class="lp-me-section">
+    <div class="lp-me-links lp-social-nav-list">
+      <button type="button" data-lp-open="meProfile">▤ 资料 <span>当前 user 人设与个人资料　›</span></button>
+      <button type="button" data-lp-open="discover">◉ 朋友圈 <span>查看好友动态与发布朋友圈　›</span></button>
+      <button type="button" data-lp-open="meSettings">⚙ 设置 <span>自主活动、朋友圈与提醒　›</span></button>
+      <button type="button" data-lp-open="album">▧ 相册 <span>人物与世界共享图片资源库　›</span></button>
+      <button type="button" data-lp-open="theme">✿ 主题装扮 <span>壁纸、字体与图标　›</span></button>
+      <button type="button" data-lp-open="settings">☷ 系统设置 <span>API、世界书与世界版本　›</span></button>
+    </div>
+  </div>
+  <nav class="lp-tabbar" aria-label="咕叽聊导航">
+  <button data-lp-open="chatList" type="button">消息</button>
+  <button data-lp-open="contacts" type="button">通讯录</button>
+  <button data-lp-open="discover" type="button">发现</button>
+  <button data-lp-open="me" type="button">我</button>
+</nav>
+</section>
+<section class="lp-screen lp-chatlist" data-lp-screen="meProfile" aria-label="我的资料" hidden>
+ <div class="lp-list-body lp-me-page"><h3>我的资料</h3>    <details class="lp-me-section">
       <summary>个人设定 <span>查看当前 user 人设</span></summary>
       <div data-lp="myPersona" class="lp-persona-description"></div>
     </details>
-    <div class="lp-me-links">
-      <button type="button" data-lp-open="discover">◉ 朋友圈 <span>查看我的动态</span></button>
-      <button type="button" data-lp-open="theme">✿ 主题装扮 <span>壁纸、字体与图标</span></button>
-      <button type="button" data-lp-open="settings">⚙ 系统设置 <span>API、世界书与预设</span></button>
-    </div>
-    <div class="lp-me-notification-setting">
+
+ </div>
+</section>
+<section class="lp-screen lp-chatlist" data-lp-screen="meSettings" aria-label="咕叽聊设置" hidden>
+ <div class="lp-list-body lp-me-page"><h3>咕叽聊设置</h3>    <div class="lp-me-notification-setting">
       <label><input type="checkbox" data-lp="messageBannerToggle" checked />
        <span><strong>新消息横幅提醒</strong><small>角色私聊和朋友圈动态：手机内或酒馆正文页面顶部提醒</small></span>
       </label>
@@ -7324,7 +7339,10 @@ function makeUI() {
       </div>
       <div class="lp-autonomy-feedback" data-lp="autonomyFeedback" role="status" aria-live="polite"></div>
     </details>
-    <details class="lp-me-section">
+</div>
+</section>
+<!-- Legacy sticker controls remain inaccessible for compatibility; the resource UI is in 世界相册／表情包. -->
+<div hidden style="display:none" aria-hidden="true">    <details class="lp-me-section">
       <summary>我的表情包 <span>上传与管理</span></summary>
       <label class="lp-sticker-uploader">添加图片 <input data-lp="stickerUpload" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple /></label>
       <label class="lp-sticker-uploader">导入整包 ZIP / JSON，或图片＋CSV 目录 <input data-lp="stickerPackUpload" type="file" accept=".zip,.json,.csv,image/png,image/jpeg,image/webp,image/gif" multiple /></label>
@@ -7332,14 +7350,7 @@ function makeUI() {
       <div data-lp="stickerStatus" role="status"></div>
       <div data-lp="stickerLibrary" class="lp-sticker-library"></div>
     </details>
-  </div>
-  <nav class="lp-tabbar" aria-label="咕叽聊导航">
-  <button data-lp-open="chatList" type="button">消息</button>
-  <button data-lp-open="contacts" type="button">通讯录</button>
-  <button data-lp-open="discover" type="button">发现</button>
-  <button data-lp-open="me" type="button">我</button>
-</nav>
-</section>
+</div>
 <section class="lp-screen lp-chatlist" data-lp-screen="requests" aria-label="新的朋友" hidden>
           <div class="lp-list-body">
             <div class="lp-list-heading">好友申请</div>
@@ -7377,8 +7388,8 @@ function makeUI() {
             <p class="lp-npc-note">可手动填写，也可从上方扫描入口发现人物。扫描结果须核对并确认；不会自动成为好友。</p>
           </div>
         </section>
-        <section class="lp-screen lp-profile" data-lp-screen="profile" aria-label="联系人资料" hidden>
-          <div class="lp-profile-summary-card">
+        <section class="lp-screen lp-profile" data-lp-screen="profile" aria-label="联系人个人主页" hidden>
+           <div class="lp-profile-summary-card">
             <div class="lp-profile-hero">
               <button type="button" class="lp-profile-avatar-button" data-lp="profileAvatarAction" aria-label="编辑此联系人的头像" title="点击更换角色头像">
                 <img data-lp="profileAvatar" alt="角色头像" class="lp-profile-avatar" />
@@ -7386,15 +7397,21 @@ function makeUI() {
               </button>
               <div class="lp-profile-identity">
                 <strong data-lp="profileName"></strong>
-                <span data-lp="friendLabel" class="lp-profile-state"></span>
-                <small>点击头像更换人物头像</small>
+                
+                <button type="button" class="lp-profile-bio-button" data-lp="profileBioEdit"><span data-lp="profileBio">编辑个性签名</span></button>
               </div>
             </div>
             <button type="button" class="lp-profile-role-button" data-lp="profileRoleOpen">
               <span>▤　查看角色设定</span><span aria-hidden="true">›</span>
             </button>
           </div>
-          <div class="lp-profile-card lp-profile-action-card">
+
+ <div class="lp-profile-card"><button type="button" class="lp-profile-chat" data-lp-open="chat">进入聊天</button></div>
+ <div class="lp-profile-card"><div class="lp-profile-card-title">朋友圈</div><div data-lp="contactMomentList" class="lp-contact-moments"></div></div>
+</section>
+<section class="lp-screen lp-profile" data-lp-screen="contactManage" aria-label="管理联系人资料" hidden>
+ <h3>管理联系人资料</h3><div class="lp-profile-card"><span data-lp="friendLabel" class="lp-profile-state"></span></div>
+           <div class="lp-profile-card lp-profile-action-card">
             <button type="button" class="lp-profile-chat" data-lp-open="chat">进入聊天</button>
             <div class="lp-profile-actions" data-lp="friendActions"></div>
           </div>
@@ -7429,8 +7446,9 @@ function makeUI() {
           </div>
           <button type="button" class="lp-delete-npc" data-lp="deleteNpc" hidden>删除此 NPC 联系人</button>
           <div class="lp-inline-status" data-lp="profileStatus" role="status" aria-live="polite"></div>
-        </section>
-        <section class="lp-screen lp-chat" data-lp-screen="chat" aria-label="聊天" hidden>
+
+</section>
+<section class="lp-screen lp-chat" data-lp-screen="chat" aria-label="聊天" hidden>
           <div class="lp-chat-error" data-lp="chatError" hidden></div>
           <div class="lp-messages" data-lp="messages" role="log" aria-label="手机聊天记录"></div>
           <div class="lp-message-actions" data-lp="messageActions" hidden>
@@ -7503,18 +7521,24 @@ function makeUI() {
             <button type="button" data-chat-tool="time">跳转时间</button>
           </div>
         </section>
-        <section class="lp-screen lp-chatlist" data-lp-screen="chatOptions" aria-label="聊天记录管理" hidden>
-          <div class="lp-list-body lp-options-body">
-            <button type="button" data-lp="goProfile">查看联系人资料</button>
-            <button type="button" data-lp="exportChat">导出聊天记录 JSON</button>
+        <section class="lp-screen lp-chatlist" data-lp-screen="chatOptions" aria-label="聊天设置" hidden>
+ <div class="lp-list-body lp-options-body lp-social-nav-list">
+  <h3>聊天设置</h3>
+  <button type="button" data-lp-open="chatRecords">▤ 管理聊天记录 <span>导入、导出、复制、清空、删除　›</span></button>
+  <button type="button" data-lp-open="profile">♙ 查看联系人资料 <span>个人主页、签名与朋友圈　›</span></button>
+  <button type="button" data-lp-open="contactManage">⚙ 管理联系人资料 <span>备注、联系方式、好友关系　›</span></button>
+ </div>
+</section>
+<section class="lp-screen lp-chatlist" data-lp-screen="chatRecords" aria-label="管理聊天记录" hidden>
+ <div class="lp-list-body lp-options-body"><h3>管理聊天记录</h3>            <button type="button" data-lp="exportChat">导出聊天记录 JSON</button>
             <button type="button" data-lp="copyChat">复制聊天记录 JSON</button>
             <label class="lp-option-file">导入聊天记录 JSON<input type="file" accept="application/json,.json" data-lp="importChat" /></label>
             <button type="button" data-lp="clearChat">清空聊天记录</button>
             <button type="button" data-lp="deleteChat" class="lp-danger-action">删除会话</button>
             <div class="lp-settings-status" data-lp="status" role="status" aria-live="polite"></div>
-          </div>
-        </section>
-        <section class="lp-screen lp-settings" data-lp-screen="settings" aria-label="设置" hidden>
+</div>
+</section>
+<section class="lp-screen lp-settings" data-lp-screen="settings" aria-label="设置" hidden>
           <div class="lp-settings-menu" data-lp="settingsMenu">
             <p class="lp-settings-menu-intro">管理当前故事存档与小手机的各项功能</p>
             <div class="lp-settings-menu-list">
@@ -7523,6 +7547,7 @@ function makeUI() {
               <button type="button" class="lp-settings-nav" data-settings-nav="presets"><span>预设与世界书<small>预设选择、世界书条目与触发</small></span><b>›</b></button>
               <button type="button" class="lp-settings-nav" data-settings-nav="chat"><span>聊天方式<small>消息显示与分条行为</small></span><b>›</b></button>
               <button type="button" class="lp-settings-nav" data-settings-nav="memory"><span>记忆管理<small>剧情日自动总结、独立 API、正文互通</small></span><b>›</b></button>
+              <button type="button" class="lp-settings-nav lp-settings-nav-disabled" disabled aria-disabled="true" title="世界观版本切换暂未开放"><span>世界版本<small>现代（当前） · 古代／修真／魔幻暂未开放</small></span><b>未开放</b></button>
               <button type="button" class="lp-settings-nav" data-settings-nav="data"><span>数据说明<small>存档与资料保存范围</small></span><b>›</b></button>
             </div>
           </div>
