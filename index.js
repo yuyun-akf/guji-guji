@@ -1275,6 +1275,7 @@ async function loadGroupsController(){
  groupsLoadPromise=import('./groups.js?v=0.35.0').then(mod=>{
   groupsController=mod.createGroupsModule({context,getNodes:()=>nodes,readRootData,writeData,galleryPeople,
    isPhoneFriend,contactCharacter,phoneGenerate,stripModelReasoning,notifyInteraction,openSharedPost,encodeAvatarPhoto,
+   stickerLibrary:()=>stickerLibrary(context()),
    refreshChatList:()=>{if(mounted&&nodes&&selectedCharacter(context()))renderChatLists(context(),contactCharacter(context()),readData(context()));},
    userPhoneName:()=>phoneUserDisplayName(context()),
    memberRelationship:id=>phoneRelationshipPrompt(context(),id),
@@ -8798,7 +8799,7 @@ function mount() {
     nodes.albumContent.addEventListener('click',event=>{void albumController?.handleClick(event);});
     nodes.albumContent.addEventListener('change',event=>{albumController?.handleChange(event);});
     nodes.groupsContent.addEventListener('click',event=>{void groupsController?.handleClick(event);});
-    nodes.groupsContent.addEventListener('change',event=>{if(event.target.closest('input[data-group-avatar]'))void groupsController?.handleFile(event);});
+    nodes.groupsContent.addEventListener('change',event=>{if(event.target.closest('input[data-group-avatar],input[data-group-photo]'))void groupsController?.handleFile(event);});
     nodes.shareTargets.addEventListener('click',event=>{const b=event.target.closest('[data-share-target]');if(b)void completeQunxingShare(b.dataset.shareType,b.dataset.shareTarget);});
     nodes.weiboPublish.addEventListener('click',()=>void loadWeiboController().then(w=>w?.publish()));
     nodes.weiboDetailBack.addEventListener('click',()=>weiboController?.back());
