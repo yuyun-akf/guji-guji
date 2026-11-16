@@ -2394,7 +2394,7 @@ function readRootData(ctx) {
     };
 }
 
-const SOCIAL_DEFAULTS = {messages:{mode:'off',days:3},moments:{mode:'off',days:3},relationSync:true,phoneInPast:false,characterRequests:false,momentInteractions:false};
+const SOCIAL_DEFAULTS = {messages:{mode:'off',days:3},moments:{mode:'off',days:3},relationSync:true,phoneInPast:false,characterRequests:false,momentInteractions:true};
 function socialConfig(root) {
     const saved=root.socialConfig||{};
     return {
@@ -2403,7 +2403,7 @@ function socialConfig(root) {
         relationSync:saved.relationSync!==false,
         phoneInPast:saved.phoneInPast===true,
         characterRequests:saved.characterRequests===true,
-        momentInteractions:saved.momentInteractions===true
+        momentInteractions:saved.momentInteractions!==false
     };
 }
 function nextActivityTime(config,now=Date.now(),random=Math.random) {
@@ -3429,7 +3429,9 @@ function buildPrompt(data,ctx=null,char=null) {
         });});
 }
 
+let phoneStatusClearTimer=null;
 function setStatus(message, kind = 'info') {
+    if(phoneStatusClearTimer){clearTimeout(phoneStatusClearTimer);phoneStatusClearTimer=null;}
     statusText = message || '';
     statusKind = kind;
     if (nodes?.status) {
@@ -3448,6 +3450,14 @@ function setStatus(message, kind = 'info') {
     }
     if (nodes && !busy) nodes.diagnosticState.textContent = statusText || '空闲';
     if(statusText)phoneInteraction?.fromStatus(statusText,kind);
+    if(statusText)phoneStatusClearTimer=setTimeout(()=>{
+      if(statusText!==message)return;
+      statusText='';
+      for(const el of [nodes?.status,nodes?.chatError,nodes?.npcStatus,nodes?.profileStatus,nodes?.settingsStatus]){
+       if(el){el.textContent='';if(el===nodes?.chatError)el.hidden=true;}
+      }
+      phoneStatusClearTimer=null;
+    },3500);
 }
 
 function redactDiagnostic(text) {
@@ -4928,7 +4938,11 @@ async function tickAutonomousActivity(manualChannel='') {
         const stickerCatalog=stickerLibrary(ctx),suggestedStickers=chooseStickerCandidates(stickerCatalog,data);
         const rolePhotos=photosForActor(id,'chat',ctx),publicPhotos=photosForActor(id,'group',ctx);
         const plannedPost={authorId:id,author:contactDisplayName(ctx,id),text:''};
-        const batchActors=channel==='moments'&&cfg.momentInteractions?momentBatchActors(ctx,plannedPost):[];
+        const batchActors=channel==='moments'?momentBatchActors(ctx,plannedPost):[];
+        const previousMoments=(base.moments||[]).filter(post=>momentAuthorId(ctx,post)===id)
+         .slice(-20).map(post=>({
+          time:post.storyTime||'',text:String(post.text||'').slice(0,230)
+         }));
         let answer;
         if(channel==='messages'){
             answer=await generateWithTimeout(ctx,{
@@ -4939,8 +4953,8 @@ async function tickAutonomousActivity(manualChannel='') {
         }else{
             const writePostWithReactions=batchActors.length>0;
             answer=await generateWithTimeout(ctx,{
-                task:'autonomy',systemPrompt:system+'\n\n【角色朋友圈】写一条此角色愿意公开的朋友圈动态，不代替 user 发言，不虚构重大事件；不想发布只输出 [SKIP]。如有合适的本人日常或公开相册图片、以及相关世界素材，可在朋友圈正文末尾添加 [[photo:照片ID]]，只能使用以下ID：'+publicPhotos.map(p=>p.id+'（'+(p.description||p.title||'照片')+'）').join('；')+'。'+
-                    (writePostWithReactions?'\n\n'+momentBatchTask(ctx,plannedPost,batchActors,{writePost:true}):'不超过120字。'),
+                task:'autonomy',systemPrompt:system+'\n\n【角色朋友圈】写一条此角色愿意公开的朋友圈动态，不代替 user 发言，不虚构重大事件；不想发布只输出 [SKIP]。此前已发布的同一人物朋友圈：'+JSON.stringify(previousMoments).slice(0,4300)+'。必须延续其中明确的事实：借来的宠物不能突然变成自己养的，物品所有权和相识过程不得无故改变。如有合适的本人日常或公开相册图片、以及相关世界素材，可在朋友圈正文末尾添加 [[photo:照片ID]]，只能使用以下ID：'+publicPhotos.map(p=>p.id+'（'+(p.description||p.title||'照片')+'）').join('；')+'。'+
+                    (writePostWithReactions?'\n\n'+momentBatchTask(ctx,plannedPost,batchActors,{writePost:true})+'\n本次自动发布如有可信联系人可互动，至少生成一条自然评论，允许额外点赞；互动不得由未知角色凭空参与。':'不超过120字。'),
                 prompt:[{role:'user',content:'【系统触发：朋友圈发布时机】请按角色性格自行决定。'}]
             },data);
         }
@@ -5466,7 +5480,7 @@ function renderMomentHistory(){
  if(!nodes.momentHistoryTime.value)nodes.momentHistoryTime.value=historicTime(rootData.storyTime,1);
  nodes.momentHistoryGenerate.disabled=momentHistoryGenerating;
  nodes.momentHistoryGenerate.textContent=momentHistoryGenerating?'正在生成历史朋友圈…':'按要求生成过去的朋友圈（一次 API 调用）';
- nodes.momentHistoryStatus.textContent=momentHistoryGenerating?'':momentHistoryMessage;
+ nodes.momentHistoryStatus.textContent='';
  const list=nodes.momentHistoryList;list.replaceChildren();
  const posts=(rootData.moments||[]).filter(p=>p.historical===true).slice(-70).reverse();
  for(const p of posts){
