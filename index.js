@@ -1249,9 +1249,15 @@ async function identifyAlbumPhotos(images,names,isSticker=false,ctx=context()){
 async function loadAlbumController(){
  if(albumController)return albumController;
  if(albumLoadPromise)return albumLoadPromise;
- albumLoadPromise=import('./album.js?v=0.32.0').then(mod=>{
+ albumLoadPromise=import('./album.js?v=0.33.0').then(mod=>{
   albumController=mod.createAlbumModule({context,getNodes:()=>nodes,
    sharedPhotos:()=>characterPhotos(),saveSharedPhotos:saveCharacterPhotos,
+   safetyWarningDisabled:()=>context()?.extensionSettings?.[SETTINGS_KEY]?.albumSafetyWarningDisabled===true,
+   saveSafetyWarningDisabled:async disabled=>{
+    const ctx=context();if(!ctx?.extensionSettings||typeof ctx.saveSettingsDebounced!=='function')throw Error('酒馆设置无法保存相册偏好');
+    (ctx.extensionSettings[SETTINGS_KEY]||={}).albumSafetyWarningDisabled=Boolean(disabled);
+    ctx.saveSettingsDebounced();
+   },
    worldPhotos,saveWorldPhotos,worldFolders:worldAlbumFolders,saveWorldFolders:saveWorldAlbumFolders,
    coverFor:albumCoverFor,saveCover:saveAlbumCover,
    identifyPhotos:identifyAlbumPhotos,albumScope:()=>qunxingAccountCardKey(context()),
@@ -1263,7 +1269,7 @@ async function loadAlbumController(){
 async function loadGroupsController(){
  if(groupsController)return groupsController;
  if(groupsLoadPromise)return groupsLoadPromise;
- groupsLoadPromise=import('./groups.js?v=0.32.0').then(mod=>{
+ groupsLoadPromise=import('./groups.js?v=0.33.0').then(mod=>{
   groupsController=mod.createGroupsModule({context,getNodes:()=>nodes,readRootData,writeData,galleryPeople,
    isPhoneFriend,contactCharacter,phoneGenerate,stripModelReasoning,notifyInteraction,openSharedPost,encodeAvatarPhoto,
    refreshChatList:()=>{if(mounted&&nodes&&selectedCharacter(context()))renderChatLists(context(),contactCharacter(context()),readData(context()));},
@@ -3535,7 +3541,7 @@ function formatQunxingScan(ctx,result){
 async function loadWeiboController(){
  if(weiboController)return weiboController;
  if(weiboLoadPromise)return weiboLoadPromise;
- weiboLoadPromise=import('./weibo.js?v=0.32.0').then(module=>{
+ weiboLoadPromise=import('./weibo.js?v=0.33.0').then(module=>{
   weiboController=module.createWeiboModule({
    context,getNodes:()=>nodes,readRootData,writeData,readData,
    phoneGenerate:(ctx,options,data)=>phoneGenerate(ctx,{...options,task:options?.task||'weibo'},data),
@@ -3597,7 +3603,7 @@ async function loadWeiboController(){
 async function loadShoppingController(){
  if(shoppingController)return shoppingController;
  if(shoppingLoadPromise)return shoppingLoadPromise;
- shoppingLoadPromise=import('./shopping.js?v=0.32.0').then(module=>{
+ shoppingLoadPromise=import('./shopping.js?v=0.33.0').then(module=>{
   shoppingController=module.createShoppingModule({context,getNodes:()=>nodes});
   return shoppingController;
  }).catch(error=>{
@@ -3611,7 +3617,7 @@ async function loadShoppingController(){
 async function loadTakeoutController(){
  if(takeoutController)return takeoutController;
  if(takeoutLoadPromise)return takeoutLoadPromise;
- takeoutLoadPromise=import('./takeout.js?v=0.32.0').then(module=>{
+ takeoutLoadPromise=import('./takeout.js?v=0.33.0').then(module=>{
   takeoutController=module.createTakeoutModule({
    context,getNodes:()=>nodes,readRootData,writeData,readData,currentPersona,
    walletChargeOrder,walletRefundOrder,walletMoney,
@@ -3631,7 +3637,7 @@ async function loadTakeoutController(){
 async function loadPhoneMemoryController(){
  if(memoryController)return memoryController;
  if(memoryLoadPromise)return memoryLoadPromise;
- memoryLoadPromise=import('./memory.js?v=0.32.0').then(module=>{
+ memoryLoadPromise=import('./memory.js?v=0.33.0').then(module=>{
   memoryController=module.createPhoneMemoryModule({
    context,getNodes:()=>nodes,readRootData,writeData,recordError,recordActivity,
    stripModelReasoning,notifyInteraction,
@@ -5377,9 +5383,7 @@ async function postMoment() {
     try {
         await writeData(ctx,{...data,__contactId:PRIMARY_CONTACT_ID});
         if(!sameSession(session))return;
-        nodes.momentsText.value='';momentImageDraft='';nodes?.momentsPreview?.replaceChildren();if(nodes?.momentComposer)nodes.momentComposer.hidden=true;
-        const mask=root?.querySelector('.lp-moments-overlay');if(mask)mask.hidden=true;
-        renderMoments(ctx);
+        nodes.momentsText.value='';momentImageDraft='';nodes?.momentsPreview?.replaceChildren();setScreen('discover');
         void tickMomentInteractions();
     }catch(e){setStatus(recordError('发布动态',e),'error');}
 }
@@ -7202,6 +7206,7 @@ function openPhone() {
 function closePhone() {
     if (!mounted || !root) return;
     phoneInteraction?.pause();
+    albumController?.endPhoneSession?.();
     // Only closing the entire virtual phone invalidates generated Qunxing posts.
     weiboController?.endPhoneSession?.();
     root.classList.remove('lp-open');
@@ -8226,20 +8231,14 @@ function mount() {
         'messages','messageActions','chatPhotoPreview','quotedPreview','quotedText','cancelQuote','emojiPanel','morePanel','chatImageInput','timeJumpPanel','timeJumpHint','timeJumpCurrent','timeJumpAmount','timeJumpUnit','timeJumpApply','timeJumpClose','paymentPanel','paymentTitle','paymentKind','paymentAmount','paymentNote','paymentBalance','paymentClose','paymentSend','input', 'generate', 'send', 'launcher']
         .map(key => [key, key === 'launcher' ? floating : root.querySelector(`[data-lp="${key}"]`)]));
 
-    // The Moments composer belongs to the discover screen, not the scrolling feed.
-    // Moving the existing form into a screen-level modal preserves its form data
-    // and avoids a long inline editor that vanishes while scrolling.
+    // The camera opens a full compose screen; it does not overlay the feed.
     const momentsScreen=root.querySelector('[data-lp-screen="discover"]');
-    const momentsBackdrop=document.createElement('div');
-    momentsBackdrop.className='lp-moments-overlay';momentsBackdrop.hidden=true;
-    momentsBackdrop.addEventListener('click',()=>{nodes.momentComposer.hidden=true;momentsBackdrop.hidden=true;});
-    const composerClose=document.createElement('button');composerClose.type='button';
-    composerClose.className='lp-moment-composer-close';composerClose.textContent='×';
-    composerClose.setAttribute('aria-label','取消发布');
-    composerClose.addEventListener('click',()=>{nodes.momentComposer.hidden=true;momentsBackdrop.hidden=true;});
-    nodes.momentComposer.classList.add('lp-moments-modal');
-    nodes.momentComposer.prepend(composerClose);
-    momentsScreen.append(momentsBackdrop,nodes.momentComposer);
+    const composeScreen=document.createElement('section');
+    composeScreen.className='lp-screen lp-chatlist lp-social-screen lp-moment-compose-screen';
+    composeScreen.dataset.lpScreen='momentCompose';composeScreen.setAttribute('aria-label','发布朋友圈');composeScreen.hidden=true;
+    momentsScreen.after(composeScreen);
+    nodes.momentComposer.hidden=false;nodes.momentComposer.classList.add('lp-moment-compose-page');
+    composeScreen.append(nodes.momentComposer);
     const draggedClick=enableLauncherDragging(nodes.launcher);
     phoneInteraction=createInteractionController({
      getRoot:()=>root,getNodes:()=>nodes,
@@ -8352,17 +8351,14 @@ function mount() {
     };
     window.addEventListener('focus',pickerFocusListener);
     nodes.chatMenu.addEventListener('click',()=>setScreen('chatOptions'));
+    nodes.albumOptions.addEventListener('click',()=>void loadAlbumController().then(m=>m?.openOptions?.()));
     nodes.momentsPost.addEventListener('click',()=>void postMoment());
     nodes.momentCoverUpload.addEventListener('change',event=>{
       const file=event.target.files?.[0];event.target.value='';
       if(file)void uploadMomentCover(file);
     });
-    nodes.momentCamera.addEventListener('click',()=>{
-      nodes.momentComposer.hidden=!nodes.momentComposer.hidden;
-      momentsBackdrop.hidden=nodes.momentComposer.hidden;
-      if(!nodes.momentComposer.hidden)nodes.momentsText.focus();
-    });
-    nodes.momentHistoryOpen.addEventListener('click',()=>setScreen('momentHistory'));
+    nodes.momentCamera.addEventListener('click',()=>{setScreen('momentCompose');nodes.momentsText.focus();});
+    nodes.momentHistoryOpen?.addEventListener('click',()=>setScreen('momentHistory'));
     nodes.momentHistoryManual.addEventListener('click',()=>void manualHistoricMoment());
     nodes.momentHistoryPhoto.addEventListener('change',event=>{
       const file=event.target.files?.[0];event.target.value='';
