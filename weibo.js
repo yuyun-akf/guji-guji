@@ -1492,7 +1492,14 @@ if(type==='settingsSection'){
     state.candidates=Array.isArray(scan.candidates)?scan.candidates.slice(0,45):[];
     state.scanMessage=(mode==='ai'?'AI 检索':'规则检索')+'：读取 '+(scan.scanned||0)+' 段资料、'+(scan.worlds||0)+' 本世界书；共享目录可选 '+state.candidates.length+' 个候选账号。'+(scan.aiTruncated?' 部分资料超出单次输入上限。':'')+(scan.failures?.length?' 未读取：'+scan.failures.join('；'):'');
    }catch(e){state.scanMessage='检测失败：'+String(e.message||e);api.recordError('群星账号检测',e);}
-   finally{state.scanLoading=false;if(scope()===session)render();}
+   finally{
+    state.scanLoading=false;
+    if(scope()===session){
+     feedback(state.scanMessage.startsWith('检测失败')
+      ?state.scanMessage:'检索完成：'+state.candidates.length+' 个候选账号');
+     render();
+    }
+   }
    return;
   }
   if(type==='saveCandidates'){
