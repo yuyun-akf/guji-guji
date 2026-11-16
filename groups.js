@@ -35,8 +35,9 @@ export function createGroupsModule(api){
     const avatar=el('input');avatar.type='file';avatar.accept='image/png,image/jpeg,image/webp';avatar.dataset.groupAvatar='true';
     const avatarRow=el('div','lp-group-avatar-editor');
     const preview=el('img','lp-group-avatar lp-group-avatar-preview');
-    preview.alt='群头像预览';preview.src=state.avatarDraft||group.avatar||'';
-    preview.hidden=!preview.src;
+    const avatarSource=state.avatarDraft||group.avatar||'';
+    preview.alt='群头像预览';if(avatarSource)preview.src=avatarSource;
+    preview.hidden=!avatarSource;
     avatarRow.append(preview,avatar);
     form.append(el('label','','群名称'),name,el('label','','群聊备注'),remark,el('label','','群头像'),avatarRow);
     const memberGrid=el('div','lp-group-member-grid');
