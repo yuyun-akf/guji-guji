@@ -140,7 +140,7 @@ let chatPhotoDrafts=[];
 let clockTicker=null;
 let clockTickBusy=false;
 const weiboState={scope:'',posts:[],trending:[],tab:'feed',loading:false,selectedId:'',generationId:0};
-const SCREENS = new Set(['profileRole','lock', 'home', 'weibo', 'wallet', 'shopping', 'takeout', 'album', 'groups', 'sharePicker', 'shareViewer', 'chat', 'chatList', 'contacts', 'requests', 'profile', 'addNpc', 'discoverNpc', 'discover', 'me', 'chatOptions', 'chatRecords', 'contactManage', 'meProfile', 'meSettings', 'momentHistory', 'momentCompose', 'settings', 'diagnostics', 'calendar', 'theme', 'presetPicker', 'worldPicker']);
+const SCREENS = new Set(['profileRole','lock', 'home', 'weibo', 'wallet', 'shopping', 'takeout', 'album', 'groups', 'sharePicker', 'shareViewer', 'chat', 'chatList', 'contacts', 'requests', 'profile', 'addNpc', 'discoverNpc', 'discover', 'me', 'chatOptions', 'chatRecords', 'contactManage', 'meProfile', 'meSettings', 'momentHistory', 'roleFriends', 'momentCompose', 'settings', 'diagnostics', 'calendar', 'theme', 'presetPicker', 'worldPicker']);
 
 function context() {
     try {
@@ -2549,13 +2549,117 @@ function contactDisplayName(ctx,id=activeContactId) {
     const info=getContactInfo(ctx,id);
     return info.remark || info.name;
 }
+
+// A person's own contacts are not the user's phone contacts. These selections
+// are keyed by character name and shared across saves of the same role card.
+function roleFriendsStore(ctx=context()){
+ const key=qunxingAccountCardKey(ctx);
+ return ctx?.extensionSettings?.[SETTINGS_KEY]?.roleFriendsByCard?.[key]||{};
+}
+function roleFriendsOf(ctx,id){
+ const owner=galleryPeople(ctx).find(p=>p.id===id);
+ const value=owner&&roleFriendsStore(ctx)[owner.name];
+ return {known:Array.isArray(value?.known)?value.known.filter(v=>typeof v==='string'):[],
+  custom:Array.isArray(value?.custom)?value.custom.filter(p=>p&&typeof p.name==='string'):[]};
+}
+function roleFriendName(ctx,id){
+ const known=galleryPeople(ctx).find(p=>p.id===id);return known?.name||'';
+}
+function roleFriendGuest(ctx,id){
+ const match=String(id||'').match(/^(rolefriend|ambient)\|([^|]+)\|(\d+)$/);
+ if(!match)return null;
+ const ownerName=decodeURIComponent(match[2]);
+ if(match[1]==='ambient')return {name:'其他熟人',description:'与朋友圈作者有合理往来的未详细设定人物，可以由模型生成姓名及日常身份',ambient:true};
+ const owner=galleryPeople(ctx).find(p=>p.name===ownerName);
+ const person=owner&&roleFriendsOf(ctx,owner.id).custom[Number(match[3])];
+ return person||null;
+}
+function roleFriendActorId(type,ownerName,index){
+ return type+'|'+encodeURIComponent(ownerName)+'|'+index;
+}
+function roleFriendActorLabel(ctx,id){
+ return roleFriendGuest(ctx,id)?.name||contactDisplayName(ctx,id);
+}
+function roleFriendKnownConnected(ctx,first,second){
+ const a=roleFriendName(ctx,first),b=roleFriendName(ctx,second);
+ return !!(a&&b&&(roleFriendsOf(ctx,first).known.includes(b)||roleFriendsOf(ctx,second).known.includes(a)));
+}
+function renderRoleFriends(){
+ if(!nodes?.roleFriendsOwner||!nodes.roleFriendsContent)return;
+ const ctx=context(),owners=galleryPeople(ctx).filter(p=>p.id!=='user');
+ const select=nodes.roleFriendsOwner,old=select.value;
+ select.replaceChildren();
+ for(const person of owners){const o=document.createElement('option');o.value=person.id;o.textContent=person.name;select.append(o);}
+ select.value=owners.some(p=>p.id===old)?old:owners[0]?.id||'';
+ const owner=owners.find(p=>p.id===select.value),container=nodes.roleFriendsContent;
+ container.replaceChildren();
+ if(!owner){container.textContent='暂无可设置的角色';return;}
+ const saved=roleFriendsOf(ctx,owner.id);
+ const intro=document.createElement('p');intro.className='lp-role-friend-note';
+ intro.textContent='这里记录的是「'+owner.name+'」自己的好友，不要求你与这些人互加好友；没有写出的其他熟人也允许在生成朋友圈时自然出现。';
+ container.append(intro);
+ const heading=document.createElement('strong');heading.textContent='绑定已知故事人物';container.append(heading);
+ const known=document.createElement('div');known.className='lp-role-friend-known';
+ for(const person of owners.filter(p=>p.id!==owner.id)){
+  const label=document.createElement('label');label.className='lp-checkline';
+  const input=document.createElement('input');input.type='checkbox';input.dataset.roleFriendKnown=person.name;
+  input.checked=saved.known.includes(person.name);
+  label.append(input,document.createTextNode(person.name));known.append(label);
+ }
+ if(!known.children.length)known.textContent='暂未导入其他人物，可直接添加好友姓名。';
+ container.append(known);
+ const save=document.createElement('button');save.type='button';save.dataset.roleFriendAction='saveKnown';
+ save.textContent='保存已绑定好友';container.append(save);
+ const sub=document.createElement('strong');sub.textContent='添加尚未导入咕叽聊的角色好友';container.append(sub);
+ const name=document.createElement('input');name.type='text';name.maxLength=40;name.placeholder='好友姓名或称呼';name.dataset.roleFriendName='true';
+ const description=document.createElement('textarea');description.maxLength=300;description.rows=2;
+ description.placeholder='与该角色的关系／简短设定（选填）';description.dataset.roleFriendDescription='true';
+ const add=document.createElement('button');add.type='button';add.dataset.roleFriendAction='addCustom';add.textContent='添加角色好友';
+ container.append(name,description,add);
+ const list=document.createElement('div');list.className='lp-role-friend-custom';
+ saved.custom.forEach((person,index)=>{
+  const row=document.createElement('div');row.className='lp-role-friend-item';
+  const info=document.createElement('span');info.textContent=person.name+(person.description?' · '+person.description:'');
+  const remove=document.createElement('button');remove.type='button';remove.dataset.roleFriendAction='removeCustom';
+  remove.dataset.roleFriendIndex=String(index);remove.textContent='删除';
+  row.append(info,remove);list.append(row);
+ });
+ container.append(list);
+}
+function saveRoleFriends(ctx,id,next){
+ const owner=galleryPeople(ctx).find(p=>p.id===id);
+ if(!owner||!ctx?.extensionSettings||typeof ctx.saveSettingsDebounced!=='function')throw Error('无法保存好友列表');
+ const settings=ctx.extensionSettings[SETTINGS_KEY]||={},key=qunxingAccountCardKey(ctx);
+ const stored=settings.roleFriendsByCard||{};
+ settings.roleFriendsByCard={...stored,[key]:{...(stored[key]||{}),[owner.name]:next}};
+ ctx.saveSettingsDebounced();renderRoleFriends();notifyInteraction('角色好友列表已保存','success');
+}
+function handleRoleFriendsAction(event){
+ const b=event.target.closest('[data-role-friend-action]');if(!b)return;
+ const ctx=context(),id=nodes.roleFriendsOwner?.value;
+ if(!id)return;
+ const entry=roleFriendsOf(ctx,id),action=b.dataset.roleFriendAction;
+ if(action==='saveKnown'){
+  entry.known=[...nodes.roleFriendsContent.querySelectorAll('[data-role-friend-known]:checked')].map(node=>node.dataset.roleFriendKnown);
+ }else if(action==='addCustom'){
+  const name=nodes.roleFriendsContent.querySelector('[data-role-friend-name]')?.value.trim().slice(0,40);
+  const description=nodes.roleFriendsContent.querySelector('[data-role-friend-description]')?.value.trim().slice(0,300)||'';
+  if(!name)return notifyInteraction('请填写好友姓名','error');
+  if(!entry.custom.some(p=>p.name===name)&&!entry.known.includes(name))entry.custom.push({name,description});
+  else return notifyInteraction('该好友已经存在','error');
+ }else if(action==='removeCustom'){
+  entry.custom.splice(Number(b.dataset.roleFriendIndex),1);
+ }else return;
+ try{saveRoleFriends(ctx,id,entry);}catch(error){notifyInteraction('保存失败：'+String(error.message||error),'error');}
+}
 function contactLinkKey(first,second) {
     return [first,second].sort().join('|');
 }
 function charactersHaveContact(ctx,first,second) {
     if(!first||!second||first===second||first===MOMENT_USER_ID||second===MOMENT_USER_ID)return false;
     const data=readRootData(ctx);
-    return validContactId(data,first)&&validContactId(data,second)&&data.contactLinks?.[contactLinkKey(first,second)]===true;
+    return validContactId(data,first)&&validContactId(data,second)&&
+      (data.contactLinks?.[contactLinkKey(first,second)]===true||roleFriendKnownConnected(ctx,first,second));
 }
 function renderContactLinks(ctx=context()) {
     if(!nodes?.contactLinks)return;
@@ -3939,7 +4043,7 @@ function setScreen(screen, options={}) {
     }
     nodes.back.hidden = screen === 'home'||screen==='lock';
     if(nodes.close)nodes.close.hidden=true;
-    const titles = {album:'相册',groups:'群聊',sharePicker:'分享动态',shareViewer:'动态详情',lock:'锁屏',home:'咕叽咕机',weibo:'群星',wallet:'吱付宝',shopping:'购物',takeout:'外卖',chat:'',chatList:'咕叽聊',contacts:'咕叽聊',discover:'咕叽聊',me:'咕叽聊',meProfile:'我的资料',meSettings:'咕叽聊设置',momentHistory:'历史朋友圈',momentCompose:'发布朋友圈',chatRecords:'管理聊天记录',contactManage:'管理联系人资料',requests:'新的朋友',profile:'联系人资料',profileRole:'角色设定',addNpc:'添加 NPC',discoverNpc:'发现故事人物',chatOptions:'聊天设置',settings:'设置',diagnostics:'运行日志',calendar:'日历',theme:'主题',presetPicker:'选择预设条目',worldPicker:'选择世界书条目' };
+    const titles = {album:'相册',groups:'群聊',sharePicker:'分享动态',shareViewer:'动态详情',lock:'锁屏',home:'咕叽咕机',weibo:'群星',wallet:'吱付宝',shopping:'购物',takeout:'外卖',chat:'',chatList:'咕叽聊',contacts:'咕叽聊',discover:'咕叽聊',me:'咕叽聊',meProfile:'我的资料',meSettings:'咕叽聊设置',roleFriends:'角色好友列表',momentHistory:'历史朋友圈',momentCompose:'发布朋友圈',chatRecords:'管理聊天记录',contactManage:'管理联系人资料',requests:'新的朋友',profile:'联系人资料',profileRole:'角色设定',addNpc:'添加 NPC',discoverNpc:'发现故事人物',chatOptions:'聊天设置',settings:'设置',diagnostics:'运行日志',calendar:'日历',theme:'主题',presetPicker:'选择预设条目',worldPicker:'选择世界书条目' };
     nodes.title.textContent = screen === 'chat' ? contactDisplayName(context()) : titles[screen];
     nodes.chatMenu.hidden = screen !== 'chat';
     if(nodes.albumOptions)nodes.albumOptions.hidden=screen!=='album';
@@ -3980,6 +4084,7 @@ function setScreen(screen, options={}) {
     if (screen === 'meProfile')renderPersona(context());
     if (screen === 'meSettings')loadAutonomyUI(context());
     if (screen === 'momentHistory')renderMomentHistory();
+    if (screen === 'roleFriends')renderRoleFriends();
     if (screen === 'discover') renderMoments(context());
     if (screen === 'discover' && previous !== 'discover' && unreadMoments(readRootData(context())))
         void clearMomentsUnread();
@@ -7858,7 +7963,14 @@ function makeUI() {
             <button data-lp-open="me" type="button">我</button>
           </nav>
         </section>
-        <section class="lp-screen lp-chatlist" data-lp-screen="momentHistory" aria-label="历史朋友圈" hidden>
+        <section class="lp-screen lp-chatlist" data-lp-screen="roleFriends" aria-label="角色好友列表" hidden>
+ <div class="lp-list-body lp-role-friends-page">
+  <label class="lp-role-friend-label">选择角色<select data-lp="roleFriendsOwner"></select></label>
+  <div data-lp="roleFriendsContent"></div>
+  <div data-lp="roleFriendsStatus" role="status" aria-live="polite"></div>
+ </div>
+</section>
+<section class="lp-screen lp-chatlist" data-lp-screen="momentHistory" aria-label="历史朋友圈" hidden>
           <div class="lp-list-body lp-moment-history">
             
             <label data-lp="momentHistoryOwnerLabel">发布人物<select data-lp="momentHistoryOwner"></select></label>
@@ -7927,6 +8039,7 @@ function makeUI() {
     <div class="lp-me-links lp-social-nav-list">
       <button type="button" data-lp-open="meProfile">▤ 个人资料 <span aria-hidden="true">›</span></button>
       <button type="button" data-lp-open="momentHistory">◉ 历史朋友圈 <span aria-hidden="true">›</span></button>
+      <button type="button" data-lp-open="roleFriends">♧ 角色好友列表 <span aria-hidden="true">›</span></button>
       <button type="button" data-lp-open="meSettings">⚙ 设置 <span aria-hidden="true">›</span></button>
       
       
@@ -8562,7 +8675,7 @@ function mount() {
         'albumContent','albumOptions','groupOptions','groupsContent','shareTargets','sharePreview',
         'weiboGenerate','weiboFeedback','weiboFeed','weiboHot','weiboNearby','weiboCompose','weiboMe','weiboDetail','weiboTabs','weiboComposeText','weiboPublish','weiboDetailBack','weiboRefreshBox',
         'desktopSortList','clockMode','clockRate','clockContinueClosed','clockCustomFields','clockSave','lockEnabled','lockSaveEnabled','notification','inlineNotification','calendarPrev','calendarNext','calendarHeading','calendarViews','calendarGrid','calendarSelected','calendarSummary','calendarSelectedTime','calendarStoryToday','calendarRealToday','calendarSaveTime','calendarExactSave',
-        'momentsPost', 'momentsText', 'momentsFeed', 'momentFeedback','momentsPreview','momentImageUpload','momentRemovePhoto','momentCamera','momentComposer','momentCoverImage','momentCoverUpload','momentCoverName','momentCoverAvatar','momentHistoryOpen','momentHistoryMode','momentHistoryOwnerLabel','momentHistoryOwner','momentHistoryTime','momentHistoryText','momentHistoryPhoto','momentHistoryPhotoPreview','momentHistoryRemovePhoto','momentHistoryManual','momentHistoryInstructions','momentHistoryCount','momentHistoryGenerate','momentHistoryStatus','momentHistoryList','myBio','myBioEdit','profileBio','profileBioEdit','contactMomentList','myAvatarUpload','myAvatarFallback','myAvatarStatus','myIdentity', 'myNameEdit', 'myAvatar', 'myPersona', 'messageBannerToggle','messageBannerStatus','autoMessagesMode','autoMessagesDays','autoMomentsMode','autoMomentsDays','relationAutoSync','phoneInPast','characterRequests','momentInteractions','autonomyStatus','autonomyFeedback','saveAutonomy','rescanRelations','testAutonomy', 'stickerUpload','stickerPackUpload', 'stickerStatus', 'stickerLibrary',
+        'momentsPost', 'momentsText', 'momentsFeed', 'momentFeedback','momentsPreview','momentImageUpload','momentRemovePhoto','momentCamera','momentComposer','momentCoverImage','momentCoverUpload','momentCoverName','momentCoverAvatar','roleFriendsOwner','roleFriendsContent','roleFriendsStatus','momentHistoryOpen','momentHistoryMode','momentHistoryOwnerLabel','momentHistoryOwner','momentHistoryTime','momentHistoryText','momentHistoryPhoto','momentHistoryPhotoPreview','momentHistoryRemovePhoto','momentHistoryManual','momentHistoryInstructions','momentHistoryCount','momentHistoryGenerate','momentHistoryStatus','momentHistoryList','myBio','myBioEdit','profileBio','profileBioEdit','contactMomentList','myAvatarUpload','myAvatarFallback','myAvatarStatus','myIdentity', 'myNameEdit', 'myAvatar', 'myPersona', 'messageBannerToggle','messageBannerStatus','autoMessagesMode','autoMessagesDays','autoMomentsMode','autoMomentsDays','relationAutoSync','phoneInPast','characterRequests','momentInteractions','autonomyStatus','autonomyFeedback','saveAutonomy','rescanRelations','testAutonomy', 'stickerUpload','stickerPackUpload', 'stickerStatus', 'stickerLibrary',
         'friendLabel', 'friendActions','profileAvatar','profileAvatarAction','profileAvatarSheet','profileChooseAvatar','profileAvatarCancel','profileRoleDialog','profileRoleOpen','profileRoleClose','profileRoleTitle','profileTabDetails','profileTabRelation','profileDetailsPane','profileRelationPane','profileRelationNames','relationAuto','relationManual','relationManualFields','relationChoice','relationChoiceGrid','relationDirectionFields','relationDirectionChar','relationDirectionUser','relationDirectionCharText','relationDirectionUserText','relationCustomLabel','relationCustom','relationDetails','relationCurrent','relationStatus','relationSave','relationDetect','profileName','profileDescription','contactEvidence','contactExchange','contactLinks','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcAiScanButton','npcClearScanButton','npcScanState','npcCandidates','npcSaveCandidates','storyPeopleList','viewPrimaryContact','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','resetCharAvatar',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
@@ -8711,6 +8824,8 @@ function mount() {
     nodes.momentHistoryRemovePhoto.addEventListener('click',()=>{
       momentHistoryPhotoDraft='';nodes.momentHistoryPhotoPreview.replaceChildren();
     });
+    nodes.roleFriendsOwner?.addEventListener('change',renderRoleFriends);
+    nodes.roleFriendsContent?.addEventListener('click',handleRoleFriendsAction);
     nodes.momentHistoryGenerate.addEventListener('click',()=>void generateHistoricMoments());
     nodes.momentHistoryMode.addEventListener('change',()=>{nodes.momentHistoryOwnerLabel.hidden=false;});
     nodes.momentHistoryList.addEventListener('click',event=>{
@@ -8745,7 +8860,7 @@ function mount() {
         setScreen({
           wallet:'home',shopping:'home',takeout:'home',weibo:'home',album:'home',groups:groupsReturnScreen,sharePicker:'weibo',chat:'chatList',
           contacts:'chatList',discover:'chatList',me:'chatList',
-          profile:profileReturnScreen,profileRole:'profile',contactManage:'chatOptions',chatRecords:'chatOptions',meProfile:'me',meSettings:'me',momentHistory:'me',momentCompose:'discover',
+          profile:profileReturnScreen,profileRole:'profile',contactManage:'chatOptions',chatRecords:'chatOptions',meProfile:'me',meSettings:'me',roleFriends:'me',momentHistory:'me',momentCompose:'discover',
           requests:'contacts',addNpc:'contacts',
           discoverNpc:'addNpc',chatOptions:'chat',
           presetPicker:'settings',worldPicker:'settings'
