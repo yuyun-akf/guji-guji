@@ -60,8 +60,8 @@ function setup(withModel=false){
 }
 
 test('v0.27 starts with cached posts, simple button press and centered outcomes',()=>{
- assert.equal(manifest.version,'0.34.0');
- assert.ok(index.includes("weibo.js?v=0.34.0"));
+ assert.equal(manifest.version,'0.35.0');
+ assert.ok(index.includes("weibo.js?v=0.35.0"));
  assert.ok(css.includes('filter:brightness(.84)!important'));
  assert.ok(css.includes('top:50%!important'));
  assert.ok(css.includes('margin:0 13px 14px!important'));
