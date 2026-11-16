@@ -4626,7 +4626,9 @@ function phoneRelationshipFor(ctx=context(),id=activeContactId){
   custom:String(saved.custom||''),
   details:String(saved.details||''),
   source:String(saved.source||''),
-  updatedAt:String(saved.updatedAt||'')
+  updatedAt:String(saved.updatedAt||''),
+  checkedMessages:Number(saved.checkedMessages)||0,
+  checkedMainline:Number(saved.checkedMainline)||0
  };
 }
 function phoneRelationshipDescription(ctx=context(),id=activeContactId){
@@ -4658,16 +4660,38 @@ function showPhoneRelationTab(tab='relation'){
  nodes.relationDetails.value=saved.details;
  nodes.relationCurrent.textContent='当前：'+phoneRelationshipDescription(ctx);
  nodes.relationStatus.textContent='';
+ if(saved.mode==='auto'){
+  const count=readData(ctx,activeContactId).messages?.length||0,mainline=ctx?.chat?.length||0;
+  const changed=!saved.updatedAt||saved.updatedAt!==readRootData(ctx).storyTime||
+   count!==saved.checkedMessages||mainline!==saved.checkedMainline;
+  if(changed)void detectPhoneRelationship();
+ }
+}
+function confirmPhoneManualRelationship(relation,custom,details){
+ const old=root.querySelector('.lp-relation-confirm-overlay');old?.remove();
+ const overlay=document.createElement('div');overlay.className='lp-relation-confirm-overlay';
+ const dialog=document.createElement('section');dialog.className='lp-relation-confirm-dialog';
+ dialog.setAttribute('role','dialog');dialog.setAttribute('aria-modal','true');
+ const title=document.createElement('strong');title.textContent='建议开启自动识别';
+ const text=document.createElement('p');text.textContent='手动关系不会随剧情自动更新，建议开启自动识别。';
+ const actions=document.createElement('div');
+ const b=(label,handler)=>{const node=document.createElement('button');node.type='button';node.textContent=label;node.addEventListener('click',handler);return node;};
+ actions.append(
+  b('保持手动',()=>{overlay.remove();void savePhoneRelationship('manual',relation,custom,details,'手动设定');}),
+  b('保存并开启自动更新',()=>{overlay.remove();void savePhoneRelationship('auto',relation,custom,details,'用户指定的初始关系');})
+ );
+ dialog.append(title,text,actions,b('取消',()=>overlay.remove()));
+ overlay.append(dialog);root.append(overlay);
 }
 async function savePhoneRelationship(mode,relation,custom='',details='',source=''){
  const ctx=context(),id=activeContactId,session=captureSession(ctx),data=structuredClone(readRootData(ctx));
  data.phoneRelationshipStates||={};
- data.phoneRelationshipStates[id]={mode,relation,custom:custom.slice(0,80),details:details.slice(0,800),source,updatedAt:data.storyTime||''};
+ data.phoneRelationshipStates[id]={mode,relation,custom:custom.slice(0,80),details:details.slice(0,800),source,updatedAt:data.storyTime||'',checkedMessages:readData(ctx,id).messages?.length||0,checkedMainline:ctx?.chat?.length||0};
  await writeData(ctx,{...data,__contactId:id});
  if(sameSession(session)){render();showPhoneRelationTab('relation');notifyInteraction('人物关系已保存','success');}
 }
 async function detectPhoneRelationship(){
- if(busy||autonomousWorking)return;
+ if(busy||autonomousWorking||nodes.relationDetect.disabled)return;
  const ctx=context(),char=contactCharacter(ctx),id=activeContactId,snapshot=captureSession(ctx);
  const data=readData(ctx,id),sceneTime=readRootData(ctx).storyTime;
  nodes.relationDetect.disabled=true;nodes.relationStatus.textContent='正在读取设定与记忆并识别关系…';
@@ -8833,6 +8857,7 @@ function mount() {
     const hideProfileOverlays=()=>{
       nodes.profileRoleDialog.hidden=true;
       nodes.profileAvatarSheet.hidden=true;
+      root.querySelector('.lp-relation-confirm-overlay')?.remove();
     };
     nodes.profileRoleOpen.addEventListener('click',()=>{
       nodes.profileAvatarSheet.hidden=true;
@@ -8853,9 +8878,11 @@ function mount() {
       const custom=nodes.relationCustom.value.trim(),details=nodes.relationDetails.value.trim();
       if(mode==='manual'&&relation==='custom'&&!custom){nodes.relationStatus.textContent='请填写自定义关系';return;}
       if(mode==='manual'){
-       const enableAuto=window.confirm('手动关系不会随剧情自动更新。建议开启自动识别。\n\n点击「确定」保存当前关系并启用后续自动识别；点击「取消」保持手动关系。');
-       void savePhoneRelationship(enableAuto?'auto':'manual',relation,custom,details,enableAuto?'用户指定的初始关系':'手动设定');
-      }else void savePhoneRelationship('auto',relation,custom,details,'自动识别设置');
+       confirmPhoneManualRelationship(relation,custom,details);
+      }else{
+       void savePhoneRelationship('auto',relation,custom,details,'自动识别设置')
+        .then(()=>void detectPhoneRelationship());
+      }
     });
     nodes.profileAvatarAction.addEventListener('click',()=>{
       nodes.profileRoleDialog.hidden=true;
