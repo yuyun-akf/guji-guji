@@ -3796,10 +3796,40 @@ function saveInteractionMotion(){
  notifyInteraction('交互动画已保存','success');
 }
 let groupsReturnScreen='chatList';
+const phoneScrollPositions=new Map();
+let phoneScrollChatMetadata=null;
+function screenScrollers(screen){
+ const section=root?.querySelector('[data-lp-screen="'+screen+'"]');
+ if(!section)return [];
+ return [section,...section.querySelectorAll('*')].filter(node=>{
+  if(!node?.scrollHeight||node.scrollHeight<=node.clientHeight+3)return false;
+  const mode=window.getComputedStyle?.(node)?.overflowY||'';
+  return /auto|scroll/.test(mode);
+ }).slice(0,60);
+}
+function saveScreenScroll(screen){
+ const ctx=context();
+ if(ctx?.chatMetadata!==phoneScrollChatMetadata){phoneScrollPositions.clear();phoneScrollChatMetadata=ctx?.chatMetadata;}
+ if(!screen||screen==='lock')return;
+ const scrolls=screenScrollers(screen);
+ if(scrolls.length)phoneScrollPositions.set(screen,scrolls.map(node=>node.scrollTop));
+}
+function restoreScreenScroll(screen){
+ const values=phoneScrollPositions.get(screen);if(!values)return;
+ const restore=()=>{
+  if(activeScreen!==screen)return;
+  screenScrollers(screen).forEach((node,i)=>{if(Number.isFinite(values[i]))node.scrollTop=values[i];});
+ };
+ restore();
+ if(typeof requestAnimationFrame==='function')requestAnimationFrame(restore);
+ if(typeof setTimeout==='function')setTimeout(restore,60);
+}
+
 function setScreen(screen, options={}) {
     if (!SCREENS.has(screen) || !nodes) return;
     if(root?.classList.contains('lp-open')&&phoneLockSettings().enabled&&!securityUnlocked&&screen!=='lock')screen='lock';
     const previous = activeScreen;
+    if(previous!==screen){saveScreenScroll(previous);closePhoneThreadMenu();}
     if(screen!=='profile'&&nodes.profileRoleDialog){nodes.profileRoleDialog.hidden=true;nodes.profileAvatarSheet.hidden=true;}
     if(screen==='groups'&&previous!=='groups')groupsReturnScreen=options.groupReturn||(['contacts','home','chatList'].includes(previous)?previous:'chatList');
     if(previous!==screen)phoneInteraction?.dismiss();
@@ -3871,6 +3901,7 @@ function setScreen(screen, options={}) {
         void clearContactUnread(activeContactId);
     if (nodes?.status) nodes.status.textContent = statusKind==='error' ? statusText : '';
     phoneInteraction?.navigate({previous,screen,origin:source});
+    if(previous!==screen)restoreScreenScroll(screen);
 }
 
 function updateBusy() {
@@ -5094,15 +5125,44 @@ async function togglePhoneThreadPin(key){
  });
  try{await phonePinQueue;}catch(e){setStatus(recordError('会话置顶',e),'error');}
 }
+let activePhoneThreadMenu=null;
+function closePhoneThreadMenu(){
+ if(activePhoneThreadMenu){activePhoneThreadMenu.remove();activePhoneThreadMenu=null;}
+}
 function phoneThreadWrap(openRow,key,pinned){
- const wrap=document.createElement('div');wrap.className='lp-thread-wrap'+(pinned?' is-pinned':'');
+ const wrap=document.createElement('div');
+ wrap.className='lp-thread-wrap'+(pinned?' is-pinned':'');
  wrap.append(openRow);
- const pin=document.createElement('button');pin.type='button';pin.className='lp-thread-pin';
- pin.textContent=pinned?'取消置顶':'置顶';
- pin.setAttribute('aria-label',(pinned?'取消置顶 ':'置顶 ')+(openRow.querySelector('strong')?.textContent||'会话'));
- pin.setAttribute('aria-pressed',String(pinned));
- pin.addEventListener('click',()=>void togglePhoneThreadPin(key));
- wrap.append(pin);return wrap;
+ let timer=null,startX=0,startY=0,ignoreClick=false;
+ const cancel=()=>{if(timer!==null){clearTimeout(timer);timer=null;}};
+ const openMenu=()=>{
+  closePhoneThreadMenu();ignoreClick=true;
+  const menu=document.createElement('div');menu.className='lp-thread-context-menu';
+  menu.setAttribute('role','menu');
+  const item=document.createElement('button');item.type='button';item.className='lp-thread-context-item';
+  item.setAttribute('role','menuitem');
+  item.textContent=pinned?'取消置顶':'置顶聊天';
+  item.addEventListener('click',e=>{
+   e.preventDefault();e.stopPropagation();closePhoneThreadMenu();void togglePhoneThreadPin(key);
+  });
+  menu.append(item);wrap.append(menu);activePhoneThreadMenu=menu;
+ };
+ openRow.addEventListener('pointerdown',e=>{
+  if(e.button!==0||e.target.closest('input,select,textarea'))return;
+  cancel();startX=e.clientX;startY=e.clientY;
+  timer=setTimeout(()=>{timer=null;openMenu();},520);
+ });
+ openRow.addEventListener('pointermove',e=>{
+  if(Math.abs(e.clientX-startX)>12||Math.abs(e.clientY-startY)>12)cancel();
+ });
+ for(const event of ['pointerup','pointerleave','pointercancel'])openRow.addEventListener(event,cancel);
+ openRow.addEventListener('contextmenu',e=>{e.preventDefault();cancel();openMenu();});
+ // Suppress the short-tap/open behavior after a long-press.
+ openRow.addEventListener('click',e=>{
+  if(!ignoreClick)return;
+  e.preventDefault();e.stopImmediatePropagation();ignoreClick=false;
+ },true);
+ return wrap;
 }
 async function openGroupFromChatList(id){
  const ctx=context(),metadata=ctx?.chatMetadata;
@@ -8002,6 +8062,7 @@ function mount() {
     });
     nodes.messages.addEventListener('scroll',()=>{if(selectedMessageId)closeMessageActions();},{passive:true});
     root.addEventListener('click',event=>{
+        if(activePhoneThreadMenu&&!event.target.closest('.lp-thread-context-menu'))closePhoneThreadMenu();
         if(selectedMessageId&&!event.target.closest('.lp-message-actions,.lp-bubble'))closeMessageActions();
         const moreSticker=event.target.closest('button[data-sticker-more]');
         if(moreSticker&&root.contains(moreSticker)){
