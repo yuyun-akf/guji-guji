@@ -5502,9 +5502,9 @@ function renderMoments(ctx){
    const name=comment.actorId===MOMENT_USER_ID?phoneUserDisplayName(ctx):(comment.author||'朋友');
    const parentName=parent?.actorId===MOMENT_USER_ID?phoneUserDisplayName(ctx):(parent?.author||'朋友');
    const nameNode=document.createElement('span');nameNode.className='lp-moment-comment-author';
-   nameNode.textContent=name;
+   nameNode.textContent=name+(parent&&parent.actorId!==comment.actorId?' 回复 '+parentName:'')+'：';
    const content=document.createElement('span');content.className='lp-moment-comment-text';
-   content.textContent=(parent&&parent.actorId!==comment.actorId?' 回复 '+parentName:'')+'：'+comment.text;
+   content.textContent=comment.text;
    row.append(nameNode,content);
    if(canReplyToMomentComment(ctx,post,comment)){
     nameNode.classList.add('lp-moment-comment-quotable');
