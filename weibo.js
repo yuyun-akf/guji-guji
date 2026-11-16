@@ -1,6 +1,6 @@
 /* 群星 · character-card accounts + per-story persistent generated feeds and interactions. */
 export function createWeiboModule(api) {
- const state={scope:'',tab:'home',detail:'',topic:null,profileAccount:'',adminHistoryAccount:'',historyEditingId:'',historyFormOpen:false,historyGenerating:false,historyStatus:'',historyInstructions:'',historyCount:'3',randomHistoryCount:'10',historyBatchQuantity:'default',historyBatchCustom:'10',historyBatchMode:'random',historyBatchSelectedIds:[],historyBatchInstructions:'',settingsAccountSearch:'',composePhoto:'',searchQuery:'',sharingId:'',subview:'',posts:{home:[],nearby:[]},trends:[],nearbyTrends:[],loading:false,hotLoading:false,refreshResult:{},attempted:{},token:0,sessionId:0,headline:'',hotBundles:{},queuedNearby:false,confirming:false,editing:'',avatarDraft:'',avatarOwnerDraft:'',candidates:[],scanLoading:false,scanMessage:''};
+ const state={scope:'',tab:'home',detail:'',topic:null,profileAccount:'',adminHistoryAccount:'',historyEditingId:'',historyFormOpen:false,historyGenerating:false,historyStatus:'',historyInstructions:'',historyCount:'3',randomHistoryCount:'10',historyBatchQuantity:'default',historyBatchCustom:'10',historyBatchMode:'random',historyBatchSelectedIds:[],historyBatchInstructions:'',settingsAccountSearch:'',composePhoto:'',searchQuery:'',sharingId:'',subview:'',posts:{home:[],nearby:[]},trends:[],nearbyTrends:[],loading:false,hotLoading:false,refreshResult:{},attempted:{},token:0,sessionId:0,headline:'',hotBundles:{},queuedNearby:false,confirming:false,editing:'',avatarDraft:'',avatarOwnerDraft:'',candidates:[],scanLoading:false,scanMessage:'',scanExpanded:false,pendingExpanded:false,expandedCandidates:[]};
  let writes=Promise.resolve(), autoBusy=false,closeHotConfirmation=null;
  const commentBusy=new Set(),commentNotices=new Map();
  const scrollViews=new Map();let renderedView='',renderedScope='';
@@ -1002,6 +1002,8 @@ export function createWeiboModule(api) {
   manual.classList.add('lp-wb-scanner-entry');
   parent.append(manual);
   const scanPanel=el('details','lp-wb-scanner-disclosure');
+  scanPanel.open=!!state.scanExpanded;
+  scanPanel.addEventListener('toggle',()=>{state.scanExpanded=scanPanel.open;});
   scanPanel.append(el('summary','lp-wb-scanner-entry','从故事资料检索账号'));
   const scanner=el('div','lp-wb-scanner');
    const cached=typeof api.cachedScanAccounts==='function'?api.cachedScanAccounts():null;
@@ -1017,19 +1019,28 @@ export function createWeiboModule(api) {
    scanner.append(control(state.scanLoading?'正在检测…':'AI 智能检索（调用一次 API）','scanAccountsAI'));
    scanner.append(control('清空角色卡共享检索结果','clearScanCatalog'));
    
+   let pending=null;
    if(state.candidates.length){
-    const pending=el('details','lp-wb-scan-pending');
-    pending.open=false;
+    pending=el('details','lp-wb-scan-pending');
+    pending.open=!!state.pendingExpanded;
+    pending.addEventListener('toggle',()=>{state.pendingExpanded=pending.open;});
     pending.append(el('summary','lp-wb-scanner-entry','待确认账号（'+state.candidates.length+'）'));
     const pendingContent=el('div','lp-wb-pending-content');
     pendingContent.append(el('p','lp-wb-bind-note','确认人物绑定、职业和个性签名后勾选；未勾选的不会保存'));
     state.candidates.forEach((candidate,index)=>{
      const existing=q.accounts.find(a=>a.name===candidate.name);
      const row=el('details','lp-wb-candidate');row.dataset.wbCandidate=String(index);
+     row.open=state.expandedCandidates.includes(index);
+     row.addEventListener('toggle',()=>{
+      state.expandedCandidates=row.open?[...new Set([...state.expandedCandidates,index])]:state.expandedCandidates.filter(x=>x!==index);
+     });
      const title=el('summary','lp-wb-candidate-title');
+     title.append(el('strong','',candidate.name));
+     row.append(title);
+     const select=el('label','lp-wb-candidate-select','选中此账号');
      const choose=document.createElement('input');choose.type='checkbox';choose.dataset.wbChoose=String(index);
-     title.append(choose,el('strong','',candidate.name),el('small','',existing?'已有账号 · 可更新':'新候选'));
-     row.append(title,el('small','lp-wb-candidate-source','来源：'+candidate.source));
+     select.prepend(choose);
+     row.append(select,el('small','lp-wb-candidate-source','来源：'+candidate.source+(existing?' · 已有账号，可更新':'')));
      const detail=el('details','lp-wb-candidate-reference');
      detail.append(el('summary','','查看检测到的角色资料'),el('p','',candidate.reference||'暂无进一步资料'));
      row.append(detail);
@@ -1049,10 +1060,10 @@ export function createWeiboModule(api) {
     });
     pendingContent.append(control('保存勾选的账号','saveCandidates'));
     pending.append(pendingContent);
-    scanner.append(pending);
    }
   scanPanel.append(scanner);
   parent.append(scanPanel);
+  if(pending)parent.append(pending);
  }
  function renderSettingsAccounts(parent,q){
   const filter=el('input','lp-wb-account-filter');filter.type='search';
@@ -1496,11 +1507,13 @@ if(type==='settingsSection'){
    if(typeof api.scanAccounts!=='function'){feedback('当前无法读取角色资料');return;}
    const input=nodes().weiboMe.querySelector('[data-wb-field="scanWorldName"]');
    state.scanWorldName=clean(input?.value,120);
-   const session=scope();state.scanLoading=true;state.scanMessage=mode==='ai'?'正在调用一次 API 检索人物…':'正在进行本地规则检索…';render();
+   const session=scope();state.scanLoading=true;state.scanExpanded=true;
+   state.scanMessage=mode==='ai'?'正在调用一次 API 检索人物…':'正在进行本地规则检索…';render();
    try{
     const scan=await api.scanAccounts(state.scanWorldName,mode);
     if(scope()!==session)return;
     state.candidates=Array.isArray(scan.candidates)?scan.candidates.slice(0,45):[];
+    state.pendingExpanded=state.candidates.length>0;state.expandedCandidates=[];
     state.scanMessage=(mode==='ai'?'AI 检索':'规则检索')+'：读取 '+(scan.scanned||0)+' 段资料、'+(scan.worlds||0)+' 本世界书；共享目录可选 '+state.candidates.length+' 个候选账号。'+(scan.aiTruncated?' 部分资料超出单次输入上限。':'')+(scan.failures?.length?' 未读取：'+scan.failures.join('；'):'');
    }catch(e){state.scanMessage='检测失败：'+String(e.message||e);api.recordError('群星账号检测',e);}
    finally{
