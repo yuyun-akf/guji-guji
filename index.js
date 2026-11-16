@@ -3433,11 +3433,12 @@ async function scanQunxingAccounts(extraWorld='',mode='rules'){
  const ctx=context(),main=selectedCharacter(ctx);
  if(!main)throw Error('请先打开角色卡的单人聊天');
  const result=await performSharedNpcScan(ctx,extraWorld,mode);
- return formatQunxingScan(ctx,result);
+ return formatQunxingScan(ctx,{...result,candidates:readSharedNpcScan(ctx)});
 }
 function cachedQunxingAccounts(){
  const ctx=context();if(!selectedCharacter(ctx))return {candidates:[]};
- return formatQunxingScan(ctx,{candidates:visibleSharedNpcScan(ctx),scanned:0,worlds:0,failures:[]});
+ if(!readSharedNpcScan(ctx).length)return {candidates:[]};
+ return formatQunxingScan(ctx,{candidates:readSharedNpcScan(ctx),scanned:0,worlds:0,failures:[]});
 }
 function formatQunxingScan(ctx,result){
  const main=selectedCharacter(ctx);
@@ -5318,7 +5319,7 @@ async function scanNpcSources(ctx,extraWorld='',mode='rules') {
             return [{name,relation:String(item?.relation||'').slice(0,180),description,
                 source:String(linked?.name||'AI 检索').slice(0,180),confidence:'AI 语义检索'}];
         });
-        return {candidates:mergeNpcCandidates(aiCandidates,readRootData(ctx),getCharacterName(char)),
+        return {candidates:mergeNpcCandidates(aiCandidates,{contacts:[]},getCharacterName(char)),
             scanned:sources.length,worlds:loaded,failures,aiSources:pieces.length,aiTruncated:pieces.length<usableSources.length};
     }
     const candidates=[];
@@ -5339,7 +5340,7 @@ async function scanNpcSources(ctx,extraWorld='',mode='rules') {
         }
         candidates.push(...parsed);
     }
-    return {candidates:mergeNpcCandidates(candidates.filter(c=>!selfNames.has(c.name)),readRootData(ctx),getCharacterName(char)),scanned:sources.length,worlds:loaded,failures};
+    return {candidates:mergeNpcCandidates(candidates.filter(c=>!selfNames.has(c.name)),{contacts:[]},getCharacterName(char)),scanned:sources.length,worlds:loaded,failures};
 }
 function readSharedNpcScan(ctx=context()){
  const key=qunxingAccountCardKey(ctx);
