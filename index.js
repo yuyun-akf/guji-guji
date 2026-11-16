@@ -5220,21 +5220,29 @@ function extractNpcCandidatesFromText(sourceText,source,mainName){
  return found;
 }
 function mergeNpcCandidates(candidates,root,primaryName) {
-    const existing=new Set([primaryName,...root.contacts.map(x=>x.name)].map(x=>String(x).trim().toLocaleLowerCase()));
-    const unique=new Map();
-    for(const c of candidates){
-        const name=cleanNpcName(c.name);
-        if(!name||existing.has(name.toLocaleLowerCase()))continue;
-        const key=name.toLocaleLowerCase();
-        if(!unique.has(key))unique.set(key,{...c,name,description:String(c.description||'').slice(0,3500),relation:String(c.relation||'').slice(0,180)});
-        else {
-            const previous=unique.get(key);
-            if(c.relation&&!previous.relation)previous.relation=c.relation;
-            if(previous.description.length<700 && !previous.description.includes(c.description))previous.description=(previous.description+'\n'+c.description).slice(0,3500);
-            if(previous.source!==c.source)previous.source+='、'+c.source;
-        }
-    }
-    return [...unique.values()].slice(0,45);
+ const existing=new Set([primaryName,...(root?.contacts||[]).map(x=>x.name)].map(x=>String(x).trim().toLocaleLowerCase()));
+ const unique=new Map();
+ for(const c of candidates){
+  const name=cleanNpcName(c?.name);
+  if(!name||existing.has(name.toLocaleLowerCase()))continue;
+  const key=name.toLocaleLowerCase();
+  const next={...c,name,description:String(c.description||'').slice(0,3500),
+   relation:String(c.relation||'').slice(0,180)};
+  if(!unique.has(key)){unique.set(key,next);continue;}
+  const prior=unique.get(key);
+  const strength=v=>v.confidence==='姓名字段'?3:v.confidence==='人物档案标题'?2:1;
+  if(strength(next)>strength(prior)){
+   // A dedicated character record supersedes earlier group-roster snippets.
+   unique.set(key,{...next,relation:next.relation||prior.relation});continue;
+  }
+  if(!prior.relation&&next.relation)prior.relation=next.relation;
+  if(strength(next)===strength(prior)&&prior.description.length<400&&
+     next.description.length>prior.description.length&&!next.description.includes(prior.description)){
+   prior.description=next.description;
+   prior.source=next.source;
+  }
+ }
+ return [...unique.values()].slice(0,45);
 }
 function embeddedCharacterLore(char) {
     const info=char?.data||char||{};
@@ -5340,10 +5348,14 @@ async function scanNpcSources(ctx,extraWorld='',mode='rules') {
         scanned:sources.length,worlds:loaded,failures,aiSources:pieces.length,
         aiTruncated:pieces.length<usableSources.length};
 }
+const NPC_SCAN_CATALOG_VERSION=2;
 function readSharedNpcScan(ctx=context()){
  const key=qunxingAccountCardKey(ctx);
  const all=ctx?.extensionSettings?.[SETTINGS_KEY]?.npcRoleScanCatalog;
  const record=key&&all&&Object.prototype.hasOwnProperty.call(all,key)?all[key]:null;
+ // Old version stored surname-based keyword guesses as identities.
+ // Invalidate that unverified cache; do NOT touch actual contacts/accounts.
+ if(record?.version!==NPC_SCAN_CATALOG_VERSION)return [];
  return Array.isArray(record?.candidates)?record.candidates.filter(c=>c&&typeof c.name==='string'):[];
 }
 function saveSharedNpcScan(candidates,ctx=context()){
@@ -5352,14 +5364,15 @@ function saveSharedNpcScan(candidates,ctx=context()){
   throw Error('角色卡共享目录无法保存：酒馆扩展设置接口不可用');
  const settings=ctx.extensionSettings[SETTINGS_KEY]||={};
  const catalog=settings.npcRoleScanCatalog||={};
- const previous=readSharedNpcScan(ctx);
- const combined=mergeNpcCandidates([...(candidates||[]),...previous],{contacts:[]},getCharacterName(selectedCharacter(ctx)))
-  .slice(0,80).map(c=>({name:c.name,relation:String(c.relation||'').slice(0,180),
+ const combined=mergeNpcCandidates(candidates||[],{contacts:[]},getCharacterName(selectedCharacter(ctx)))
+  .map(c=>({name:c.name,relation:String(c.relation||'').slice(0,180),
    description:String(c.description||'').slice(0,3500),source:String(c.source||'').slice(0,180),
    confidence:String(c.confidence||'').slice(0,50)}));
- if(JSON.stringify(previous)===JSON.stringify(combined))return combined;
  const old=catalog[key];
- catalog[key]={candidates:combined,updatedAt:new Date().toISOString()};
+ if(old?.version===NPC_SCAN_CATALOG_VERSION&&JSON.stringify(old.candidates)===JSON.stringify(combined))return combined;
+ // Each completed scan REPLACES the previous candidates; old errors cannot
+ // accumulate forever and displace real people in the 45-person cap.
+ catalog[key]={version:NPC_SCAN_CATALOG_VERSION,candidates:combined,updatedAt:new Date().toISOString()};
  try{ctx.saveSettingsDebounced();}catch(error){if(old===undefined)delete catalog[key];else catalog[key]=old;throw error;}
  return combined;
 }
@@ -5378,8 +5391,9 @@ function visibleSharedNpcScan(ctx=context()){
 }
 async function performSharedNpcScan(ctx,extraWorld='',mode='rules'){
  const result=await scanNpcSources(ctx,extraWorld,mode);
- // Never replace saved results after a model failure. A partial source scan adds
- // to the catalog without deleting people discovered in earlier story saves.
+ // Preserve the last verified directory if every linked worldbook failed.
+ if(result.failures.length&&result.worlds===0&&readSharedNpcScan(ctx).length)
+  return {...result,candidates:visibleSharedNpcScan(ctx),cachePreserved:true};
  saveSharedNpcScan(result.candidates,ctx);
  return {...result,candidates:visibleSharedNpcScan(ctx)};
 }
@@ -5460,7 +5474,7 @@ function restoreSharedNpcPreview(){
  renderNpcCandidates();
  if(nodes?.npcScanState)nodes.npcScanState.textContent=readSharedNpcScan(ctx).length
   ?'已加载当前角色卡共享的 '+readSharedNpcScan(ctx).length+' 位人物；当前可添加 '+npcCandidates.length+' 位。'
-  :'尚未保存人物检索结果。可选择本地规则检索或手动调用一次 AI 检索。';
+  :'尚未保存新版具名人物目录。旧版误识别结果已停用；重新检索一次即可建立共享目录。';
 }
 async function saveSelectedNpcCandidates() {
     if(busy||npcScanning||!npcScanSession||!sameNpcScanSession(npcScanSession))return setStatus('请重新扫描当前存档','error');
