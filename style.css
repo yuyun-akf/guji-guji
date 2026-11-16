@@ -5323,3 +5323,12 @@
 #st-little-phone-root .lp-group-avatar-picker .lp-group-avatar-pick-label{
  display:block;pointer-events:none;position:relative;z-index:1;
 }
+
+/* Keep the commenter and punctuation together on narrow phone screens. */
+#st-little-phone-root .lp-moment-comment .lp-moment-comment-author{
+ display:inline-block!important;max-width:100%;white-space:nowrap;
+ vertical-align:baseline;overflow-wrap:normal;
+}
+#st-little-phone-root .lp-moment-comment .lp-moment-comment-text{
+ display:inline!important;white-space:pre-wrap;vertical-align:baseline;
+}
