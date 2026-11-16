@@ -45,10 +45,10 @@ export function createGroupsModule(api){
     preview.hidden=!avatarSource;
     const empty=el('span','lp-group-avatar-placeholder','群');
     empty.hidden=!!avatarSource;
-    const pick=button(avatarSource?'更换群头像':'上传群头像','chooseAvatar');
-    pick.classList.add('lp-group-avatar-pick');
+    const pick=el('label','lp-group-avatar-pick');
+    pick.append(el('span','lp-group-avatar-pick-label',avatarSource?'更换群头像':'上传群头像'),avatar);
     const pickBox=el('div','lp-group-avatar-picker');
-    pickBox.append(pick,avatar,el('small','lp-group-avatar-hint',state.avatarDraft?'已选中图片，保存群设置后生效':'支持 JPG、PNG、WebP、GIF'));
+    pickBox.append(pick,el('small','lp-group-avatar-hint',state.avatarDraft?'已选中图片，保存群设置后生效':'支持 JPG、PNG、WebP、GIF'));
     avatarRow.append(preview,empty,pickBox);
     form.append(el('label','','群名称'),name,el('label','','群聊备注'),remark,el('label','','群头像'),avatarRow);
     const memberGrid=el('div','lp-group-member-grid');
@@ -225,11 +225,6 @@ export function createGroupsModule(api){
  async function handleClick(e){
   const button=e.target.closest('button[data-group-action]');if(!button||state.busy)return false;
   const act=button.dataset.groupAction,id=button.dataset.groupId;
-  if(act==='chooseAvatar'){
-   const input=host()?.querySelector('input[data-group-avatar]');
-   if(!input){status('群头像选择控件不可用',true);return true;}
-   input.click();return true;
-  }
   if(act==='emoji'||act==='more'){
    state.tool=state.tool===act?'':act;render();
   }
@@ -316,8 +311,8 @@ export function createGroupsModule(api){
     if(placeholder)placeholder.hidden=true;
     const hint=host()?.querySelector('.lp-group-avatar-hint');
     if(hint)hint.textContent='已选择图片，点击「保存群设置」生效';
-    const pick=host()?.querySelector('.lp-group-avatar-pick');
-    if(pick)pick.textContent='更换群头像';
+    const pickText=host()?.querySelector('.lp-group-avatar-pick-label');
+    if(pickText)pickText.textContent='更换群头像';
     state.status='已选择群头像，点击保存群设置后生效';
    }
   }catch(e){status((photo?'发送图片':'头像处理')+'失败：'+String(e.message||e),true);}
