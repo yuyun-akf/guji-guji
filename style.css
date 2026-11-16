@@ -4168,3 +4168,178 @@
 #st-little-phone-root .lp-wb-history-form button[aria-busy="true"]{
  opacity:.62;cursor:wait;
 }
+
+
+/* v0.32 — unified phone header back arrow: geometrically centered SVG. */
+#st-little-phone-root .lp-back{
+ display:grid!important;place-items:center!important;
+ padding:0!important;line-height:0!important;font-size:0!important;
+ text-align:center;
+}
+#st-little-phone-root .lp-back svg{
+ display:block;position:static;margin:0;width:20px;height:20px;
+ flex:0 0 20px;stroke-width:2.2;
+}
+#st-little-phone-root .lp-back[hidden]{display:none!important;}
+
+/* Album library: equal square folders and neutral, editable cover images. */
+#st-little-phone-root .lp-album-folder-grid{
+ display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+ gap:12px;min-width:0;
+}
+#st-little-phone-root .lp-album-content[data-album-owner="world"] .lp-album-folder-grid{
+ grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;
+}
+#st-little-phone-root .lp-album-folder{
+ position:relative;display:flex;flex-direction:column;
+ justify-content:space-between;align-items:stretch;
+ aspect-ratio:1/1;min-width:0;min-height:0;overflow:hidden;
+ padding:12px;border-radius:16px;text-align:left;
+ background:var(--lp-white);border:1px solid var(--lp-border);
+ color:var(--lp-navy);cursor:pointer;box-sizing:border-box;
+}
+#st-little-phone-root .lp-album-folder-cover{
+ position:absolute;inset:0;width:100%;height:100%;
+ object-fit:cover;z-index:0;
+}
+#st-little-phone-root .lp-album-folder:has(.lp-album-folder-cover)::after{
+ content:"";position:absolute;inset:0;
+ background:linear-gradient(0deg,rgba(14,24,38,.72),transparent 68%);
+ z-index:0;pointer-events:none;
+}
+#st-little-phone-root .lp-album-folder:has(.lp-album-folder-cover){
+ color:#fff;
+}
+#st-little-phone-root .lp-album-folder-symbol{
+ position:relative;z-index:1;font-size:30px;line-height:1;color:var(--lp-slate);
+}
+#st-little-phone-root .lp-album-folder-copy{
+ position:relative;z-index:1;display:flex;flex-direction:column;gap:4px;
+ overflow-wrap:anywhere;line-height:1.3;
+}
+#st-little-phone-root .lp-album-folder-copy strong{font-size:13px;}
+#st-little-phone-root .lp-album-folder-copy small{
+ font-size:10px;color:inherit;opacity:.8;
+}
+#st-little-phone-root .lp-album-mode-row{
+ display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;
+}
+#st-little-phone-root .lp-album-mode-row .lp-album-action{
+ font-size:11px;padding:9px 4px;min-width:0;
+}
+#st-little-phone-root .lp-album-mode-row .selected{
+ border-color:var(--lp-slate);background:var(--lp-ice);
+ font-weight:700;
+}
+#st-little-phone-root .lp-album-edit-form{
+ display:flex;flex-direction:column;gap:8px;margin-top:10px;
+}
+#st-little-phone-root .lp-album-edit-form input,
+#st-little-phone-root .lp-album-edit-form textarea,
+#st-little-phone-root .lp-album-form input,
+#st-little-phone-root .lp-album-form select{
+ box-sizing:border-box;max-width:100%;width:100%;font:inherit;
+ padding:8px 10px;border:1px solid var(--lp-border);
+ border-radius:9px;color:var(--lp-navy);background:var(--lp-white);
+}
+#st-little-phone-root .lp-album-file-name{
+ padding:5px 8px;background:var(--lp-ice);border-radius:8px;
+ font-size:11px;overflow-wrap:anywhere;
+}
+#st-little-phone-root .lp-album-preview{
+ display:flex;gap:6px;flex-wrap:wrap;
+}
+#st-little-phone-root .lp-album-preview:empty{display:none;}
+#st-little-phone-root .lp-album-edit-form textarea{min-height:70px;}
+#st-little-phone-root .lp-album-form .lp-album-picker{
+ min-height:65px;
+}
+
+/* WeChat-style Moments camera + self-contained compose popup. */
+#st-little-phone-root .lp-discover-heading{align-items:center;gap:9px;}
+#st-little-phone-root .lp-discover-actions{display:flex;align-items:center;gap:8px;}
+#st-little-phone-root .lp-moment-history-link{
+ border:0;background:transparent;color:var(--lp-slate);
+ font-size:11px;padding:6px;cursor:pointer;
+}
+#st-little-phone-root .lp-moment-camera{
+ border:0;border-radius:10px;width:38px;height:38px;
+ display:grid;place-items:center;background:var(--lp-white);
+ color:var(--lp-navy);cursor:pointer;
+}
+#st-little-phone-root .lp-moment-camera svg{display:block;}
+#st-little-phone-root .lp-moments-overlay{
+ position:absolute;inset:0;background:rgba(21,34,53,.48);
+ z-index:75;
+}
+#st-little-phone-root .lp-moments-composer.lp-moments-modal{
+ position:absolute;left:12px;right:12px;top:50%;
+ transform:translateY(-50%);z-index:76;
+ max-height:80%;overflow-y:auto;
+ padding:15px;border:1px solid var(--lp-border);
+ box-shadow:0 15px 35px rgba(20,32,50,.24);
+}
+#st-little-phone-root .lp-moments-composer[hidden],
+#st-little-phone-root .lp-moments-overlay[hidden]{display:none!important;}
+#st-little-phone-root .lp-moments-composer .lp-moment-composer-close{
+ align-self:flex-end;font-size:23px;background:transparent;border:0;
+ color:var(--lp-navy);cursor:pointer;
+}
+#st-little-phone-root .lp-moment-history{
+ display:flex;flex-direction:column;gap:12px;
+}
+#st-little-phone-root .lp-moment-history>label{
+ display:flex;flex-direction:column;gap:6px;font-size:12px;
+}
+#st-little-phone-root .lp-moment-history :is(textarea,input,select){
+ width:100%;box-sizing:border-box;padding:10px;
+ border:1px solid var(--lp-border);border-radius:10px;
+ font:inherit;color:var(--lp-navy);background:var(--lp-white);
+}
+#st-little-phone-root .lp-moment-history>button,
+#st-little-phone-root .lp-moment-history-actions button{
+ border:1px solid var(--lp-border);border-radius:10px;padding:11px;
+ background:var(--lp-white);color:var(--lp-navy);
+ font:inherit;cursor:pointer;
+}
+#st-little-phone-root .lp-moment-history-item,
+#st-little-phone-root .lp-contact-moment-preview{
+ background:var(--lp-white);padding:12px;border-radius:12px;
+ border:1px solid var(--lp-border);margin:8px 0;
+}
+#st-little-phone-root .lp-moment-history-item p,
+#st-little-phone-root .lp-contact-moment-preview p{
+ font-size:13px;white-space:pre-wrap;line-height:1.5;
+}
+#st-little-phone-root .lp-contact-moment-preview img{max-width:100%;max-height:170px;border-radius:9px;}
+#st-little-phone-root .lp-moment-history-actions{display:flex;gap:8px;}
+#st-little-phone-root .lp-moment-history-actions button{padding:7px 11px;font-size:12px;}
+
+/* Me + contact navigation, signatures and unobtrusive disabled world gate. */
+#st-little-phone-root .lp-me-bio,
+#st-little-phone-root .lp-profile-bio-button{
+ border:0;background:transparent;padding:3px 0;
+ color:var(--lp-slate);font:inherit;font-size:12px;
+ text-align:left;cursor:pointer;white-space:normal;overflow-wrap:anywhere;
+}
+#st-little-phone-root .lp-social-nav-list{gap:9px;}
+#st-little-phone-root .lp-social-nav-list button{
+ display:flex;align-items:center;justify-content:space-between;gap:10px;
+ padding:14px;border:1px solid var(--lp-border);
+ border-radius:12px;background:var(--lp-white);
+ color:var(--lp-navy);font-size:13px;text-align:left;
+}
+#st-little-phone-root .lp-social-nav-list button span{
+ color:var(--lp-slate);font-size:11px;text-align:right;
+}
+#st-little-phone-root .lp-settings-nav:disabled{
+ opacity:.46!important;cursor:not-allowed!important;
+}
+#st-little-phone-root .lp-wb-compose-picker{
+ display:inline-flex;align-items:center;min-height:38px;padding:9px 12px;
+ border:1px solid var(--lp-border);border-radius:10px;
+ color:var(--lp-navy);font-size:12px;cursor:pointer;margin:8px 0;
+}
+#st-little-phone-root .lp-wb-compose-preview img{
+ max-width:100%;max-height:225px;object-fit:contain;border-radius:10px;display:block;margin:7px 0;
+}
