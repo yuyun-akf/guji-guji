@@ -139,7 +139,7 @@ let chatPhotoDrafts=[];
 let clockTicker=null;
 let clockTickBusy=false;
 const weiboState={scope:'',posts:[],trending:[],tab:'feed',loading:false,selectedId:'',generationId:0};
-const SCREENS = new Set(['lock', 'home', 'weibo', 'wallet', 'shopping', 'takeout', 'album', 'groups', 'sharePicker', 'shareViewer', 'chat', 'chatList', 'contacts', 'requests', 'profile', 'addNpc', 'discoverNpc', 'discover', 'me', 'chatOptions', 'chatRecords', 'contactManage', 'meProfile', 'meSettings', 'momentHistory', 'settings', 'diagnostics', 'calendar', 'theme', 'presetPicker', 'worldPicker']);
+const SCREENS = new Set(['lock', 'home', 'weibo', 'wallet', 'shopping', 'takeout', 'album', 'groups', 'sharePicker', 'shareViewer', 'chat', 'chatList', 'contacts', 'requests', 'profile', 'addNpc', 'discoverNpc', 'discover', 'me', 'chatOptions', 'chatRecords', 'contactManage', 'meProfile', 'meSettings', 'momentHistory', 'momentCompose', 'settings', 'diagnostics', 'calendar', 'theme', 'presetPicker', 'worldPicker']);
 
 function context() {
     try {
@@ -3903,7 +3903,7 @@ function setScreen(screen, options={}) {
     if (!SCREENS.has(screen) || !nodes) return;
     if(root?.classList.contains('lp-open')&&phoneLockSettings().enabled&&!securityUnlocked&&screen!=='lock')screen='lock';
     const previous = activeScreen;
-    if(previous!==screen){saveScreenScroll(previous);closePhoneThreadMenu();if(nodes?.momentComposer)nodes.momentComposer.hidden=true;const mask=root?.querySelector('.lp-moments-overlay');if(mask)mask.hidden=true;}
+    if(previous!==screen){saveScreenScroll(previous);closePhoneThreadMenu();}
     if(screen!=='profile'&&nodes.profileRoleDialog){nodes.profileRoleDialog.hidden=true;nodes.profileAvatarSheet.hidden=true;}
     if(screen==='groups'&&previous!=='groups')groupsReturnScreen=options.groupReturn||(['contacts','home','chatList'].includes(previous)?previous:'chatList');
     if(previous!==screen)phoneInteraction?.dismiss();
@@ -3915,9 +3915,10 @@ function setScreen(screen, options={}) {
     }
     nodes.back.hidden = screen === 'home'||screen==='lock';
     if(nodes.close)nodes.close.hidden=true;
-    const titles = {album:'相册',groups:'群聊',sharePicker:'分享动态',shareViewer:'动态详情',lock:'锁屏',home:'咕叽咕机',weibo:'群星',wallet:'吱付宝',shopping:'购物',takeout:'外卖',chat:'',chatList:'咕叽聊',contacts:'咕叽聊',discover:'咕叽聊',me:'咕叽聊',meProfile:'我的资料',meSettings:'咕叽聊设置',momentHistory:'历史朋友圈',chatRecords:'管理聊天记录',contactManage:'管理联系人资料',requests:'新的朋友',profile:'联系人资料',addNpc:'添加 NPC',discoverNpc:'发现故事人物',chatOptions:'聊天设置',settings:'设置',diagnostics:'运行日志',calendar:'日历',theme:'主题',presetPicker:'选择预设条目',worldPicker:'选择世界书条目' };
+    const titles = {album:'相册',groups:'群聊',sharePicker:'分享动态',shareViewer:'动态详情',lock:'锁屏',home:'咕叽咕机',weibo:'群星',wallet:'吱付宝',shopping:'购物',takeout:'外卖',chat:'',chatList:'咕叽聊',contacts:'咕叽聊',discover:'咕叽聊',me:'咕叽聊',meProfile:'我的资料',meSettings:'咕叽聊设置',momentHistory:'历史朋友圈',momentCompose:'发布朋友圈',chatRecords:'管理聊天记录',contactManage:'管理联系人资料',requests:'新的朋友',profile:'联系人资料',addNpc:'添加 NPC',discoverNpc:'发现故事人物',chatOptions:'聊天设置',settings:'设置',diagnostics:'运行日志',calendar:'日历',theme:'主题',presetPicker:'选择预设条目',worldPicker:'选择世界书条目' };
     nodes.title.textContent = screen === 'chat' ? contactDisplayName(context()) : titles[screen];
     nodes.chatMenu.hidden = screen !== 'chat';
+    if(nodes.albumOptions)nodes.albumOptions.hidden=screen!=='album';
     if(nodes.homeExit)nodes.homeExit.hidden=screen!=='home';
     if(nodes.lockExit)nodes.lockExit.hidden=screen!=='lock';
     if(screen==='discoverNpc')restoreSharedNpcPreview();
@@ -7382,6 +7383,7 @@ function makeUI() {
           <button type="button" class="lp-back" data-lp="back" aria-label="返回上一层" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
           <div class="lp-heading"><div class="lp-title" data-lp="title">咕叽咕机</div>
                <div class="lp-subtitle" data-lp="subtitle">故事中的小手机</div></div>
+          <button type="button" class="lp-header-menu lp-album-header-options" data-lp="albumOptions" aria-label="相册说明与设置" hidden>···</button>
           <button type="button" class="lp-header-menu" data-lp="chatMenu" aria-label="聊天设置" hidden>···</button>
           <button type="button" class="lp-close" data-lp="close" aria-label="关闭咕叽咕机">×</button>
         </header>
@@ -7518,7 +7520,7 @@ function makeUI() {
           <nav class="lp-tabbar" aria-label="咕叽聊导航">
             <button data-lp-open="chatList" type="button">消息</button>
             <button data-lp-open="contacts" type="button">通讯录</button>
-            <button data-lp-open="discover" type="button">发现</button>
+            <button data-lp-open="discover" type="button">朋友圈</button>
             <button data-lp-open="me" type="button">我</button>
           </nav>
         </section>
@@ -7534,7 +7536,7 @@ function makeUI() {
           <nav class="lp-tabbar" aria-label="咕叽聊导航">
             <button data-lp-open="chatList" type="button">消息</button>
             <button data-lp-open="contacts" type="button">通讯录</button>
-            <button data-lp-open="discover" type="button">发现</button>
+            <button data-lp-open="discover" type="button">朋友圈</button>
             <button data-lp-open="me" type="button">我</button>
           </nav>
         </section>
@@ -7558,7 +7560,7 @@ function makeUI() {
         </section>
         <section class="lp-screen lp-chatlist lp-social-screen" data-lp-screen="discover" aria-label="发现" hidden>
   <div class="lp-list-body lp-discover">
-    <div class="lp-discover-heading"><span>朋友圈</span><span class="lp-discover-actions"><button type="button" data-lp="momentHistoryOpen" class="lp-moment-history-link">历史朋友圈</button><button type="button" data-lp="momentCamera" class="lp-moment-camera" aria-label="发布朋友圈" title="发布朋友圈"><svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7.5h4l2-3h6l2 3h4v12H3z"/><circle cx="12" cy="13" r="3.2"/></svg></button></span></div>
+    <div class="lp-discover-heading"><span class="lp-discover-actions"><button type="button" data-lp="momentCamera" class="lp-moment-camera" aria-label="发布朋友圈" title="发布朋友圈"><svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7.5h4l2-3h6l2 3h4v12H3z"/><circle cx="12" cy="13" r="3.2"/></svg></button></span></div>
     <div class="lp-moment-cover-card">
       <label class="lp-moment-cover-background" title="更换朋友圈封面">
         <img data-lp="momentCoverImage" alt="朋友圈封面" />
@@ -7586,7 +7588,7 @@ function makeUI() {
   <nav class="lp-tabbar" aria-label="咕叽聊导航">
   <button data-lp-open="chatList" type="button">消息</button>
   <button data-lp-open="contacts" type="button">通讯录</button>
-  <button data-lp-open="discover" type="button">发现</button>
+  <button data-lp-open="discover" type="button">朋友圈</button>
   <button data-lp-open="me" type="button">我</button>
 </nav>
 </section>
@@ -7599,32 +7601,29 @@ function makeUI() {
         <span>更换</span>
         <input data-lp="myAvatarUpload" class="lp-me-avatar-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" />
       </label>
-      <div class="lp-me-profile"><strong data-lp="myIdentity">user</strong>
+      <div class="lp-me-profile"><button type="button" class="lp-me-name-edit" data-lp="myNameEdit" title="修改咕叽聊名字"><strong data-lp="myIdentity">user</strong> <span aria-hidden="true">✎</span></button>
         <button type="button" data-lp="myBioEdit" class="lp-me-bio" data-lp-bio="self"><span data-lp="myBio">编辑个性签名</span></button>
       </div>
     </div>
     <div data-lp="myAvatarStatus" class="lp-me-avatar-status" role="status" aria-live="polite"></div>
     <div class="lp-me-links lp-social-nav-list">
       <button type="button" data-lp-open="meProfile">▤ 资料 <span>当前 user 人设与个人资料　›</span></button>
-      <button type="button" data-lp-open="discover">◉ 朋友圈 <span>查看好友动态与发布朋友圈　›</span></button>
+      <button type="button" data-lp-open="momentHistory">◉ 历史朋友圈 <span>生成、补录和编辑　›</span></button>
       <button type="button" data-lp-open="meSettings">⚙ 设置 <span>自主活动、朋友圈与提醒　›</span></button>
-      <button type="button" data-lp-open="album">▧ 相册 <span>人物与世界共享图片资源库　›</span></button>
-      <button type="button" data-lp-open="theme">✿ 主题装扮 <span>壁纸、字体与图标　›</span></button>
-      <button type="button" data-lp-open="settings">☷ 系统设置 <span>API、世界书与世界版本　›</span></button>
+      
+      
+      
     </div>
   </div>
   <nav class="lp-tabbar" aria-label="咕叽聊导航">
   <button data-lp-open="chatList" type="button">消息</button>
   <button data-lp-open="contacts" type="button">通讯录</button>
-  <button data-lp-open="discover" type="button">发现</button>
+  <button data-lp-open="discover" type="button">朋友圈</button>
   <button data-lp-open="me" type="button">我</button>
 </nav>
 </section>
 <section class="lp-screen lp-chatlist" data-lp-screen="meProfile" aria-label="我的资料" hidden>
- <div class="lp-list-body lp-me-page"><h3>我的资料</h3>    <details class="lp-me-section">
-      <summary>个人设定 <span>查看当前 user 人设</span></summary>
-      <div data-lp="myPersona" class="lp-persona-description"></div>
-    </details>
+ <div class="lp-list-body lp-me-page lp-persona-page"><section class="lp-me-section lp-me-persona-full"><h3>个人设定</h3><div data-lp="myPersona" class="lp-persona-description"></div></section>
 
  </div>
 </section>
@@ -8212,10 +8211,10 @@ function mount() {
     nodes = Object.fromEntries(['title', 'subtitle', 'back', 'close', 'time',
         'homeTime','homeDate','homeScene','homePages','homeDots','homeSwipe','homeHotSearch','homeCharacter','homeLogCount','homeUnreadCount',
         'lockTime','lockDate','lockPin','lockRepeat','lockDots','lockKeypad','lockIntro','lockFeedback','lockAction','lockExit','homeExit','lockOldPin','lockNewPin','lockConfirmPin','lockChangePin','lockChangeFeedback',
-        'albumContent','groupsContent','shareTargets','sharePreview',
+        'albumContent','albumOptions','groupsContent','shareTargets','sharePreview',
         'weiboGenerate','weiboFeedback','weiboFeed','weiboHot','weiboNearby','weiboCompose','weiboMe','weiboDetail','weiboTabs','weiboComposeText','weiboPublish','weiboDetailBack','weiboRefreshBox',
         'desktopSortList','clockMode','clockRate','clockContinueClosed','clockCustomFields','clockSave','lockEnabled','lockSaveEnabled','notification','inlineNotification','calendarPrev','calendarNext','calendarHeading','calendarViews','calendarGrid','calendarSelected','calendarSummary','calendarSelectedTime','calendarStoryToday','calendarRealToday','calendarSaveTime','calendarExactSave',
-        'momentsPost', 'momentsText', 'momentsFeed', 'momentFeedback','momentsPreview','momentImageUpload','momentRemovePhoto','momentCamera','momentComposer','momentCoverImage','momentCoverUpload','momentCoverName','momentCoverAvatar','momentHistoryOpen','momentHistoryOwner','momentHistoryTime','momentHistoryText','momentHistoryPhoto','momentHistoryPhotoPreview','momentHistoryRemovePhoto','momentHistoryManual','momentHistoryInstructions','momentHistoryCount','momentHistoryGenerate','momentHistoryStatus','momentHistoryList','myBio','myBioEdit','profileBio','profileBioEdit','contactMomentList','myAvatarUpload','myAvatarFallback','myAvatarStatus','myIdentity', 'myAvatar', 'myPersona', 'messageBannerToggle','messageBannerStatus','autoMessagesMode','autoMessagesDays','autoMomentsMode','autoMomentsDays','relationAutoSync','phoneInPast','characterRequests','momentInteractions','autonomyStatus','autonomyFeedback','saveAutonomy','rescanRelations','testAutonomy', 'stickerUpload','stickerPackUpload', 'stickerStatus', 'stickerLibrary',
+        'momentsPost', 'momentsText', 'momentsFeed', 'momentFeedback','momentsPreview','momentImageUpload','momentRemovePhoto','momentCamera','momentComposer','momentCoverImage','momentCoverUpload','momentCoverName','momentCoverAvatar','momentHistoryOpen','momentHistoryOwner','momentHistoryTime','momentHistoryText','momentHistoryPhoto','momentHistoryPhotoPreview','momentHistoryRemovePhoto','momentHistoryManual','momentHistoryInstructions','momentHistoryCount','momentHistoryGenerate','momentHistoryStatus','momentHistoryList','myBio','myBioEdit','profileBio','profileBioEdit','contactMomentList','myAvatarUpload','myAvatarFallback','myAvatarStatus','myIdentity', 'myNameEdit', 'myAvatar', 'myPersona', 'messageBannerToggle','messageBannerStatus','autoMessagesMode','autoMessagesDays','autoMomentsMode','autoMomentsDays','relationAutoSync','phoneInPast','characterRequests','momentInteractions','autonomyStatus','autonomyFeedback','saveAutonomy','rescanRelations','testAutonomy', 'stickerUpload','stickerPackUpload', 'stickerStatus', 'stickerLibrary',
         'friendLabel', 'friendActions','profileAvatar','profileAvatarAction','profileAvatarSheet','profileChooseAvatar','profileAvatarCancel','profileRoleDialog','profileRoleOpen','profileRoleClose','profileRoleTitle','profileName','profileDescription','contactEvidence','contactExchange','contactLinks','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcAiScanButton','npcClearScanButton','npcScanState','npcCandidates','npcSaveCandidates','storyPeopleList','viewPrimaryContact','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','resetCharAvatar',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
@@ -8404,7 +8403,7 @@ function mount() {
         setScreen({
           wallet:'home',shopping:'home',takeout:'home',weibo:'home',album:'home',groups:groupsReturnScreen,sharePicker:'weibo',chat:'chatList',
           contacts:'chatList',discover:'chatList',me:'chatList',
-          profile:'contacts',contactManage:'chatOptions',chatRecords:'chatOptions',meProfile:'me',meSettings:'me',momentHistory:'discover',
+          profile:'contacts',contactManage:'chatOptions',chatRecords:'chatOptions',meProfile:'me',meSettings:'me',momentHistory:'me',momentCompose:'discover',
           requests:'contacts',addNpc:'contacts',
           discoverNpc:'addNpc',chatOptions:'chat',
           presetPicker:'settings',worldPicker:'settings'
