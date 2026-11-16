@@ -1267,7 +1267,7 @@ async function loadGroupsController(){
   groupsController=mod.createGroupsModule({context,getNodes:()=>nodes,readRootData,writeData,galleryPeople,
    isPhoneFriend,contactCharacter,phoneGenerate,stripModelReasoning,notifyInteraction,openSharedPost,encodeAvatarPhoto,
    refreshChatList:()=>{if(mounted&&nodes&&selectedCharacter(context()))renderChatLists(context(),contactCharacter(context()),readData(context()));},
-   galleryPhotosForMember:id=>photosForActor(id,'chat')});
+   galleryPhotosForMember:id=>photosForActor(id,'group')});
   return groupsController;
  }).catch(e=>{recordError('加载群聊',e);groupsLoadPromise=null;if(nodes?.groupsContent)nodes.groupsContent.textContent='群聊加载失败：'+e.message;return null;});
  return groupsLoadPromise;
@@ -4782,7 +4782,7 @@ async function tickAutonomousActivity(manualChannel='') {
         const contact=contactCharacter(ctx,id),data=structuredClone(readData(ctx,id));
         const system=await composePhonePrompt(ctx,contact,data);
         const stickerCatalog=stickerLibrary(ctx),suggestedStickers=chooseStickerCandidates(stickerCatalog,data);
-        const rolePhotos=photosForActor(id,'chat',ctx),publicPhotos=photosForActor(id,'public',ctx);
+        const rolePhotos=photosForActor(id,'chat',ctx),publicPhotos=photosForActor(id,'group',ctx);
         const plannedPost={authorId:id,author:contactDisplayName(ctx,id),text:''};
         const batchActors=channel==='moments'&&cfg.momentInteractions?momentBatchActors(ctx,plannedPost):[];
         let answer;
@@ -4795,7 +4795,7 @@ async function tickAutonomousActivity(manualChannel='') {
         }else{
             const writePostWithReactions=batchActors.length>0;
             answer=await generateWithTimeout(ctx,{
-                task:'autonomy',systemPrompt:system+'\n\n【角色朋友圈】写一条此角色愿意公开的朋友圈动态，不代替 user 发言，不虚构重大事件；不想发布只输出 [SKIP]。如有合适的本角色公开相册图片，可在朋友圈正文末尾添加 [[photo:照片ID]]，只能使用以下ID：'+publicPhotos.map(p=>p.id+'（'+(p.description||p.title||'照片')+'）').join('；')+'。'+
+                task:'autonomy',systemPrompt:system+'\n\n【角色朋友圈】写一条此角色愿意公开的朋友圈动态，不代替 user 发言，不虚构重大事件；不想发布只输出 [SKIP]。如有合适的本人日常或公开相册图片、以及相关世界素材，可在朋友圈正文末尾添加 [[photo:照片ID]]，只能使用以下ID：'+publicPhotos.map(p=>p.id+'（'+(p.description||p.title||'照片')+'）').join('；')+'。'+
                     (writePostWithReactions?'\n\n'+momentBatchTask(ctx,plannedPost,batchActors,{writePost:true}):'不超过120字。'),
                 prompt:[{role:'user',content:'【系统触发：朋友圈发布时机】请按角色性格自行决定。'}]
             },data);
