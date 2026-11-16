@@ -489,7 +489,7 @@ export function createAlbumModule(api){
    }
    const photo=ownerPhotos().find(p=>p.id===id);if(!photo)return false;
    if(type==='deleteFrom'&&world()&&state.folder==='表情包'){
-    const entries=ownerPhotos().filter(p=>photoFolder(p)==='表情包');
+    const entries=ownerPhotos().filter(p=>photoFolder(p)==='表情包'&&!!p.legacySticker===!!photo.legacySticker);
     const index=entries.findIndex(p=>p.id===id);
     if(index<0)return true;
     const count=entries.length-index;
