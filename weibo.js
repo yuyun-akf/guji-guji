@@ -1122,6 +1122,7 @@ export function createWeiboModule(api) {
    if(['home','discover','nearby','me'].includes(key))node.replaceChildren();
   });
   n.weiboDetail.hidden=!expanded;
+  n.weiboDetail.closest?.('[data-lp-screen="weibo"]')?.querySelectorAll?.('.lp-wb-history-modal')?.forEach(modal=>modal.remove());
   n.weiboDetail.replaceChildren();
   n.weiboDetailBack.hidden=true; // Fixed phone header is the only back control.
   n.weiboRefreshBox.hidden=expanded||!['home','discover','nearby'].includes(state.tab);
@@ -1465,21 +1466,24 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
    const found=byId(id);
    const owner=data().accounts.find(a=>a.id===state.adminHistoryAccount);
    if(!found||!owner||!accountMatches(found,owner))return;
-   state.historyEditingId=id;state.historyFormOpen=true;render();return;
+   state.historyEditingId=id;render();return;
   }
   if(type==='cancelHistoryEdit'){
-   state.historyEditingId='';state.historyFormOpen=true;render();return;
+   state.historyEditingId='';render();return;
   }
   if(type==='saveHistoryPost'){
    const owner=data().accounts.find(a=>a.id===id);
    if(!owner||state.adminHistoryAccount!==id)return;
-   const form=nodes()?.weiboDetail;
+   const form=state.historyEditingId?
+    nodes()?.weiboDetail?.closest?.('[data-lp-screen="weibo"]')?.querySelector('.lp-wb-history-modal'):
+    nodes()?.weiboDetail;
    const get=name=>form?.querySelector('[data-wb-history-field="'+name+'"]')?.value||'';
    const text=clean(get('text'),1000),time=get('time').trim();
    if(!text){feedback('请填写历史帖子正文');return;}
-   const story=Date.parse(root().storyTime||''),stamp=Date.parse(time);
-   if(time&&(!Number.isFinite(stamp)||(Number.isFinite(story)&&stamp>story))){
-    feedback('历史帖发布时间必须是有效的故事时间，且不能晚于当前剧情');return;
+   const story=storyMoment(root().storyTime);
+   const stamp=storyMoment(time);
+   if(!stamp?.hasClock||(story&&stamp.stamp>=story.stamp+(story.hasClock?0:86400000))){
+    feedback('请填写有效的剧情年月日时分，发布时间必须早于小手机当前剧情时间');return;
    }
    const rawLikes=get('likes').trim();
    if(rawLikes&&!/^\d+$/.test(rawLikes)){feedback('点赞数必须为非负整数');return;}
@@ -1498,8 +1502,9 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
    if(selected&&(!original||!accountMatches(original,owner)))return;
    const post={...(original||{}),id:original?.id||uid('post'),
     author:owner.name,authorId:owner.id,handle:owner.handle,avatar:owner.avatar,
-    category:original?.category||'历史公开动态',text,likes,comments,commentCount,
-    time:time||original?.time||'历史动态',zone:'world',actions:original?.actions||{},
+    category:original?.category&&original.category!=='历史公开动态'?original.category:'日常',
+    text,likes,comments,commentCount,
+    time:stamp.time,zone:'world',actions:original?.actions||{},
     manuallyCurated:true,backfilled:original?.backfilled??true};
    await mutate(q=>{
     const index=q.posts.findIndex(x=>x.id===post.id);
@@ -1512,8 +1517,9 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
    for(const feed of [state.posts.home,state.posts.nearby]){
     const i=feed.findIndex(x=>x.id===post.id);if(i>=0)feed[i]=post;
    }
-   state.historyEditingId='';state.historyFormOpen=false;
-   feedback(original?'历史帖子已更新':'已代该角色保存历史帖子');render();return;
+   state.historyEditingId='';
+   state.historyStatus=original?'公开帖子修改已保存':'已添加一条过去时间线的公开帖子';
+   feedback(state.historyStatus);render();return;
   }
   if(type==='deleteHistoryPost'){
    const post=byId(id),owner=data().accounts.find(a=>a.id===state.adminHistoryAccount);
@@ -1526,21 +1532,30 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
    });
    state.posts.home=state.posts.home.filter(x=>x.id!==id);
    state.posts.nearby=state.posts.nearby.filter(x=>x.id!==id);
-   state.historyEditingId='';state.historyFormOpen=false;
-   feedback('历史帖已删除');render();return;
+   state.historyEditingId='';
+   state.historyStatus='公开帖子已删除';
+   feedback(state.historyStatus);render();return;
   }
   if(type==='generateAccountHistory'){
    const account=data().accounts.find(a=>a.id===id);
-   if(!account||state.adminHistoryAccount!==id)return;
+   if(!account||state.adminHistoryAccount!==id||state.historyGenerating)return;
    const details=nodes()?.weiboDetail;
    const extra=clean(details?.querySelector('[data-wb-history-field="instructions"]')?.value,1400);
    const count=Math.max(1,Math.min(5,Number(details?.querySelector('[data-wb-history-field="count"]')?.value)||3));
+   state.historyInstructions=extra;state.historyCount=String(count);
    const session=scope(),scene=root().storyTime||'';
+   if(!storyMoment(scene)){
+    state.historyStatus='当前剧情没有可识别的年月日，请先确立小手机时间线再生成过往帖子';
+    feedback(state.historyStatus);render();return;
+   }
    const cardSetting=clean([api.accountSubjectContext?.(subjectOfAccount(account))||'',account.roleBrief||''].filter(Boolean).join('\n'),4500);
    const recent=accountHistory(account).slice(0,12).map(p=>clean(p.text,140)).join('；');
    const contextText=clean(api.storyContext?.()||'',1200);
    const range=historicalLikeRange(account.followers);
-   feedback('正在按人物设定及你的要求生成历史公开动态…');
+   state.historyGenerating=true;
+   state.historyStatus='正在按人物设定和剧情时间线生成 '+count+' 条过往公开帖子…';
+   feedback(state.historyStatus);
+   render(); // Show loading immediately without leaving and reopening this page.
    try{
     const prompt=[
      '角色账号：'+account.name+'；职业：'+savedProfession(account)+'；签名：'+account.bio,
@@ -1556,8 +1571,8 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
      account.publicFigure&&Number(account.followers)>=1000000?
        '已知账号为公众人物，互动量必须与 '+formatFollowers(account.followers)+' 相符。普通公开帖子点赞一般在 '+
         range.min+'～'+range.max+' 之间，可按话题热度浮动；不要生成几百赞零评论的量级。':'点赞数根据账号类型和受众规模合理变化，不要一律几百或几万。',
-     '必须只返回合法 JSON：{"posts":[{"text":"帖子正文","likes":10000,"commentCount":320,"daysAgo":1,"comments":[{"name":"评论者","text":"评论内容"},{"name":"另一位评论者","text":"另一条评论"}]}]}。',
-     'daysAgo 是距当前剧情日 1～60 天的整数；所有内容必须先于故事当前时间，不得输出 Markdown 或额外解释。'
+     '必须只返回合法 JSON：{"posts":[{"text":"帖子正文","publishedAt":"2026-11-15 18:30","likes":10000,"commentCount":320,"comments":[{"name":"评论者","text":"评论内容"},{"name":"另一位评论者","text":"另一条评论"}]}]}。',
+     'publishedAt 是这条帖子的完整剧情年月日和24小时制时分（YYYY-MM-DD HH:mm），年份及日期必须根据上面的当前故事时间生成，严格早于故事当前时间。多条帖子的发布时间应有合理间隔，不是手机现实时间。也接受 daysAgo 正整数作为备用值。不得输出 Markdown 或额外解释。'
     ].join('\n');
     const raw=await api.phoneGenerate(context(),{
      task:'weibo',maxTokens:Math.min(7000,1400+count*900),
@@ -1566,7 +1581,7 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
     },api.readData(context()));
     if(scope()!==session)return;
     const parsed=parse(raw),rows=Array.isArray(parsed.posts)?parsed.posts.slice(0,count):[];
-    const stamp=Date.parse(scene),valid=[];
+    const valid=[];
     for(let i=0;i<rows.length;i++){
      const p=rows[i],text=clean(p?.text,1000);
      if(!text)continue;
@@ -1580,12 +1595,11 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
      const likes=Number.isSafeInteger(sourceLikes)?
       Math.min(range.max,Math.max(range.min,sourceLikes)):
       Math.min(range.max,Math.max(range.min,Math.round(Number(account.followers||0)*.002)));
-     const ago=Number.isSafeInteger(Number(p.daysAgo))?
-      Math.max(1,Math.min(60,Number(p.daysAgo))):i+1;
-     const time=Number.isFinite(stamp)?new Date(stamp-ago*86400000).toISOString().slice(0,16):'历史动态';
+     const time=historyMomentFor(p.publishedAt,scene,p.daysAgo,i);
+     if(!time)continue;
      const commentCount=Math.max(comments.length,countValue(p.commentCount)??Math.round(likes*(.015+stableSeed(text)*.026)));
      valid.push({id:uid('post'),author:account.name,authorId:account.id,
-      handle:account.handle,avatar:account.avatar,category:'历史公开动态',
+      handle:account.handle,avatar:account.avatar,category:clean(p.category||'日常',24),
       text,likes,comments,commentCount,time,zone:'world',actions:{},backfilled:true});
     }
     if(!valid.length)throw Error('模型没有返回至少两条评论的有效历史帖；未写入任何帖子。可补充要求后重新生成');
@@ -1593,10 +1607,17 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
      if(!q.accounts.some(a=>a.id===id))return;
      q.posts.push(...valid);q.posts=q.posts.slice(-300);
     });
-    state.historyEditingId='';state.historyFormOpen=false;
-    feedback('已保存 '+valid.length+' 条符合评论要求的历史帖'+(valid.length<rows.length?'；忽略了缺少评论的结果':''));
-   }catch(e){feedback('生成历史动态失败：'+String(e.message||e));}
-   render();return;
+    state.historyEditingId='';
+    state.historyStatus='已生成并保存 '+valid.length+' 条过往公开帖子'+(valid.length<rows.length?'；忽略了缺少必要评论的结果':'');
+    feedback(state.historyStatus);
+   }catch(e){
+    state.historyStatus='生成公开帖子失败：'+String(e.message||e);
+    feedback(state.historyStatus);
+   }finally{
+    state.historyGenerating=false;
+    if(scope()===session)render();
+   }
+   return;
   }
   if(type==='newAccount'||type==='editAccount'){
    state.editing=type==='newAccount'?'new':id;state.avatarDraft='';state.subview='accountEditor';
@@ -1798,6 +1819,10 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
   return true;
  }
  function handleKeydown(event){
+  if(event.key==='Escape'&&state.historyEditingId){
+   void action('cancelHistoryEdit',state.adminHistoryAccount);
+   return true;
+  }
   if(event.key!=='Enter'||!event.target?.matches?.('[data-wb-comment-for]'))return false;
   event.preventDefault();
   void action('sendComment',event.target.dataset.wbCommentFor).catch(e=>feedback('评论失败：'+String(e.message||e)));
