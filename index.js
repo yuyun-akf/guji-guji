@@ -4607,6 +4607,22 @@ function currentPersona(ctx) {
     return { name: String(ctx?.name1 || 'user'), description: String(settings.persona_description || ''),
         lorebook: String(settings.persona_description_lorebook || '').trim(), avatar: avatar || '/img/user-default.png' };
 }
+function phoneUserDisplayName(ctx=context()){
+ const persona=currentPersona(ctx),key=String(ctx?.powerUserSettings?.persona||persona.name);
+ return String(ctx?.extensionSettings?.[SETTINGS_KEY]?.phoneUserNames?.[key]||'').trim()||persona.name;
+}
+function editPhoneUserName(){
+ const ctx=context(),persona=currentPersona(ctx),key=String(ctx?.powerUserSettings?.persona||persona.name);
+ const next=window.prompt('修改咕叽聊显示名称（留空恢复当前 user 名字）',phoneUserDisplayName(ctx));
+ if(next===null)return;
+ try{
+  if(!ctx?.extensionSettings||typeof ctx.saveSettingsDebounced!=='function')throw Error('酒馆设置不可写入');
+  const settings=ctx.extensionSettings[SETTINGS_KEY]||={};
+  settings.phoneUserNames={...(settings.phoneUserNames||{}),[key]:next.trim().slice(0,30)};
+  ctx.saveSettingsDebounced();renderPersona(ctx);renderMomentCover(ctx);
+  notifyInteraction('咕叽聊名字已保存','success');
+ }catch(error){notifyInteraction('修改名字失败：'+String(error.message||error),'error');}
+}
 function personaNames(ctx) {
     const persona = currentPersona(ctx);
     const names = new Set([persona.name, 'user', '玩家', '用户', '{{user}}']);
@@ -4659,10 +4675,10 @@ function renderContactMoments(ctx=context()){
 }
 function renderPersona(ctx) {
     const persona=currentPersona(ctx);
-    nodes.myIdentity.textContent=persona.name;
+    nodes.myIdentity.textContent=phoneUserDisplayName(ctx);
     if(nodes.myBio)nodes.myBio.textContent=phoneBio('user',ctx)||'编辑个性签名';
     nodes.myPersona.textContent=resolvePhonePlaceholders(persona.description||'尚未填写人设',ctx,contactCharacter(ctx));
-    nodes.myAvatarFallback.textContent=(persona.name||'U').slice(0,1);
+    nodes.myAvatarFallback.textContent=(phoneUserDisplayName(ctx)||'U').slice(0,1);
     const image=nodes.myAvatar;
     const source=allowedAvatarSrc(readRootData(ctx).avatars?.user)||persona.avatar;
     if(image.dataset.currentSource===source)return;
@@ -4978,7 +4994,7 @@ function renderMomentCover(ctx=context()){
  const image=nodes.momentCoverImage;
  image.src=typeof cover==='string'&&ALBUM_IMAGE_RE.test(cover)?cover:'';
  image.hidden=!cover;
- nodes.momentCoverName.textContent=currentPersona(ctx).name;
+ nodes.momentCoverName.textContent=phoneUserDisplayName(ctx);
  nodes.momentCoverAvatar.src=avatarSources(ctx,readRootData(ctx)).user;
 }
 async function uploadMomentCover(file){
@@ -5022,7 +5038,7 @@ function renderMoments(ctx) {
         const authorId=momentAuthorId(ctx,post);
         if(authorId&&authorId!=='user'&&friendshipState(readData(ctx,authorId))!=='friends')continue;
         const item=document.createElement('div');item.className='lp-moment';
-        const author=document.createElement('strong');author.textContent=post.author||ctx?.name1||'user';
+        const author=document.createElement('strong');author.textContent=authorId==='user'?phoneUserDisplayName(ctx):(post.author||ctx?.name1||'user');
         const body=document.createElement('p');body.textContent=resolvePhonePlaceholders(post.text||'',ctx,contactCharacter(ctx));
         const img=typeof post.image==='string'&&/^data:image\/(png|jpeg|webp);base64,/.test(post.image)?document.createElement('img'):null;
         if(img){img.className='lp-moment-photo';img.src=post.image;img.alt='朋友圈照片';}
@@ -5303,7 +5319,7 @@ async function manualHistoricMoment(){
  if(!text&&!momentHistoryPhotoDraft)return setStatus('请填写历史朋友圈正文或添加配图','error');
  if(!historicTime(time,0)||Date.parse(time)>=Date.parse(readRootData(ctx).storyTime))
   return setStatus('历史朋友圈发布时间必须早于当前剧情','error');
- const author=id==='user'?currentPersona(ctx).name:contactDisplayName(ctx,id);
+ const author=id==='user'?phoneUserDisplayName(ctx):contactDisplayName(ctx,id);
  const added=await editMoments(ctx,data=>{
   data.moments=Array.isArray(data.moments)?data.moments:[];
   data.moments.push({id:'moment-'+Date.now()+'-'+Math.random().toString(36).slice(2,8),
@@ -5378,7 +5394,7 @@ async function postMoment() {
     const data=structuredClone(readRootData(ctx));
     data.moments=Array.isArray(data.moments)?data.moments:[];
     data.moments.push({id:'moment-'+Date.now()+'-'+Math.random().toString(36).slice(2,8),
-        authorId:MOMENT_USER_ID,author:ctx?.name1||'user',text:value.slice(0,1000),image:momentImageDraft||'',storyTime:data.storyTime,createdAt:new Date().toISOString()});
+        authorId:MOMENT_USER_ID,author:phoneUserDisplayName(ctx),text:value.slice(0,1000),image:momentImageDraft||'',storyTime:data.storyTime,createdAt:new Date().toISOString()});
     data.moments=data.moments.slice(-100);
     try {
         await writeData(ctx,{...data,__contactId:PRIMARY_CONTACT_ID});
@@ -8373,6 +8389,7 @@ function mount() {
       if(b)void changeHistoricMoment(b.dataset.momentHistoryAction,b.dataset.momentHistoryId);
     });
     nodes.myBioEdit.addEventListener('click',()=>editPhoneBio('user'));
+    nodes.myNameEdit.addEventListener('click',editPhoneUserName);
     nodes.profileBioEdit.addEventListener('click',()=>editPhoneBio(activeContactId));
     nodes.momentImageUpload.addEventListener('change',event=>{void importMomentPhoto(event.target.files?.[0]);event.target.value='';});
     nodes.momentRemovePhoto.addEventListener('click',()=>{momentImageDraft='';nodes.momentsPreview.replaceChildren();});
