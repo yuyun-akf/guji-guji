@@ -1,6 +1,6 @@
 /* 群星 · character-card accounts + per-story persistent generated feeds and interactions. */
 export function createWeiboModule(api) {
- const state={scope:'',tab:'home',detail:'',topic:null,profileAccount:'',adminHistoryAccount:'',historyEditingId:'',historyFormOpen:false,searchQuery:'',sharingId:'',subview:'',posts:{home:[],nearby:[]},trends:[],nearbyTrends:[],loading:false,hotLoading:false,refreshResult:{},attempted:{},token:0,sessionId:0,headline:'',hotBundles:{},queuedNearby:false,confirming:false,editing:'',avatarDraft:'',avatarOwnerDraft:'',candidates:[],scanLoading:false,scanMessage:''};
+ const state={scope:'',tab:'home',detail:'',topic:null,profileAccount:'',adminHistoryAccount:'',historyEditingId:'',historyFormOpen:false,historyGenerating:false,historyStatus:'',historyInstructions:'',historyCount:'3',searchQuery:'',sharingId:'',subview:'',posts:{home:[],nearby:[]},trends:[],nearbyTrends:[],loading:false,hotLoading:false,refreshResult:{},attempted:{},token:0,sessionId:0,headline:'',hotBundles:{},queuedNearby:false,confirming:false,editing:'',avatarDraft:'',avatarOwnerDraft:'',candidates:[],scanLoading:false,scanMessage:''};
  let writes=Promise.resolve(), autoBusy=false,closeHotConfirmation=null;
  const commentBusy=new Set(),commentNotices=new Map();
  const scrollViews=new Map();let renderedView='',renderedScope='';
@@ -197,7 +197,7 @@ export function createWeiboModule(api) {
   // An explicitly saved empty role directory means previously deleted accounts
   // must not be resurrected by an older story chat.
   api.ensureSharedAccounts?.();
-  state.scope=next;state.tab='home';state.detail='';state.topic=null;state.profileAccount='';state.adminHistoryAccount='';state.historyEditingId='';state.historyFormOpen=false;state.searchQuery='';state.sharingId='';state.subview='';
+  state.scope=next;state.tab='home';state.detail='';state.topic=null;state.profileAccount='';state.adminHistoryAccount='';state.historyEditingId='';state.historyFormOpen=false;state.historyGenerating=false;state.historyStatus='';state.historyInstructions='';state.historyCount='3';state.searchQuery='';state.sharingId='';state.subview='';
   state.candidates=[];state.scanCacheSignature='';state.scanMessage='';state.scanLoading=false;
   const stored=data().generated;
   const feeds=stored?.feeds||{};
@@ -222,7 +222,7 @@ export function createWeiboModule(api) {
   // Closing the virtual phone must NEVER erase generated posts or hot topics.
   // In-flight requests are allowed to finish and save to the same story chat.
   closeHotConfirmation?.(false);
-  state.detail='';state.topic=null;state.profileAccount='';state.historyEditingId='';state.historyFormOpen=false;state.sharingId='';state.subview='';state.tab='home';
+  state.detail='';state.topic=null;state.profileAccount='';state.historyEditingId='';state.historyFormOpen=false;state.historyStatus='';state.sharingId='';state.subview='';state.tab='home';
  }
  async function persistGenerated(kind,extra={}){
   const session=scope();
@@ -609,14 +609,8 @@ export function createWeiboModule(api) {
   if(n>=1000000)return {min:Math.max(1000,Math.floor(n*.0005)),max:Math.max(100000,Math.floor(n*.06))};
   return {min:0,max:Math.max(30,Math.floor(n*.5))};
  };
- function renderHistoryEditor(container,account,history){
-  const record=history.find(x=>x.id===state.historyEditingId);
-  const panel=el('details','lp-wb-history-editor');
-  panel.open=Boolean(state.historyFormOpen||state.historyEditingId);
-  panel.append(el('summary','','＋ 历史帖管理 · 代发／修改／按要求生成'));
-  panel.append(el('small','lp-wb-history-hint',
-   '仅影响当前剧情存档中的群星资料；手动填写不会调用模型，AI 生成需主动点击。'));
-  const form=el('div','lp-wb-history-form');
+
+ function historyEditorFields(form,record){
   const field=(name,title,value='',type='text')=>{
    const label=el('label','lp-wb-history-field');
    label.append(el('span','',title));
@@ -627,41 +621,87 @@ export function createWeiboModule(api) {
   };
   const base=storyMoment(root().storyTime);
   const fallback=base?historyMomentFor('',base.time,1,0).replace(' ','T'):'';
-  field('time','发布时间（故事时间）',(storyMoment(record?.time)?.time.replace(' ','T')||fallback).slice(0,16),'datetime-local');
+  const moment=storyMoment(record?.time);
+  field('time','发布时间（剧情年月日时分）',(moment?.time.replace(' ','T')||fallback).slice(0,16),'datetime-local');
   field('text','帖子正文（以该角色账号发布）',record?.text||'','textarea');
   field('likes','点赞数（留空自动估算）',record?.likes??'','number');
   field('commentCount','评论总数（留空自动估算）',record?.commentCount??'','number');
   field('comments','评论（每行一条，例如 粉丝甲：内容）',commentsToLines(record?.comments),'textarea');
+ }
+ function renderHistoryEditor(container,account){
+  const panel=el('details','lp-wb-history-editor');
+  panel.open=Boolean(state.historyFormOpen);
+  panel.append(el('summary','','＋ 发布过往动态／按要求生成'));
+  panel.append(el('small','lp-wb-history-hint',
+   '以当前剧情时间线为准；手动填写不调用模型，AI 生成必须主动点击。'));
+  const form=el('div','lp-wb-history-form');
+  historyEditorFields(form,null);
   const row=el('div','lp-wb-history-actions');
-  row.append(control(record?'保存历史帖修改':'以该角色身份添加历史帖',
-   'saveHistoryPost',account.id));
-  if(record)row.append(control('取消编辑','cancelHistoryEdit',account.id),
-   control('删除这条历史帖','deleteHistoryPost',record.id));
+  row.append(control('手动添加过往公开帖子','saveHistoryPost',account.id));
   form.append(row);
   const promptLabel=el('label','lp-wb-history-field');
   promptLabel.append(el('span','','AI 生成额外要求（可选）'));
   const requirements=document.createElement('textarea');requirements.dataset.wbHistoryField='instructions';
   requirements.placeholder='例如：三条剧组日常，语气符合角色卡，不写恋爱内容；评论以粉丝为主';
+  requirements.value=state.historyInstructions||'';
   promptLabel.append(requirements);form.append(promptLabel);
   const countLabel=el('label','lp-wb-history-field');
   countLabel.append(el('span','','一次生成几条'));
   const select=document.createElement('select');select.dataset.wbHistoryField='count';
-  for(const n of [1,3,5]){const option=document.createElement('option');option.value=n;option.textContent=n+' 条';select.append(option);}
-  select.value='3';countLabel.append(select);form.append(countLabel);
-  form.append(control('按上述要求生成历史帖（调用模型）','generateAccountHistory',account.id));
-  panel.append(form);container.append(panel);
+  for(const n of [1,3,5]){
+   const option=document.createElement('option');option.value=String(n);option.textContent=n+' 条';
+   select.append(option);
+  }
+  select.value=state.historyCount||'3';countLabel.append(select);form.append(countLabel);
+  const generate=control(state.historyGenerating?'正在生成公开帖子…':'按上述要求生成过往公开帖子（调用模型）','generateAccountHistory',account.id);
+  generate.disabled=state.historyGenerating;generate.setAttribute('aria-busy',String(state.historyGenerating));
+  form.append(generate);panel.append(form);container.append(panel);
+ }
+ function renderHistoryEditModal(account,history){
+  const post=history.find(p=>p.id===state.historyEditingId);
+  if(!post)return;
+  const screen=nodes()?.weiboDetail?.closest?.('[data-lp-screen="weibo"]');
+  if(!screen)return;
+  const overlay=el('div','lp-wb-history-modal');
+  overlay.setAttribute('role','presentation');
+  const dialog=el('section','lp-wb-history-dialog');
+  dialog.setAttribute('role','dialog');dialog.setAttribute('aria-modal','true');
+  dialog.setAttribute('aria-label','编辑公开帖子');
+  const bar=el('div','lp-wb-history-dialog-bar');
+  bar.append(el('strong','','编辑公开帖子 · '+postTimestamp(post)));
+  const close=control('×','cancelHistoryEdit',account.id);
+  close.classList.add('lp-wb-history-dialog-close');
+  close.setAttribute('aria-label','关闭编辑窗口');bar.append(close);
+  dialog.append(bar);
+  const form=el('div','lp-wb-history-form lp-wb-history-dialog-form');
+  historyEditorFields(form,post);
+  const buttons=el('div','lp-wb-history-actions');
+  buttons.append(control('保存修改','saveHistoryPost',account.id));
+  buttons.append(control('取消','cancelHistoryEdit',account.id));
+  buttons.append(control('删除这条公开帖子','deleteHistoryPost',post.id));
+  form.append(buttons);dialog.append(form);overlay.append(dialog);
+  overlay.addEventListener('click',event=>{
+   if(event.target===overlay)void action('cancelHistoryEdit',account.id);
+  });
+  screen.append(overlay);
  }
  function renderAccountHistoryManager(container){
   const account=data().accounts.find(a=>a.id===state.adminHistoryAccount);
   if(!account){container.append(el('p','lp-wb-empty','该角色账号无法管理'));return;}
   const history=accountHistory(account);
-  container.append(heading(account.name+' · 历史帖管理','仅当前故事存档 · 可代发／修改／按要求生成'));
-  renderHistoryEditor(container,account,history);
-  container.append(heading('已保存的公开帖子','点击编辑后在上方修改，其他入口只允许浏览'));
-  for(const post of history.slice(0,80)){
-   container.append(card(post,false),control('编辑此条历史帖','editHistoryPost',post.id));
+  container.append(heading(account.name+' · 过往公开帖管理','仅当前剧情存档 · 可代发、修改及按要求生成'));
+  if(state.historyStatus){
+   const status=el('div','lp-wb-history-status',state.historyStatus);
+   status.setAttribute('role','status');status.setAttribute('aria-live','polite');
+   container.append(status);
   }
-  if(!history.length)container.append(el('p','lp-wb-empty','尚无历史公开动态，可在上方代发或生成。'));
+  renderHistoryEditor(container,account);
+  container.append(heading('已保存的公开帖子','点击编辑直接打开窗口，不需要上下寻找修改表单'));
+  for(const post of history.slice(0,80)){
+   container.append(card(post,false),control('编辑这条公开帖子','editHistoryPost',post.id));
+  }
+  if(!history.length)container.append(el('p','lp-wb-empty','暂无已保存的公开帖子。'));
+  if(state.historyEditingId)renderHistoryEditModal(account,history);
  }
  function renderAccountProfile(container){
   const p=state.profileAccount;
