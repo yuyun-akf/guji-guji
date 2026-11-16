@@ -5282,58 +5282,63 @@ async function scanNpcSources(ctx,extraWorld='',mode='rules') {
     const usableSources=sources.filter(source=>!(source.profileEntry&&(
         /文风|写作|叙事|排版|格式|提示词|系统指令|输出规则|示例/.test(source.title)||
         /文风要求|写作风格|写作要求|叙事规则|输出格式|扮演规则/.test(source.text.slice(0,300)))));
-    if(mode==='ai'){
-        const pieces=[];let used=0;
-        for(const source of usableSources){
-            const segment=('[资料来源] '+source.name+'\n[关键词] '+(source.keys||[]).join('、')+'\n'+source.text.slice(0,1350)).slice(0,1600);
-            if(used+segment.length>23000)break;
-            pieces.push(segment);used+=segment.length;
-        }
-        if(!pieces.length)throw Error('没有可供 AI 识别的人物资料');
-        const response=await phoneGenerate(ctx,{
-            task:'default',maxTokens:5200,
-            systemPrompt:'你是小说世界书的人物档案整理器。只识别输入资料明确存在的具名人物，不把职业、关系称谓、普通词语当成人名。不得创造人物、身份、经历、关系、账号、粉丝数量或未提供的事实。仅返回严格 JSON，不使用 Markdown。输出格式：{"people":[{"name":"真实姓名","relation":"与当前角色或user的明确关系，未知填空","description":"从原文提取的简短人物档案，保留姓名、身份、性格、经历、关系等已证实信息","source":"对应资料来源"}]}。同名合并。不要输出当前主角本人；没有姓名的人不输出。最多45人。',
-            prompt:'当前主角：'+getCharacterName(char)+'\n只根据下列资料检索具名人物。\n'+pieces.join('\n\n')
-        },readRootData(ctx));
-        const output=stripModelReasoning(response);
-        const start=output.indexOf('{'),end=output.lastIndexOf('}');
-        if(start<0||end<=start)throw Error('AI 未返回有效 JSON 人物名单');
-        let decoded;
-        try{decoded=JSON.parse(output.slice(start,end+1));}catch{throw Error('AI 返回的 JSON 无法解析，请重试或使用规则检索');}
-        const raw=Array.isArray(decoded?.people)?decoded.people:[];
-        const evidence=usableSources.map(s=>s.text+'\n'+(s.keys||[]).join('、')).join('\n');
-        const aiCandidates=raw.slice(0,70).flatMap(item=>{
-            const name=cleanNpcName(item?.name);
-            if(!name||name===getCharacterName(char)||selfNames.has(name)||!evidence.includes(name))return [];
-            const linked=usableSources.find(s=>s.text.includes(name)||(s.keys||[]).includes(name));
-            const description=String(item?.description||'').trim().slice(0,3500)||
-                String(linked?.content||'').slice(0,3500);
-            if(!description)return [];
-            return [{name,relation:String(item?.relation||'').slice(0,180),description,
-                source:String(linked?.name||'AI 检索').slice(0,180),confidence:'AI 语义检索'}];
-        });
-        return {candidates:mergeNpcCandidates(aiCandidates,{contacts:[]},getCharacterName(char)),
-            scanned:sources.length,worlds:loaded,failures,aiSources:pieces.length,aiTruncated:pieces.length<usableSources.length};
+    // Validate identities BEFORE ranking, rather than filling the 45 slots with
+    // surname-prefixed keywords, aliases or abstract descriptions.
+    const extracted=[];
+    for(const source of usableSources){
+        extracted.push(...npcEntryHeaderCandidates(source,getCharacterName(char)));
+        extracted.push(...extractNpcCandidatesFromText(source.text,source.name,getCharacterName(char)));
     }
-    const candidates=[];
-    for(const source of sources){
-        if(source.profileEntry && (/文风|写作|叙事|排版|格式|提示词|系统指令|输出规则|示例/.test(source.title) || /文风要求|写作风格|写作要求|叙事规则|输出格式|扮演规则/.test(source.text.slice(0,300))))continue;
-        const parsed=[...npcEntryHeaderCandidates(source,getCharacterName(char)),...extractNpcCandidatesFromText(source.text,source.name,getCharacterName(char))];
-        const titleName=source.profileEntry ? cleanNpcName(source.title) : '';
-        const titleLooksLikeBio=titleName && !selfNames.has(titleName) && titleName!==getCharacterName(char) && source.text.slice(source.title.length).includes(titleName) &&
-            /(?:姓名|年龄|职业|身份|性格|外貌|长相|个人经历|人物背景|画家|导演|教授|助理|室友|同学|朋友|老师)/.test(source.text.slice(0,900));
-        if(titleLooksLikeBio){
-            if(!parsed.some(x=>x.name===titleName))parsed.unshift({
-                name:titleName,relation:'',description:source.text.slice(0,3500),
-                source:source.name,confidence:'人物档案标题'
-            });
-            else for(const candidate of parsed){
-                if(candidate.name===titleName)candidate.description=source.text.slice(0,3500);
-            }
-        }
-        candidates.push(...parsed);
+    const verified=mergeNpcCandidates(extracted.filter(c=>!selfNames.has(c.name)),
+        {contacts:[]},getCharacterName(char));
+    if(mode!=='ai')return {candidates:verified,scanned:sources.length,worlds:loaded,failures};
+    // Full character profiles must be sent first. Formerly later NPC dossiers
+    // were completely omitted after low-value background entries exhausted
+    // the single-request character budget.
+    const ordered=usableSources.slice().sort((a,b)=>{
+        const priority=item=>npcExplicitNames(item.content).length?100:
+            /(?:^|[｜|])NPC[｜|]/i.test(item.title)?90:
+            item.profileEntry&&/(?:室友|同学|人物|关系)/.test(item.title)?50:0;
+        return priority(b)-priority(a);
+    });
+    const pieces=[];let used=0;
+    for(const source of ordered){
+        const segment=('[资料来源] '+source.name+'\n'+
+            '[关键词（仅供关联别名，不构成新人物）] '+(source.keys||[]).join('、')+'\n'+
+            source.text.slice(0,1450)).slice(0,1700);
+        if(used+segment.length>23000)continue;
+        pieces.push(segment);used+=segment.length;
     }
-    return {candidates:mergeNpcCandidates(candidates.filter(c=>!selfNames.has(c.name)),{contacts:[]},getCharacterName(char)),scanned:sources.length,worlds:loaded,failures};
+    if(!pieces.length)throw Error('没有可供 AI 识别的人物资料');
+    const response=await phoneGenerate(ctx,{
+        task:'default',maxTokens:5200,
+        systemPrompt:'你是虚构世界书的具名人物档案整理器。明确区分真实姓名、昵称、群体、机构、公众标签、恋爱/亲密偏好、XP、叙事规则。昵称只是别名，不可另建角色。只能根据给定资料确认人物，不得补造姓名、关系、账号或粉丝数。优先读取“姓名：”字段，多个称呼同属一人时只输出姓名。严格输出 JSON：{"people":[{"name":"姓名","relation":"与主角或user的明确关系，未知留空","description":"基于原文的简要人物设定"}]}。最多45人，不写当前主角本人，不使用 Markdown。',
+        prompt:'当前主角：'+getCharacterName(char)+'\n核对下列世界书中的具名人物。别把触发关键词当作人物。\n'+pieces.join('\n\n')
+    },readRootData(ctx));
+    const output=stripModelReasoning(response);
+    const first=output.indexOf('{'),last=output.lastIndexOf('}');
+    if(first<0||last<=first)throw Error('AI 未返回有效 JSON 人物名单');
+    let decoded;
+    try{decoded=JSON.parse(output.slice(first,last+1));}
+    catch{throw Error('AI 返回的 JSON 无法解析，请重试或使用规则检索');}
+    const raw=Array.isArray(decoded?.people)?decoded.people:[];
+    const verifiedNames=new Map(verified.map(c=>[c.name,c]));
+    const aiCandidates=raw.slice(0,70).flatMap(item=>{
+        const name=cleanNpcName(item?.name);
+        const established=verifiedNames.get(name);
+        if(!name||name===getCharacterName(char)||selfNames.has(name)||!established)return [];
+        const profile=usableSources.find(source=>source.profileEntry&&npcExplicitNames(source.content).includes(name));
+        // Preserve original full dossiers rather than replacing them with
+        // possibly invented model paraphrases.
+        const description=String(profile?.content||established.description||'').slice(0,3500);
+        if(!description)return [];
+        return [{name,relation:established.relation||String(item?.relation||'').slice(0,180),
+            description,source:profile?.name||established.source,
+            confidence:profile?'姓名字段':'AI 复核具名线索'}];
+    });
+    return {candidates:mergeNpcCandidates([...aiCandidates,...verified],{contacts:[]},getCharacterName(char)),
+        scanned:sources.length,worlds:loaded,failures,aiSources:pieces.length,
+        aiTruncated:pieces.length<usableSources.length};
 }
 function readSharedNpcScan(ctx=context()){
  const key=qunxingAccountCardKey(ctx);
