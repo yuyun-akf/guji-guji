@@ -140,7 +140,7 @@ let chatPhotoDrafts=[];
 let clockTicker=null;
 let clockTickBusy=false;
 const weiboState={scope:'',posts:[],trending:[],tab:'feed',loading:false,selectedId:'',generationId:0};
-const SCREENS = new Set(['lock', 'home', 'weibo', 'wallet', 'shopping', 'takeout', 'album', 'groups', 'sharePicker', 'shareViewer', 'chat', 'chatList', 'contacts', 'requests', 'profile', 'addNpc', 'discoverNpc', 'discover', 'me', 'chatOptions', 'chatRecords', 'contactManage', 'meProfile', 'meSettings', 'momentHistory', 'momentCompose', 'settings', 'diagnostics', 'calendar', 'theme', 'presetPicker', 'worldPicker']);
+const SCREENS = new Set(['profileRole','lock', 'home', 'weibo', 'wallet', 'shopping', 'takeout', 'album', 'groups', 'sharePicker', 'shareViewer', 'chat', 'chatList', 'contacts', 'requests', 'profile', 'addNpc', 'discoverNpc', 'discover', 'me', 'chatOptions', 'chatRecords', 'contactManage', 'meProfile', 'meSettings', 'momentHistory', 'momentCompose', 'settings', 'diagnostics', 'calendar', 'theme', 'presetPicker', 'worldPicker']);
 
 function context() {
     try {
@@ -3918,7 +3918,7 @@ function setScreen(screen, options={}) {
     const previous = activeScreen;
     if(screen==='profile'&&previous!=='profile')profileReturnScreen=['chatOptions','contacts','contactManage','chat','addNpc'].includes(previous)?previous:'contacts';
     if(previous!==screen){saveScreenScroll(previous);closePhoneThreadMenu();}
-    if(screen!=='profile'&&nodes.profileRoleDialog){nodes.profileRoleDialog.hidden=true;nodes.profileAvatarSheet.hidden=true;}
+    if(!['profile','profileRole'].includes(screen)&&nodes.profileRoleDialog){nodes.profileRoleDialog.hidden=true;nodes.profileAvatarSheet.hidden=true;}
     if(screen==='groups'&&previous!=='groups')groupsReturnScreen=options.groupReturn||(['contacts','home','chatList'].includes(previous)?previous:'chatList');
     if(previous!==screen)phoneInteraction?.dismiss();
     const source=previous==='home'?phoneInteraction?.capture(options?.sourceTile):null;
@@ -3929,7 +3929,7 @@ function setScreen(screen, options={}) {
     }
     nodes.back.hidden = screen === 'home'||screen==='lock';
     if(nodes.close)nodes.close.hidden=true;
-    const titles = {album:'相册',groups:'群聊',sharePicker:'分享动态',shareViewer:'动态详情',lock:'锁屏',home:'咕叽咕机',weibo:'群星',wallet:'吱付宝',shopping:'购物',takeout:'外卖',chat:'',chatList:'咕叽聊',contacts:'咕叽聊',discover:'咕叽聊',me:'咕叽聊',meProfile:'我的资料',meSettings:'咕叽聊设置',momentHistory:'历史朋友圈',momentCompose:'发布朋友圈',chatRecords:'管理聊天记录',contactManage:'管理联系人资料',requests:'新的朋友',profile:'联系人资料',addNpc:'添加 NPC',discoverNpc:'发现故事人物',chatOptions:'聊天设置',settings:'设置',diagnostics:'运行日志',calendar:'日历',theme:'主题',presetPicker:'选择预设条目',worldPicker:'选择世界书条目' };
+    const titles = {album:'相册',groups:'群聊',sharePicker:'分享动态',shareViewer:'动态详情',lock:'锁屏',home:'咕叽咕机',weibo:'群星',wallet:'吱付宝',shopping:'购物',takeout:'外卖',chat:'',chatList:'咕叽聊',contacts:'咕叽聊',discover:'咕叽聊',me:'咕叽聊',meProfile:'我的资料',meSettings:'咕叽聊设置',momentHistory:'历史朋友圈',momentCompose:'发布朋友圈',chatRecords:'管理聊天记录',contactManage:'管理联系人资料',requests:'新的朋友',profile:'联系人资料',profileRole:'角色设定',addNpc:'添加 NPC',discoverNpc:'发现故事人物',chatOptions:'聊天设置',settings:'设置',diagnostics:'运行日志',calendar:'日历',theme:'主题',presetPicker:'选择预设条目',worldPicker:'选择世界书条目' };
     nodes.title.textContent = screen === 'chat' ? contactDisplayName(context()) : titles[screen];
     nodes.chatMenu.hidden = screen !== 'chat';
     if(nodes.albumOptions)nodes.albumOptions.hidden=screen!=='album';
@@ -4617,7 +4617,7 @@ function currentPersona(ctx) {
         lorebook: String(settings.persona_description_lorebook || '').trim(), avatar: avatar || '/img/user-default.png' };
 }
 const PHONE_RELATION_LABELS={
- unfamiliar:'不熟',acquaintance:'熟人',friend:'朋友',ambiguous:'暧昧',lover:'恋人',
+ unfamiliar:'不熟',acquaintance:'熟人',friend:'朋友',classmate:'同学',roommate:'室友',alumni:'校友',coworker:'同事',boss:'老板',patron:'金主',ambiguous:'暧昧',lover:'恋人',
  family:'家人',hostile:'敌对',enemy:'仇人',ex:'前任',crush:'暗恋对象',custom:'自定义',unknown:'待确认'
 };
 function phoneRelationshipFor(ctx=context(),id=activeContactId){
@@ -4636,7 +4636,7 @@ function phoneRelationshipFor(ctx=context(),id=activeContactId){
 function phoneRelationshipDescription(ctx=context(),id=activeContactId){
  const saved=phoneRelationshipFor(ctx,id);
  const name=saved.relation==='custom'?(saved.custom||'未指定'):(PHONE_RELATION_LABELS[saved.relation]||saved.relation);
- return name+(saved.relation==='crush'?'（角色暗恋 user）':'')+(saved.details?'；'+saved.details:'');
+ return name+(saved.relation==='crush'?'（角色暗恋 '+currentPersona(ctx).name+'）':'')+(saved.details?'；'+saved.details:'');
 }
 function phoneRelationshipPrompt(ctx=context(),id=activeContactId){
  const saved=phoneRelationshipFor(ctx,id),label=phoneRelationshipDescription(ctx,id);
@@ -4654,6 +4654,7 @@ function showPhoneRelationTab(tab='relation'){
  if(details)return;
  const ctx=context(),saved=phoneRelationshipFor(ctx),persona=currentPersona(ctx),contact=getContactInfo(ctx);
  nodes.profileRelationNames.textContent=contact.name+' 与 '+persona.name+' 的关系';
+ const crushOption=nodes.relationChoice.querySelector('option[value="crush"]');if(crushOption)crushOption.textContent='暗恋对象（'+contact.name+'暗恋'+persona.name+'）';
  nodes.relationManual.checked=saved.mode==='manual';nodes.relationAuto.checked=saved.mode!=='manual';
  nodes.relationManualFields.hidden=saved.mode!=='manual';
  nodes.relationChoice.value=Object.prototype.hasOwnProperty.call(PHONE_RELATION_LABELS,saved.relation)&&saved.relation!=='unknown'?saved.relation:'custom';
@@ -5174,14 +5175,17 @@ function renderMoments(ctx){
   avatar.src=momentActorAvatar(ctx,authorId);avatar.alt='头像';
   const author=document.createElement('strong');author.textContent=authorId==='user'?phoneUserDisplayName(ctx):(post.author||'联系人');
   head.append(avatar,author);
+  const menu=document.createElement('div');menu.className='lp-moment-owner-menu';menu.hidden=true;
+  const more=momentButton('⋮',()=>{menu.hidden=!menu.hidden;});
+  more.className='lp-moment-more';more.setAttribute('aria-label','朋友圈操作');
+  head.append(more);
   if(authorId==='user'){
-   const more=momentButton('⋮',()=>{menu.hidden=!menu.hidden;});
-   more.className='lp-moment-more';more.setAttribute('aria-label','编辑或删除自己的朋友圈');head.append(more);
-   const menu=document.createElement('div');menu.className='lp-moment-owner-menu';menu.hidden=true;
-   const edit=momentButton('编辑动态',()=>{menu.hidden=true;openMomentEditDialog(ctx,post);});
-   const remove=momentButton('删除动态',()=>{menu.hidden=true;openMomentEditDialog(ctx,post,'delete');});
-   menu.append(edit,remove);head.append(menu);
+   menu.append(momentButton('编辑动态',()=>{menu.hidden=true;openMomentEditDialog(ctx,post);}),
+     momentButton('删除动态',()=>{menu.hidden=true;openMomentEditDialog(ctx,post,'delete');}));
   }
+  const candidates=momentCandidates(ctx,post);
+  if(candidates.length)menu.append(momentButton('生成角色互动',()=>{menu.hidden=true;void runMomentBatch(post.id,true);}));
+  head.append(menu);
   item.append(head);
   if(post.text){const body=document.createElement('p');body.textContent=resolvePhonePlaceholders(post.text,ctx,contactCharacter(ctx));item.append(body);}
   if(post.repostOf){
@@ -5222,12 +5226,10 @@ function renderMoments(ctx){
    commentList.append(row);
   }
   if(comments.length)item.append(commentList);
-  const actions=document.createElement('div');actions.className='lp-moment-actions';
+  const actions=document.createElement('div');actions.className='lp-moment-actions lp-moment-actions-inline';
   actions.append(momentButton(liked?'♥ 已赞':'♡ 点赞',()=>void toggleMomentLike(post.id)),
-   momentButton('↗ 转发',()=>void repostMoment(post.id)));
-  const candidates=momentCandidates(ctx,post);
-  if(candidates.length)actions.append(momentButton('生成角色互动（1次请求）',()=>void runMomentBatch(post.id,true)));
-  item.append(actions,editor);nodes.momentsFeed.append(item);
+   momentButton('↗ 转发',()=>void repostMoment(post.id)),editor);
+  item.append(actions);nodes.momentsFeed.append(item);
  }
  if(!posts.length)nodes.momentsFeed.textContent='还没有动态';
 }
@@ -8141,7 +8143,7 @@ function makeUI() {
               <button type="button" class="lp-settings-nav" data-settings-nav="presets"><span>预设与世界书<small>预设选择、世界书条目与触发</small></span><b>›</b></button>
               <button type="button" class="lp-settings-nav" data-settings-nav="chat"><span>聊天方式<small>消息显示与分条行为</small></span><b>›</b></button>
               <button type="button" class="lp-settings-nav" data-settings-nav="memory"><span>记忆管理<small>剧情日自动总结、独立 API、正文互通</small></span><b>›</b></button>
-              <button type="button" class="lp-settings-nav lp-settings-nav-disabled" disabled aria-disabled="true" title="世界观版本切换暂未开放"><span>世界版本<small>现代（当前） · 古代／修真／魔幻暂未开放</small></span><b>未开放</b></button>
+              <button type="button" class="lp-settings-nav lp-settings-nav-disabled" disabled aria-disabled="true" title="世界观切换"><span>世界观<small>世界观切换</small></span><b>›</b></button>
               <button type="button" class="lp-settings-nav" data-settings-nav="data"><span>数据说明<small>存档与资料保存范围</small></span><b>›</b></button>
             </div>
           </div>
@@ -8425,7 +8427,7 @@ function makeUI() {
           <div class="lp-diagnostic-list" data-lp="diagnostics"></div>
           <button type="button" class="lp-clear-logs" data-lp="clearDiagnostics">清空本次运行日志</button>
         </section>
-        <div class="lp-profile-overlay" data-lp="profileRoleDialog" role="dialog" aria-modal="true" aria-label="查看角色设定" hidden>
+        <section class="lp-screen lp-relation-screen" data-lp-screen="profileRole" data-lp="profileRoleDialog" aria-label="查看角色设定" hidden>
           <div class="lp-profile-overlay-panel lp-relationship-panel">
             <div class="lp-profile-overlay-heading"><strong data-lp="profileRoleTitle">角色设定</strong><button type="button" data-lp="profileRoleClose" aria-label="关闭角色设定">×</button></div>
             <div class="lp-relation-tabs">
@@ -8440,10 +8442,10 @@ function makeUI() {
               <div data-lp="relationManualFields" hidden>
                 <label>当前关系<select data-lp="relationChoice">
                   <option value="unfamiliar">不熟</option><option value="acquaintance">熟人</option>
-                  <option value="friend">朋友</option><option value="ambiguous">暧昧</option>
+                  <option value="friend">朋友</option><option value="classmate">同学</option><option value="roommate">室友</option><option value="alumni">校友</option><option value="coworker">同事</option><option value="boss">老板</option><option value="patron">金主</option><option value="ambiguous">暧昧</option>
                   <option value="lover">恋人</option><option value="family">家人</option>
                   <option value="hostile">敌对</option><option value="enemy">仇人</option>
-                  <option value="ex">前任</option><option value="crush">暗恋对象（角色暗恋 user）</option>
+                  <option value="ex">前任</option><option value="crush">暗恋对象</option>
                   <option value="custom">自定义</option>
                 </select></label>
                 <label data-lp="relationCustomLabel" hidden>自定义关系<input data-lp="relationCustom" maxlength="80" placeholder="填写关系名称" /></label>
@@ -8455,7 +8457,7 @@ function makeUI() {
               <button type="button" data-lp="relationDetect">重新自动识别</button>
             </div>
           </div>
-        </div>
+        </section>
         <div class="lp-profile-overlay lp-profile-avatar-overlay" data-lp="profileAvatarSheet" role="dialog" aria-modal="true" aria-label="更换角色头像" hidden>
           <div class="lp-profile-avatar-options">
             <strong>管理角色头像</strong>
@@ -8699,7 +8701,7 @@ function mount() {
         setScreen({
           wallet:'home',shopping:'home',takeout:'home',weibo:'home',album:'home',groups:groupsReturnScreen,sharePicker:'weibo',chat:'chatList',
           contacts:'chatList',discover:'chatList',me:'chatList',
-          profile:profileReturnScreen,contactManage:'chatOptions',chatRecords:'chatOptions',meProfile:'me',meSettings:'me',momentHistory:'me',momentCompose:'discover',
+          profile:profileReturnScreen,profileRole:'profile',contactManage:'chatOptions',chatRecords:'chatOptions',meProfile:'me',meSettings:'me',momentHistory:'me',momentCompose:'discover',
           requests:'contacts',addNpc:'contacts',
           discoverNpc:'addNpc',chatOptions:'chat',
           presetPicker:'settings',worldPicker:'settings'
@@ -8867,10 +8869,10 @@ function mount() {
     };
     nodes.profileRoleOpen.addEventListener('click',()=>{
       nodes.profileAvatarSheet.hidden=true;
-      nodes.profileRoleDialog.hidden=false;
+      setScreen('profileRole');
       showPhoneRelationTab('relation');
     });
-    nodes.profileRoleClose.addEventListener('click',hideProfileOverlays);
+    nodes.profileRoleClose.addEventListener('click',()=>setScreen('profile'));
     nodes.profileTabDetails.addEventListener('click',()=>showPhoneRelationTab('details'));
     nodes.profileTabRelation.addEventListener('click',()=>showPhoneRelationTab('relation'));
     const relationMode=()=>{nodes.relationManualFields.hidden=!nodes.relationManual.checked;};
