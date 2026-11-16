@@ -311,6 +311,7 @@ export function createWeiboModule(api) {
   const handle=clean(p.handle,50);
   const accounts=data().accounts,matching=accounts.filter(a=>a.name===author);
   const acct=accounts.find(a=>handle&&a.handle&&a.handle===handle)||(matching.length===1&&(!handle||!matching[0].handle)?matching[0]:null);
+  if(acct&&acct.kind!=='网友'&&acct.source!=='follow'&&!acct.publicFigure&&subjectOfAccount(acct).type!=='organization')return null;
   const comments=(Array.isArray(p.comments)?p.comments:[]).map(c=>
    typeof c==='string'?{id:uid('c'),name:'网友',text:clean(c,350)}:
    {id:uid('c'),name:clean(c?.name||c?.author||'网友',40),text:clean(c?.text||c?.content,350)}
@@ -343,7 +344,7 @@ export function createWeiboModule(api) {
    '主角：'+(char?.name||'未选择')+'；角色简介：'+clean(char?.description,750)+'；已知人物：'+known+'。',
    '已建立的公众/普通账号：'+(accounts||'暂无')+'；用户关注：'+(followed||'暂无')+'；周边补充设定：'+clean(q.settings.nearbyHint,210)+'。',
    '近期剧情：'+contextText+'。必须区分已公开事实与私聊秘密；绝不杜撰用户言行、心理、地下恋情、未发生事件。',
-   '允许陌生网友完全讨论无关主题，勿全围绕角色。公众人物可以合理上热搜，但不要每条都写成公共事件。',
+   '允许陌生网友完全讨论无关主题，勿全围绕角色。已登记的非公众人物角色仅参与评论，不生成以该角色为作者的群星帖子；随机原创网友和普通博主仍可以发帖。公众人物可以合理上热搜，但不要每条都写成公共事件。',
    '营造真实复杂的互联网：多数网友正常且观点各异，偶尔可以有0至1个理直气壮、反常识到令人怀疑的“神人”发言，让其他网友有自然吐槽或反驳；题材随机覆盖职场、学习、生活、饭圈、科技、性别刻板印象等，不要总围绕男女关系，也不要把偏激观点当事实。',
    '每条帖子配2至5条不同语气的评论，允许争论与冷幽默、网络流行语，但不要每条都是段子。',
    '账号早已在世界里长期运营，不是第一次刷到才注册！输出粉丝followers、历史累计获赞accountLikes、累计获评accountComments、关注followingCount、本帖likes和本帖评论总数commentCount。80万粉丝成熟媒体号累计获赞通常有几十万到千万以上，不能只计算本条新帖。评论列表展示2到5条样本即可，不等于评论总数。临时账号只属于本轮浏览，无需永久登记。',
@@ -810,20 +811,10 @@ export function createWeiboModule(api) {
   send.classList.add('lp-wb-comment-send');
   comment.append(input,send);
   actions.append(like,favorite,share,comment);box.append(actions);
-  const notice=commentNotices.get(p.id);
-  if(notice)box.append(el('div','lp-wb-comment-notice',notice));
   if(state.sharingId===p.id){
    const menu=el('div','lp-wb-share-menu');
    menu.append(control('转发到我的群星','repost',p.id,a.reposted),control('发送到咕叽聊','shareChat',p.id));
    box.append(menu);
-  }
-  const hasMine=(a.comments||[]).length>0||(p.comments||[]).some(c=>c.isMine);
-  if(hasMine&&!a.commentsLoaded){
-   const loading=commentBusy.has('load:'+p.id);
-   const button=control(loading?'正在加载评论…':'加载完整评论区','loadFullComments',p.id);
-   button.disabled=loading;button.classList.add('lp-wb-load-comments');
-   button.title='手动调用一次 API 补全这篇帖子的评论，最多展示120条';
-   box.append(button);
   }
   if(!detailed)box.append(control('查看详情','detail',p.id));
   return box;
@@ -1287,13 +1278,13 @@ export function createWeiboModule(api) {
   });
   const prior=Math.max((post.comments||[]).length,Number(post.commentCount)||0);
   await replacePostComments(post,remaining,Math.max(0,prior-1),{removeOwnComment:commentId});
-  commentNotices.set(post.id,'评论已删除');feedback('评论已删除');render();
+  commentNotices.delete(post.id);feedback('评论已删除');render();
  }
  async function loadFullComments(post){
   const loadingKey='load:'+post.id;
   if(commentBusy.has(loadingKey)||commentBusy.has(post.id))return;
   const current=actionState(post),own=(current.comments||[]).length;
-  if(!own&&!(post.comments||[]).some(x=>x.isMine)){feedback('先评论后才能手动加载完整评论区');return;}
+  if(!own&&!(post.comments||[]).some(x=>x.isMine))return;
   const kept=(post.comments||[]).map(c=>({...c})).slice(0,120);
   const publishedTotal=Math.max(kept.length,Number(post.commentCount)||0);
   const previouslyLoaded=Boolean(current.commentsLoadedOnce);
@@ -1302,11 +1293,10 @@ export function createWeiboModule(api) {
   const target=missing+interactionSlots;
   if(!target){
    await replacePostComments(post,kept,publishedTotal,{commentsLoaded:true,commentsLoadedOnce:true});
-   commentNotices.set(post.id,'完整评论已显示，无须调用 API');
-   feedback('全部评论已显示，无须再次调用 API');render();return;
+   render();return;
   }
   const session=scope();
-  commentBusy.add(loadingKey);commentNotices.set(post.id,'正在加载完整评论区…');render();
+  commentBusy.add(loadingKey);render();
   try{
    const acct=actor(post),subject=acct?subjectOfAccount(acct):null;
    const role=subject?clean(api.accountSubjectContext?.(subject)||'',1300):'';
@@ -1344,10 +1334,9 @@ export function createWeiboModule(api) {
    const total=Math.max(publishedTotal+extraBeyondHistory,combined.length);
    const loaded=combined.length>=Math.min(120,total);
    await replacePostComments(post,combined,total,{commentsLoaded:loaded,commentsLoadedOnce:true});
-   commentNotices.set(post.id,loaded?'完整评论区已加载':'已加载 '+combined.length+' 条，可再次加载剩余评论');
-   feedback('已加载 '+combined.length+' 条评论'+(loaded?'':'；模型返回不足，仍可手动继续加载'));
+   feedback('已展示 '+combined.length+' 条评论'+(loaded?'':'；模型返回不足，重新进入详情可继续补全'));
    render();
-  }catch(error){commentNotices.set(post.id,'加载失败：'+String(error.message||error).slice(0,100));feedback('加载评论失败：'+String(error.message||error));render();}
+  }catch(error){feedback('加载评论失败：'+String(error.message||error));render();}
   finally{commentBusy.delete(loadingKey);if(scope()===session)render();}
  }
  async function action(type,id,commentId=''){
@@ -1700,9 +1689,14 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
   if(type==='shareMenu'){state.sharingId=state.sharingId===p.id?'':p.id;render();return;}
   if(type==='shareChat'){state.sharingId='';api.sharePost?.(p);return;}
   if(type==='share'){api.sharePost?.(p);return;}
-  if(type==='detail'){state.detail=id;render();return;}
+  if(type==='detail'){
+   state.detail=id;render();
+   const action=actionState(p);
+   const hasMine=(action.comments||[]).length>0||(p.comments||[]).some(c=>isOwnComment(p,c));
+   if(hasMine&&!action.commentsLoaded)await loadFullComments(p);
+   return;
+  }
   if(type==='deleteComment'){await deleteOwnComment(p,commentId);return;}
-  if(type==='loadFullComments'){await loadFullComments(p);return;}
   if(type==='follow'||type==='unfollow'){await followPost(p,type==='follow');render();return;}
   if(type==='sendComment'){
    if(commentBusy.has(p.id)||commentBusy.has('load:'+p.id))return;
@@ -1725,14 +1719,14 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
     }
     if(scope()!==session)return;
     if(input)input.value='';
-    commentNotices.set(p.id,'✓ 评论已发送');
+    commentNotices.delete(p.id);
     feedback('评论已发送，已同步首页与详情');
     render();
    }catch(error){
-    commentNotices.set(p.id,'评论发送失败，可重试');
     feedback('评论发送失败：'+String(error.message||error));
     if(button){button.disabled=false;button.textContent='↗';button.removeAttribute('aria-busy');}
    }finally{commentBusy.delete(p.id);}
+   if(state.detail===id&&scope()===session&&!actionState(p).commentsLoaded)void loadFullComments(p);
    return;
   }else{
    const a=actionState(p);let change={};
@@ -1864,7 +1858,7 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
   reset();const q=data(),scene=root().storyTime||'';
   const now=Date.parse(scene),every=Math.max(30,Number(q.settings.autoEveryMinutes)||180)*60000;
   if(autoBusy||state.loading||(!force&&!q.settings.autoEnabled)||!Number.isFinite(now)||document.visibilityState==='hidden')return;
-  const accounts=q.accounts.filter(a=>a.source==='manual'&&a.kind!=='网友');if(!accounts.length){if(force)feedback('请先在「我 → 群星设置」添加账号');return;}
+  const accounts=q.accounts.filter(a=>a.source==='manual'&&a.kind!=='网友'&&(a.publicFigure||subjectOfAccount(a).type==='organization'));if(!accounts.length){if(force)feedback('没有允许自主发布的公众人物或组织账号；非公众人物只参与评论与朋友圈');return;}
   if(!force&&q.lastAutoStoryMinute&&now-q.lastAutoStoryMinute<every)return;
   autoBusy=true;
   try{
