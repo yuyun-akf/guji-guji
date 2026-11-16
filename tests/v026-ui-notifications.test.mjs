@@ -33,8 +33,8 @@ function story(){
   selectedCharacter:()=>({name:'林知远'}),currentPersona:()=>({name:'我'})});
  return {app,db:()=>root};
 }
-test('v0.36.1 uses a consistent cache key and full-width API reload control',()=>{
- assert.equal(manifest.version,'0.36.1');
+test('v0.36.2 uses a consistent cache key and full-width API reload control',()=>{
+ assert.equal(manifest.version,'0.36.2');
  assert.match(index,/weibo\.js\?v=0\.35\.0/);
  assert.match(index,/data-lp="apiReloadModels"/);
  assert.match(css,/\[data-lp="apiReloadModels"\]\s*\{[^}]*width:100%/);
