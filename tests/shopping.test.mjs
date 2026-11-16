@@ -52,7 +52,7 @@ test('shopping tabs can switch and remain independent of takeout',()=>{
 test('shopping icon and three-section markup are wired into the phone',()=>{
  const index=readFileSync(new URL('../index.js',import.meta.url),'utf8');
  assert.ok(index.includes("screen:'shopping',name:'购物',ready:true"));
- assert.ok(index.includes("import('./shopping.js?v=0.35.0')"));
+ assert.ok(index.includes("import('./shopping.js?v=0.36.1')"));
  assert.ok(index.includes("'shoppingContent','shoppingTabs'"));
  assert.ok(index.includes("if(activeScreen==='shopping'&&shoppingController?.back())return"));
  for(const tab of ['browse','cart','me'])assert.ok(index.includes('data-shopping-tab="'+tab+'"'));
