@@ -1149,6 +1149,24 @@ function saveWorldAlbumFolders(list,ctx=context()){
  setting.worldAlbumFolders={...(setting.worldAlbumFolders||{}),modern:[...new Set([...MODERN_WORLD_FOLDERS,...list])].slice(0,35)};
  ctx.saveSettingsDebounced();
 }
+function albumCoverKey(owner,folder='',ctx=context()){
+ return owner==='world'?'world:modern:'+String(folder||'root'):
+  'card:'+qunxingAccountCardKey(ctx)+':'+String(owner)+':'+String(folder||'root');
+}
+function albumCoverFor(owner,folder='',ctx=context()){
+ const id=ctx?.extensionSettings?.[SETTINGS_KEY]?.albumCovers?.[albumCoverKey(owner,folder,ctx)];
+ if(!id)return '';
+ const collection=owner==='world'?worldPhotos(ctx):characterPhotos(ctx);
+ return collection.find(p=>p.id===id&&typeof p.image==='string')?.image||'';
+}
+function saveAlbumCover(owner,folder='',photoId,ctx=context()){
+ if(!ctx?.extensionSettings||typeof ctx.saveSettingsDebounced!=='function')throw Error('无法保存相册封面');
+ const collection=owner==='world'?worldPhotos(ctx):characterPhotos(ctx);
+ if(!collection.some(p=>p.id===photoId))throw Error('照片不存在于当前人物或世界相册');
+ const settings=ctx.extensionSettings[SETTINGS_KEY]||={};
+ settings.albumCovers={...(settings.albumCovers||{}),[albumCoverKey(owner,folder,ctx)]:photoId};
+ ctx.saveSettingsDebounced();return true;
+}
 function galleryPeople(ctx=context()){
  if(!selectedCharacter(ctx))return [];
  const r=readRootData(ctx);
@@ -1174,7 +1192,7 @@ function photosForActor(actorId,access='chat',ctx=context()){
  // Public photos may be quoted by unrelated actors, provided the generated
  // message actually concerns the pictured subject. Authorization is by album,
  // not a relationship check. Private photos never enter public/group flows.
- const eligible=[...world,...pool,...own].filter((p,i,arr)=>arr.findIndex(x=>x.id===p.id)===i)
+ const eligible=[...own,...pool,...world].filter((p,i,arr)=>arr.findIndex(x=>x.id===p.id)===i)
   .filter(p=>p.owner=== 'world'||photoFolder(p)==='public'||
    (own.includes(p)&&(access==='private'||access==='chat'||access==='group'&&photoFolder(p)!=='private')));
  return eligible.slice(0,50);
@@ -1235,6 +1253,7 @@ async function loadAlbumController(){
   albumController=mod.createAlbumModule({context,getNodes:()=>nodes,
    sharedPhotos:()=>characterPhotos(),saveSharedPhotos:saveCharacterPhotos,
    worldPhotos,saveWorldPhotos,worldFolders:worldAlbumFolders,saveWorldFolders:saveWorldAlbumFolders,
+   coverFor:albumCoverFor,saveCover:saveAlbumCover,
    identifyPhotos:identifyAlbumPhotos,albumScope:()=>qunxingAccountCardKey(context()),
    galleryPeople,notifyInteraction,albumSendToChat,albumPostMoment,albumPostWeibo});
   return albumController;
