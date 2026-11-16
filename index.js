@@ -5217,10 +5217,15 @@ function momentBatchActors(ctx,post,replyComments=[]) {
     }
     const author=momentAuthorId(ctx,post);
     const requested=replyComments.map(comment=>
-        (post.comments||[]).find(old=>old.id===comment.replyTo)?.actorId).filter(Boolean);
-    const choices=[...new Set([...requested,author,...eligible])].filter(id=>
-        id!==MOMENT_USER_ID&&(id===author||eligible.includes(id)));
-    return choices.slice(0,2);
+        (post.comments||[]).find(old=>old.id===comment.replyTo))
+        .filter(target=>canReplyToMomentComment(ctx,post,target)).map(target=>target.actorId);
+    // Replies to the user's comment go to the post's author (or to the
+    // particular already-friended commenter the user explicitly quoted).
+    // Never pull unrelated acquaintances into that private exchange.
+    const choices=author===MOMENT_USER_ID?[...requested,...eligible]:
+        [...requested,author];
+    return [...new Set(choices)].filter(id=>
+        id!==MOMENT_USER_ID&&(id===author||eligible.includes(id))).slice(0,2);
 }
 function momentActorBrief(ctx,id) {
     const guest=roleFriendGuest(ctx,id);
@@ -5270,9 +5275,9 @@ function parseMomentBatch(value){
  }catch{return null;}
 }
 function applyMomentBatch(ctx,data,post,actors,actions){
- const allowed=new Set(actors),newComments=new Map(),batch=[],names=new Map();
+ const allowed=new Set(actors),newComments=new Map(),batch=new Map(),names=new Map();
  let count=0;
- for(const action of actions){
+ for(const [actionIndex,action] of actions.entries()){
   const id=action?.actorId;
   if(!allowed.has(id))continue;
   const guest=roleFriendGuest(ctx,id);
@@ -5295,7 +5300,7 @@ function applyMomentBatch(ctx,data,post,actors,actions){
   if(post.comments.some(c=>c.actorId===id&&c.text===value))continue;
   let parent=post.comments.find(c=>c.id===action.replyTo);
   if(!parent&&typeof action.replyToActor==='string')parent=newComments.get(action.replyToActor);
-  if(!parent&&Number.isInteger(action.replyToIndex))parent=batch[action.replyToIndex];
+  if(!parent&&Number.isInteger(action.replyToIndex))parent=batch.get(action.replyToIndex);
   if(kind==='reply'){
    if(!parent)continue;
    const author=momentAuthorId(ctx,post);
@@ -5305,7 +5310,7 @@ function applyMomentBatch(ctx,data,post,actors,actions){
   }
   const entry={id:'comment-'+Date.now()+'-'+Math.random().toString(36).slice(2,8),
    actorId:id,author:name,text:value,replyTo:kind==='reply'?parent.id:'',at:now};
-  post.comments.push(entry);newComments.set(id,entry);batch.push(entry);count++;
+  post.comments.push(entry);newComments.set(id,entry);batch.set(actionIndex,entry);count++;
  }
  return count;
 }
