@@ -262,9 +262,9 @@ export function createAlbumModule(api){
     if(photo.usage)info.append(el('small','','用途：'+photo.usage));
     const actions=el('div','lp-album-actions');
     if(!photo.legacySticker)actions.append(button('edit','编辑',photo.id),button('move','移动',photo.id),button('cover','设为封面',photo.id),button('delete','删除',photo.id));
-    if(world()&&state.folder==='表情包'){
-     if(photo.legacySticker)info.append(el('small','','旧版导入 · 可批量清理'));
-     actions.append(button('deleteFrom','从此张起批量删除',photo.id));
+    else {
+     info.append(el('small','','旧版表情包'));
+     actions.append(button('deleteLegacy','删除',photo.id));
     }
     card.append(img,info,actions);list.append(card);
    }
@@ -302,9 +302,12 @@ export function createAlbumModule(api){
       const folderLabel=el('label','lp-album-field','子相册');folderLabel.append(folderSelect);
       fields.prepend(folderLabel);fields.prepend(ownerLabel);
     }
-    const remove=button('removeReviewCandidate','移出这张图片',String(index));
+    const remove=button('removeReviewCandidate','×',String(index));
     remove.classList.add('lp-album-review-remove');
-    card.append(img,fields,remove);list.append(card);
+    remove.setAttribute('aria-label','移出图片：'+(pending.files[index]?.name||String(index+1)));
+    remove.title='移出这张图片';
+    const visual=el('div','lp-album-review-visual');visual.append(img);
+    card.append(visual,fields,remove);list.append(card);
    });
    wrap.append(list,button('saveReview','确认导入 '+pending.images.length+' 张图片'));
    wrap.append(button('returnToImport','返回调整候选图片'));
@@ -625,20 +628,11 @@ export function createAlbumModule(api){
     return true;
    }
    const photo=ownerPhotos().find(p=>p.id===id);if(!photo)return false;
-   if(type==='deleteFrom'&&world()&&state.folder==='表情包'){
-    const entries=ownerPhotos().filter(p=>photoFolder(p)==='表情包'&&!!p.legacySticker===!!photo.legacySticker);
-    const index=entries.findIndex(p=>p.id===id);
-    if(index<0)return true;
-    const count=entries.length-index;
-    if(!window.confirm('从「'+(photo.title||'此张表情包')+'」开始，删除它及后面的 '+(count-1)+' 张表情包？已发送的聊天图片不受影响。'))return true;
-    const removeIds=new Set(entries.slice(index).map(p=>p.id));
-    if(photo.legacySticker){
-     try{const deleted=await api.deleteLegacyStickersFrom?.(id);hint('已删除 '+deleted+' 张旧版表情包');}
-     catch(error){hint('旧版表情包删除失败：'+String(error.message||error),true);}
-     return true;
-    }
-    await api.saveWorldPhotos((api.worldPhotos?.()||[]).filter(p=>!removeIds.has(p.id)));
-    hint('已删除 '+count+' 张表情包');return true;
+   if(type==='deleteLegacy'&&photo.legacySticker){
+    if(!window.confirm('删除这张旧版表情包？已发送的图片不会受到影响。'))return true;
+    try{await api.deleteLegacySticker?.(id);hint('已删除此张旧版表情包');}
+    catch(error){hint('删除失败：'+String(error.message||error),true);}
+    return true;
    }
    if(['edit','move','cover','delete'].includes(type)){state.dialog={type,photoId:id};render();return true;}
    return false;
