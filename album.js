@@ -14,7 +14,8 @@ export function createAlbumModule(api){
  const labelOf=id=>world()?id:characterFolders.find(x=>x[0]===id)?.[1]||id;
  const legacyFolder=p=>p.folder||(p.access==='public'?'public':p.access==='private'?'daily':'daily');
  const photoFolder=p=>world()?(p.folder||'风景'):legacyFolder(p);
- const ownerPhotos=()=>world()?(api.worldPhotos?.()||[]):(api.sharedPhotos?.()||[]).filter(p=>p.owner===state.owner||(p.ownerName===ownerName()&&p.owner!=='user'));
+ const ownerPhotos=()=>world()?[...(api.worldPhotos?.()||[]),...(api.legacyStickers?.()||[])]:
+  (api.sharedPhotos?.()||[]).filter(p=>p.owner===state.owner||(p.ownerName===ownerName()&&p.owner!=='user'));
  const photos=()=>ownerPhotos().filter(p=>photoFolder(p)===state.folder&&validImage(p.image));
  const button=(action,label,id='')=>{const b=el('button','lp-album-action',label);b.type='button';b.dataset.albumAction=action;if(id)b.dataset.albumId=id;return b;};
  const pane=(title,subtitle='')=>{const node=el('div','lp-album-header');node.append(el('strong','',title));if(subtitle)node.append(el('small','',subtitle));return node;};
@@ -228,8 +229,11 @@ export function createAlbumModule(api){
     if(photo.description)info.append(el('p','',photo.description));
     if(photo.usage)info.append(el('small','','用途：'+photo.usage));
     const actions=el('div','lp-album-actions');
-    actions.append(button('edit','编辑',photo.id),button('move','移动',photo.id),button('cover','设为封面',photo.id),button('delete','删除',photo.id));
-    if(world()&&state.folder==='表情包')actions.append(button('deleteFrom','从此张起批量删除',photo.id));
+    if(!photo.legacySticker)actions.append(button('edit','编辑',photo.id),button('move','移动',photo.id),button('cover','设为封面',photo.id),button('delete','删除',photo.id));
+    if(world()&&state.folder==='表情包'){
+     if(photo.legacySticker)info.append(el('small','','旧版导入 · 可批量清理'));
+     actions.append(button('deleteFrom','从此张起批量删除',photo.id));
+    }
     card.append(img,info,actions);list.append(card);
    }
    if(!photos().length)list.append(el('p','lp-album-empty','这个子相册还没有图片。返回上一页，从「添加照片」导入即可。'));
@@ -491,7 +495,12 @@ export function createAlbumModule(api){
     const count=entries.length-index;
     if(!window.confirm('从「'+(photo.title||'此张表情包')+'」开始，删除它及后面的 '+(count-1)+' 张表情包？已发送的聊天图片不受影响。'))return true;
     const removeIds=new Set(entries.slice(index).map(p=>p.id));
-    await api.saveWorldPhotos(ownerPhotos().filter(p=>!removeIds.has(p.id)));
+    if(photo.legacySticker){
+     try{const deleted=await api.deleteLegacyStickersFrom?.(id);hint('已删除 '+deleted+' 张旧版表情包');}
+     catch(error){hint('旧版表情包删除失败：'+String(error.message||error),true);}
+     return true;
+    }
+    await api.saveWorldPhotos((api.worldPhotos?.()||[]).filter(p=>!removeIds.has(p.id)));
     hint('已删除 '+count+' 张表情包');return true;
    }
    if(['edit','move','cover','delete'].includes(type)){state.dialog={type,photoId:id};render();return true;}
