@@ -4038,3 +4038,68 @@
 #st-little-phone-root .lp-profile-avatar-options button:first-of-type {
   background:var(--lp-slate);color:var(--lp-white);border-color:var(--lp-slate);
 }
+
+
+/* v0.30.0: Long-press private/group chat menu, without per-row pin buttons. */
+#st-little-phone-root .lp-thread-wrap {position:relative;}
+#st-little-phone-root .lp-thread-wrap>.lp-conversation-row{
+ flex:1 1 auto;width:100%;padding-right:15px;touch-action:pan-y;
+ -webkit-touch-callout:none;
+}
+#st-little-phone-root .lp-thread-context-menu{
+ position:absolute;z-index:55;top:calc(100% - 7px);right:15px;
+ min-width:145px;max-width:90%;display:flex;flex-direction:column;
+ background:var(--lp-white);border:1px solid var(--lp-border);
+ border-radius:12px;padding:5px;
+ box-shadow:0 12px 30px rgba(26,37,55,.18);
+}
+#st-little-phone-root .lp-thread-context-item{
+ min-height:42px;border:0;border-radius:8px;
+ padding:9px 15px;background:var(--lp-white);
+ color:var(--lp-navy);font:inherit;text-align:left;cursor:pointer;
+}
+#st-little-phone-root .lp-thread-context-item:active{
+ background:var(--lp-ice);
+}
+/* Qunxing: few preview comments plus user's own messages. Full thread in detail. */
+#st-little-phone-root .lp-wb-comment-line{
+ display:flex;align-items:flex-start;gap:7px;min-width:0;
+ padding:2px 0;
+}
+#st-little-phone-root .lp-wb-comment-line p{
+ flex:1;min-width:0;margin:0;
+ overflow-wrap:anywhere;white-space:pre-wrap;
+}
+#st-little-phone-root .lp-wb-own-comment{
+ border-left:2px solid var(--lp-slate);padding-left:7px;
+}
+#st-little-phone-root .lp-wb-comment-delete{
+ flex:0 0 auto;align-self:flex-start;min-width:38px;
+ margin:0;padding:1px 4px;border:0;border-radius:5px;
+ background:transparent;color:var(--lp-rose);
+ font:inherit;font-size:11px;cursor:pointer;
+}
+#st-little-phone-root .lp-wb-reply-to{
+ color:var(--lp-slate);font-size:11px;
+}
+#st-little-phone-root .lp-wb-comment-send[disabled]{
+ opacity:.62;cursor:wait;pointer-events:none;
+}
+#st-little-phone-root .lp-wb-comment-notice{
+ padding:5px 8px;font-size:11px;line-height:1.5;
+ color:var(--lp-slate);background:var(--lp-ice);
+ border-radius:7px;
+}
+#st-little-phone-root .lp-wb-load-comments{
+ display:block;width:100%;min-height:42px;
+ border:1px solid var(--lp-border);border-radius:11px;
+ background:var(--lp-ice);color:var(--lp-navy);
+ font:inherit;font-size:13px;cursor:pointer;
+}
+#st-little-phone-root .lp-wb-load-comments:disabled{
+ opacity:.55;cursor:wait;
+}
+#st-little-phone-root .lp-wb-comments-full{
+ display:flex;flex-direction:column;gap:6px;
+ max-height:none;overflow:visible;
+}
