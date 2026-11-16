@@ -4852,3 +4852,34 @@
  background:var(--lp-navy);color:var(--lp-white);font-weight:600;
 }
 #st-little-phone-root [data-wb-managed-search][hidden]{display:none!important;}
+
+
+#st-little-phone-root .lp-relation-screen [data-lp="relationChoice"]{display:none!important;}
+#st-little-phone-root .lp-relation-choice-grid{
+ display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
+ gap:7px;margin:9px 0 12px;
+}
+#st-little-phone-root .lp-relation-choice-grid .lp-relation-option{
+ display:flex;justify-content:center;align-items:center;min-height:39px;
+ border:1px solid var(--lp-border);border-radius:10px;
+ background:var(--lp-ice);color:var(--lp-navy);
+ padding:7px 4px;font-size:12px;line-height:1.4;text-align:center;
+ white-space:normal;overflow-wrap:anywhere;
+}
+#st-little-phone-root .lp-relation-choice-grid .lp-relation-option.wide{
+ grid-column:span 2;
+}
+#st-little-phone-root .lp-relation-choice-grid .lp-relation-option.selected{
+ background:var(--lp-navy);color:var(--lp-white);
+}
+#st-little-phone-root .lp-relation-direction-fields{
+ display:flex;flex-direction:column;gap:8px;margin-bottom:10px;
+}
+#st-little-phone-root .lp-relation-direction-fields[hidden]{display:none!important;}
+#st-little-phone-root .lp-relation-direction-fields label{
+ display:flex;align-items:center;gap:8px;font-size:12px;
+ color:var(--lp-navy);
+}
+#st-little-phone-root .lp-relation-screen .lp-relation-form .lp-relation-direction-fields input[type=radio]{
+ flex:0 0 auto;width:17px;height:17px;min-height:17px;
+}
