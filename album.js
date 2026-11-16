@@ -1,7 +1,7 @@
 /* 咕叽咕机共享素材库：角色卡人物相册与现代世界公共相册。 */
 export function createAlbumModule(api){
  const el=(tag,cls='',value='')=>{const n=document.createElement(tag);if(cls)n.className=cls;if(value)n.textContent=value;return n;};
- const state={level:'root',owner:'',folder:'',mode:'files',busy:false,message:'',editing:'',selectedFiles:[],pending:null,navReset:false,dialog:null,warningShown:false};
+ const state={level:'root',owner:'',folder:'',mode:'files',busy:false,message:'',editing:'',selectedFiles:[],fileErrors:new Map(),imageCache:new Map(),pending:null,navReset:false,dialog:null,warningShown:false};
  const host=()=>api.getNodes()?.albumContent;
  const people=()=>api.galleryPeople();
  const worldId='world';
@@ -27,12 +27,37 @@ export function createAlbumModule(api){
   const copy=el('span','lp-album-folder-copy');copy.append(el('strong','',title),el('small','',sub));b.append(copy);return b;
  };
  const readFiles=()=>state.selectedFiles.slice();
+ const fileKey=file=>[file?.name,file?.size,file?.lastModified].join(':');
+ function candidateError(file){
+  if(!file||!file.size)return '文件为空或无法读取';
+  const name=String(file.name||'');
+  if(state.mode==='files'){
+   if(/\.zip$/i.test(name))return file.size>65*1024*1024?'ZIP 超过 65MB':'';
+   if(/\.json$/i.test(name))return file.size>2*1024*1024?'JSON 文件超过 2MB':'';
+   if(/\.(png|jpe?g|webp|gif)$/i.test(name))
+    return file.size>15*1024*1024?'单张图片超过 15MB':'';
+   return '仅接受 ZIP、JSON 或 JPG／PNG／WebP／GIF 图片';
+  }
+  if(!['image/png','image/jpeg','image/webp','image/gif'].includes(file.type))
+   return '只接受 JPG／PNG／WebP／GIF 图片';
+  if(file.size>12*1024*1024)return '图片超过 12MB';
+  return '';
+ }
+ function validateCandidateFiles(){
+  const max=state.mode==='manual'?1:state.mode==='ai'?10:70;
+  for(const [index,file] of state.selectedFiles.entries()){
+   const error=candidateError(file)||(index>=max?'本次最多 '+max+' 个文件':'');
+   if(error)state.fileErrors.set(file,error);
+   else if(!state.imageCache.has(file))state.fileErrors.delete(file);
+  }
+  return state.selectedFiles.some(file=>state.fileErrors.has(file));
+ }
  const warningText='请勿上传涉及个人隐私、真人画师作品或未经授权的图片；建议只上传本人有权使用的 AI 生成图片。';
  const safetyDisabled=()=>api.safetyWarningDisabled?.()===true;
- function enterImport(){state.dialog=null;state.level='import';state.mode='files';state.selectedFiles=[];state.navReset=true;render();}
+ function enterImport(){state.dialog=null;state.level='import';state.mode='files';state.selectedFiles=[];state.fileErrors.clear();state.imageCache.clear();state.navReset=true;render();}
  function requestImport(){if(!safetyDisabled()&&!state.warningShown){state.dialog={type:'warning'};render();}else enterImport();}
  function openOptions(){state.dialog={type:'options'};render();}
- function endPhoneSession(){state.warningShown=false;state.dialog=null;state.selectedFiles=[];}
+ function endPhoneSession(){state.warningShown=false;state.dialog=null;state.selectedFiles=[];state.fileErrors.clear();state.imageCache.clear();}
  function exportAlbumTemplate(){
   const owners=[{id:'world',name:'世界相册'},...people().map(p=>({id:p.id,name:p.name}))];
   const template={
@@ -270,9 +295,12 @@ export function createAlbumModule(api){
       const folderLabel=el('label','lp-album-field','子相册');folderLabel.append(folderSelect);
       fields.prepend(folderLabel);fields.prepend(ownerLabel);
     }
-    card.append(img,fields);list.append(card);
+    const remove=button('removeReviewCandidate','移出这张图片',String(index));
+    remove.classList.add('lp-album-review-remove');
+    card.append(img,fields,remove);list.append(card);
    });
    wrap.append(list,button('saveReview','确认导入 '+pending.images.length+' 张图片'));
+   wrap.append(button('returnToImport','返回调整候选图片'));
   }else if(state.level==='import'){
    wrap.append(pane('添加照片','进入哪个相册就自动获得对应权限，导入后可移动。'));
    
@@ -290,7 +318,19 @@ export function createAlbumModule(api){
    const file=el('input');file.type='file';file.accept=state.mode==='files'?'.zip,.json,image/jpeg,image/png,image/webp,image/gif':'image/jpeg,image/png,image/webp,image/gif';file.multiple=state.mode!=='manual';file.dataset.albumField='files';
    picker.append(file);form.append(picker);
    const preview=el('div','lp-album-preview');preview.dataset.albumPreview='true';
-   for(const file of readFiles()){const i=el('div','lp-album-file-name',file.name);preview.append(i);}
+   validateCandidateFiles();
+   readFiles().forEach((file,index)=>{
+    const error=state.fileErrors.get(file);
+    const entry=el('div','lp-album-file-name'+(error?' lp-album-invalid':''));
+    const details=el('span','lp-album-file-details');
+    details.append(el('strong','',file.name));
+    if(error)details.append(el('small','lp-album-file-error',error));
+    entry.append(details);
+    const remove=button('removeCandidate','×',String(index));
+    remove.classList.add('lp-album-remove-candidate');
+    remove.setAttribute('aria-label','从导入候选中移除 '+file.name);
+    entry.append(remove);preview.append(entry);
+   });
    form.append(preview);
    if(state.mode==='files'){
     form.append(button('exportTemplate','导出标准导入模板'));
@@ -454,7 +494,31 @@ export function createAlbumModule(api){
   if(type==='owner'){if(id)state.owner=id;state.level='owner';state.folder='';state.editing='';state.pending=null;state.navReset=true;render();return true;}
   if(type==='folder'){state.folder=id;state.level='folder';state.editing='';state.navReset=true;render();return true;}
   if(type==='import'){requestImport();return true;}
-  if(type==='mode'){state.mode=id;state.selectedFiles=[];render();return true;}
+  if(type==='mode'){
+   if(state.mode!==id){state.mode=id;state.selectedFiles=[];state.fileErrors.clear();state.imageCache.clear();}
+   render();return true;
+  }
+  if(type==='removeCandidate'){
+   const index=Number(id),file=state.selectedFiles[index];
+   if(file){state.selectedFiles.splice(index,1);state.fileErrors.delete(file);state.imageCache.delete(file);}
+   render();return true;
+  }
+  if(type==='removeReviewCandidate'){
+   const index=Number(id),pending=state.pending;
+   if(!pending||!pending.images[index])return true;
+   const original=pending.files[index];
+   for(const key of ['images','files','labels','mapping'])
+    if(Array.isArray(pending[key]))pending[key].splice(index,1);
+   if(original){
+    const fileIndex=state.selectedFiles.findIndex(f=>f===original||fileKey(f)===fileKey(original));
+    if(fileIndex>=0){
+     const file=state.selectedFiles.splice(fileIndex,1)[0];state.fileErrors.delete(file);state.imageCache.delete(file);
+    }
+   }
+   if(!pending.images.length){state.pending=null;state.level='import';}
+   render();return true;
+  }
+  if(type==='returnToImport'){state.level='import';state.pending=null;render();return true;}
   if(type==='newFolder'){
    const name=window.prompt('输入世界相册子相册名称（不超过20字）','');
    if(name?.trim()){const list=[...folders()];if(!list.includes(name.trim())){await api.saveWorldFolders([...list,name.trim().slice(0,20)]);hint('子相册已添加');}}
@@ -520,18 +584,21 @@ export function createAlbumModule(api){
    return true;
   }
   if(!event.target?.matches?.('[data-album-field="files"]'))return false;
-  state.selectedFiles=[...(event.target.files||[])];if(state.mode!=='files'&&state.selectedFiles.length>10){
-   state.selectedFiles=state.selectedFiles.slice(0,10);state.message='一次最多选择10张图片，已取前10张';
+  const added=[...(event.target.files||[])];
+  for(const file of added){
+   if(state.selectedFiles.some(existing=>fileKey(existing)===fileKey(file)))continue;
+   state.selectedFiles.push(file);
   }
+  validateCandidateFiles();
   render();return true;
  }
  function back(){
   if(state.dialog){state.dialog=null;render();return true;}
    if(state.level==='root')return false;
   if(state.level==='review'){
-   state.level='import';state.pending=null;state.selectedFiles=[];state.navReset=true;
+   state.level='import';state.pending=null;state.navReset=true;
   }else if(state.level==='folder'||state.level==='import'){
-   state.level='owner';state.pending=null;state.selectedFiles=[];state.editing='';state.folder='';state.navReset=true;
+   state.level='owner';state.pending=null;state.selectedFiles=[];state.fileErrors.clear();state.imageCache.clear();state.editing='';state.folder='';state.navReset=true;
   }else{state.level='root';state.owner='';state.folder='';state.navReset=true;}
   render();return true;
  }
