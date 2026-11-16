@@ -37,7 +37,7 @@ export function createWeiboModule(api) {
   if(!moment)return null;
   // If only the story date is known, midnight of the following day is
   // a safe exclusive upper bound. Never store a future publication date.
-  const upper=moment.stamp+(moment.hasClock?0:86400000);
+  const upper=moment.stamp;
   const requested=storyMoment(raw);
   if(requested?.hasClock&&requested.stamp<upper)return requested.time;
   const ago=Number.isFinite(Number(daysAgo))&&Number(daysAgo)>=1?
@@ -1126,6 +1126,7 @@ export function createWeiboModule(api) {
   n.weiboDetail.replaceChildren();
   n.weiboDetailBack.hidden=true; // Fixed phone header is the only back control.
   n.weiboRefreshBox.hidden=expanded||!['home','discover','nearby'].includes(state.tab);
+  if(state.adminHistoryAccount&&state.historyStatus)n.weiboFeedback.textContent=state.historyStatus;
   n.weiboFeedback.hidden=!n.weiboFeedback.textContent;
   if(expanded){
    // No scrolling duplicate back control in detail view.
@@ -1482,7 +1483,7 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
    if(!text){feedback('请填写历史帖子正文');return;}
    const story=storyMoment(root().storyTime);
    const stamp=storyMoment(time);
-   if(!stamp?.hasClock||(story&&stamp.stamp>=story.stamp+(story.hasClock?0:86400000))){
+   if(!stamp?.hasClock||(story&&stamp.stamp>=story.stamp)){
     feedback('请填写有效的剧情年月日时分，发布时间必须早于小手机当前剧情时间');return;
    }
    const rawLikes=get('likes').trim();
@@ -1571,7 +1572,7 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
      account.publicFigure&&Number(account.followers)>=1000000?
        '已知账号为公众人物，互动量必须与 '+formatFollowers(account.followers)+' 相符。普通公开帖子点赞一般在 '+
         range.min+'～'+range.max+' 之间，可按话题热度浮动；不要生成几百赞零评论的量级。':'点赞数根据账号类型和受众规模合理变化，不要一律几百或几万。',
-     '必须只返回合法 JSON：{"posts":[{"text":"帖子正文","publishedAt":"2026-11-15 18:30","likes":10000,"commentCount":320,"comments":[{"name":"评论者","text":"评论内容"},{"name":"另一位评论者","text":"另一条评论"}]}]}。',
+     '必须只返回合法 JSON：{"posts":[{"text":"帖子正文","publishedAt":"'+historyMomentFor('',scene,1,0)+'","likes":10000,"commentCount":320,"comments":[{"name":"评论者","text":"评论内容"},{"name":"另一位评论者","text":"另一条评论"}]}]}。',
      'publishedAt 是这条帖子的完整剧情年月日和24小时制时分（YYYY-MM-DD HH:mm），年份及日期必须根据上面的当前故事时间生成，严格早于故事当前时间。多条帖子的发布时间应有合理间隔，不是手机现实时间。也接受 daysAgo 正整数作为备用值。不得输出 Markdown 或额外解释。'
     ].join('\n');
     const raw=await api.phoneGenerate(context(),{
