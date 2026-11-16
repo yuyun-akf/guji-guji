@@ -1194,6 +1194,7 @@ async function loadGroupsController(){
  groupsLoadPromise=import('./groups.js?v=0.28.1').then(mod=>{
   groupsController=mod.createGroupsModule({context,getNodes:()=>nodes,readRootData,writeData,galleryPeople,
    isPhoneFriend,contactCharacter,phoneGenerate,stripModelReasoning,notifyInteraction,openSharedPost,encodeAvatarPhoto,
+   refreshChatList:()=>{if(mounted&&nodes&&selectedCharacter(context()))renderChatLists(context(),contactCharacter(context()),readData(context()));},
    galleryPhotosForMember:id=>photosForActor(id,'chat')});
   return groupsController;
  }).catch(e=>{recordError('加载群聊',e);groupsLoadPromise=null;if(nodes?.groupsContent)nodes.groupsContent.textContent='群聊加载失败：'+e.message;return null;});
@@ -1238,7 +1239,7 @@ async function completeQunxingShare(type,id){
    const controller=await loadGroupsController();if(!controller)throw Error('群聊功能未加载');
    await controller.shareToGroup(id,post);
    if(ctx.chatMetadata!==meta)return;
-   pendingSharedPost=null;setScreen('groups');
+   pendingSharedPost=null;setScreen('groups',{preserveGroup:true,groupReturn:'chatList'});
   }
  }catch(e){setStatus('分享失败：'+String(e.message||e),'error');}
 }
@@ -3794,10 +3795,12 @@ function saveInteractionMotion(){
  ctx.saveSettingsDebounced();phoneInteraction?.sync();
  notifyInteraction('交互动画已保存','success');
 }
+let groupsReturnScreen='chatList';
 function setScreen(screen, options={}) {
     if (!SCREENS.has(screen) || !nodes) return;
     if(root?.classList.contains('lp-open')&&phoneLockSettings().enabled&&!securityUnlocked&&screen!=='lock')screen='lock';
     const previous = activeScreen;
+    if(screen==='groups'&&previous!=='groups')groupsReturnScreen=options.groupReturn||(['contacts','home','chatList'].includes(previous)?previous:'chatList');
     if(previous!==screen)phoneInteraction?.dismiss();
     const source=previous==='home'?phoneInteraction?.capture(options?.sourceTile):null;
     activeScreen = screen;
@@ -3822,7 +3825,11 @@ function setScreen(screen, options={}) {
     if (screen === 'diagnostics') renderDiagnostics();
     if (screen === 'chatList' && previous !== 'chatList') renderChatLists(context(),selectedCharacter(context()),readData(context()));
     if (screen === 'album')void loadAlbumController().then(m=>{if(activeScreen==='album')m?.open();});
-    if (screen === 'groups')void loadGroupsController().then(m=>{if(activeScreen==='groups')m?.render();});
+    if (screen === 'groups')void loadGroupsController().then(m=>{
+      if(activeScreen!=='groups'||!m)return;
+      if(previous!=='groups'&&!options.preserveGroup)m.open({origin:'directory'});
+      else m.render();
+    });
     if (screen === 'sharePicker')renderQunxingSharePicker();
     if (screen === 'shareViewer')renderSharedPostViewer();
     if (screen === 'wallet')renderWallet(context());
@@ -5103,7 +5110,7 @@ async function openGroupFromChatList(id){
   const controller=await loadGroupsController();
   if(!controller||context()?.chatMetadata!==metadata)return;
   controller.open({groupId:id,origin:'messages'});
-  setScreen('groups');
+  setScreen('groups',{preserveGroup:true,groupReturn:'chatList'});
  }catch(error){setStatus(recordError('打开群聊',error),'error');}
 }
 function renderChatLists(ctx,char,data) {
@@ -7841,7 +7848,7 @@ function mount() {
         if(activeScreen==='groups'&&groupsController?.back())return;
         if(activeScreen==='shareViewer'){setScreen(sharedPostOrigin||'chat');return;}
         setScreen({
-          wallet:'home',shopping:'home',takeout:'home',weibo:'home',album:'home',groups:'chatList',sharePicker:'weibo',chat:'chatList',
+          wallet:'home',shopping:'home',takeout:'home',weibo:'home',album:'home',groups:groupsReturnScreen,sharePicker:'weibo',chat:'chatList',
           contacts:'chatList',discover:'chatList',me:'chatList',
           profile:'contacts',requests:'contacts',addNpc:'contacts',
           discoverNpc:'addNpc',chatOptions:'chat',
