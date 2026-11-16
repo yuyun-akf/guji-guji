@@ -5157,14 +5157,23 @@ function momentAuthorId(ctx,post) {
 function momentCandidates(ctx,post) {
     const author=momentAuthorId(ctx,post),data=readRootData(ctx);
     if(!author)return [];
-    return [PRIMARY_CONTACT_ID,...data.contacts.map(c=>c.id)].filter(id=>
-        id!==author&&(
-         author===MOMENT_USER_ID?friendshipState(readData(ctx,id))==='friends':
-         charactersHaveContact(ctx,id,author)));
+    const registered=[PRIMARY_CONTACT_ID,...data.contacts.map(c=>c.id)].filter(id=>
+        id!==author&&(author===MOMENT_USER_ID?
+         friendshipState(readData(ctx,id))==='friends':charactersHaveContact(ctx,id,author)));
+    if(author===MOMENT_USER_ID)return registered;
+    // Characters have friends outside the user's saved phone contacts.
+    const name=roleFriendName(ctx,author),known=roleFriendsOf(ctx,author);
+    const guest=known.custom.slice(0,12).map((_,i)=>roleFriendActorId('rolefriend',name,i));
+    const ambient=[0,1].map(i=>roleFriendActorId('ambient',name,i));
+    return [...new Set([...registered,...guest,...ambient])];
 }
 function momentBatchActors(ctx,post,replyComments=[]) {
     const eligible=momentCandidates(ctx,post);
-    if(!replyComments.length)return eligible.slice(0,4);
+    if(!replyComments.length){
+        const ambient=eligible.filter(id=>id.startsWith('ambient|'));
+        const others=eligible.filter(id=>!id.startsWith('ambient|'));
+        return [...others.slice(0,3),...ambient.slice(0,Math.max(0,4-Math.min(3,others.length)))].slice(0,4);
+    }
     const author=momentAuthorId(ctx,post);
     const requested=replyComments.map(comment=>
         (post.comments||[]).find(old=>old.id===comment.replyTo)?.actorId).filter(Boolean);
@@ -5173,9 +5182,12 @@ function momentBatchActors(ctx,post,replyComments=[]) {
     return choices.slice(0,2);
 }
 function momentActorBrief(ctx,id) {
+    const guest=roleFriendGuest(ctx,id);
+    if(guest)return id+'｜'+guest.name+'：'+(guest.description||'角色已有的日常好友，独立决定是否互动')+
+      (guest.ambient?'；此人暂无详细设定，请生成符合作者生活圈的普通姓名，使用 action.name 字段，不制造重大关系。':'');
     const char=contactCharacter(ctx,id),description=[char?.data?.scenario,char?.data?.personality,char?.data?.description,char?.personality,char?.description]
         .filter(Boolean).join('\n').slice(0,520);
-    return `${id}｜${contactDisplayName(ctx,id)}：${description||'按当前角色的人设与关系行动'}`;
+    return id+'｜'+contactDisplayName(ctx,id)+'：'+(description||'按当前角色的人设与关系行动');
 }
 function momentBatchTask(ctx,post,actors,{writePost=false,replyComments=[]}={}) {
     const actorGuide=actors.map(id=>{
@@ -5191,8 +5203,8 @@ function momentBatchTask(ctx,post,actors,{writePost=false,replyComments=[]}={}) 
         targets?'user 新增的评论（本轮只处理这些）：'+targets:'',
         post.image?'本条动态有配图，图片将随本次请求提供，必须结合实际看见的图片内容回应；看不到图片则返回 {"actions":[],"visionUnavailable":true}，不得猜图。':'',
         '可参与角色及其各自可见信息（不要跨角色传播不可见评论）：\n'+actorGuide,
-        '只允许以下角色 ID 互动：'+actors.join('、')+'。每人最多一种反应，可以跳过，不必人人互动。',
-        '仅输出一个 JSON 对象：'+(writePost?'{"post":"不超过90字的动态",':'{')+'"actions":[{"actorId":"角色ID","kind":"like"},'+
+        '只允许以下角色 ID 互动：'+actors.join('、')+'。每人最多一种反应，可以跳过，不必人人互动。未设定的熟人可自行起普通姓名，通过 name 字段返回，不代表用户认识他们。',
+        '仅输出一个 JSON 对象：'+(writePost?'{"post":"不超过90字的动态",':'{')+'"actions":[{"actorId":"角色ID","name":"未设定熟人姓名（仅相应ID时填写）","kind":"like"},'+
             '{"actorId":"角色ID","kind":"comment","text":"30字内的自然评论"},'+
             '{"actorId":"角色ID","kind":"reply","replyTo":"可见评论ID","text":"30字内回复"}]}。',
         '同一次输出中也可使用 replyToActor 指向前面刚发布评论的角色ID；只有双方确实互有联系方式才允许这种回复。',
@@ -5215,7 +5227,10 @@ function applyMomentBatch(ctx,data,post,actors,actions) {
     for(const action of actions){
         const id=action?.actorId;
         if(!allowed.has(id)||responded.has(id)||!momentBatchActors(ctx,post).includes(id)&&id!==momentAuthorId(ctx,post))continue;
-        const kind=action?.kind,name=contactDisplayName(ctx,id),now=new Date().toISOString();
+        const kind=action?.kind,guest=roleFriendGuest(ctx,id);
+        const name=guest?.ambient?String(action.name||'').trim().slice(0,40):guest?.name||contactDisplayName(ctx,id);
+        if(!name)continue;
+        const now=new Date().toISOString();
         if(kind==='like'){
             post.likes=Array.isArray(post.likes)?post.likes:[];
             if(post.likes.some(like=>like.actorId===id))continue;
@@ -5226,7 +5241,8 @@ function applyMomentBatch(ctx,data,post,actors,actions) {
             post.comments=Array.isArray(post.comments)?post.comments:[];
             let parent=post.comments.find(comment=>comment.id===action.replyTo);
             if(!parent&&typeof action.replyToActor==='string')parent=newComments.get(action.replyToActor);
-            if(kind==='reply'&&(!parent||!(parent.actorId===MOMENT_USER_ID||parent.actorId===id||charactersHaveContact(ctx,id,parent.actorId))))continue;
+            if(kind==='reply'&&(!parent||!(parent.actorId===MOMENT_USER_ID||parent.actorId===id||
+                parent.actorId===momentAuthorId(ctx,post)||charactersHaveContact(ctx,id,parent.actorId))))continue;
             if(parent&&!visibleMomentComments(ctx,post,id).includes(parent))continue;
             const entry={id:'comment-'+Date.now()+'-'+Math.random().toString(36).slice(2,8),actorId:id,author:name,
                 text:value,replyTo:kind==='reply'?parent.id:'',at:now};
@@ -5237,8 +5253,12 @@ function applyMomentBatch(ctx,data,post,actors,actions) {
     return count;
 }
 function visibleMomentComments(ctx,post,viewerId) {
-    return (Array.isArray(post?.comments)?post.comments:[]).filter(comment=>
+    const comments=Array.isArray(post?.comments)?post.comments:[];
+    if(post?.historical)return comments; // historical posts display their preserved original conversation
+    const author=momentAuthorId(ctx,post);
+    return comments.filter(comment=>
         comment.actorId===MOMENT_USER_ID||comment.actorId===viewerId||
+        (viewerId===author&&Boolean(roleFriendGuest(ctx,comment.actorId)))||
         charactersHaveContact(ctx,viewerId,comment.actorId));
 }
 function momentButton(label,click) {
@@ -5709,12 +5729,11 @@ async function generateHistoricMoments(){
    rootData.contacts.find(x=>x.id===actor.id)?.description].filter(Boolean).join('\n').slice(0,2000);
   const prior=(rootData.moments||[]).filter(p=>momentAuthorId(ctx,p)===actor.id).slice(-8).map(p=>p.text);
   const post={authorId:actor.id,author:actor.name,comments:[]};
-  const linked=momentCandidates(ctx,post).filter(id=>id!=='user').map(id=>({id,name:contactDisplayName(ctx,id)}));
+  const linked=momentCandidates(ctx,post).filter(id=>id!=='user'&&!id.startsWith('ambient|'))
+   .map(id=>({id,name:roleFriendActorLabel(ctx,id)}));
   const allowedPhotos=photosForActor(actor.id,'group',ctx).filter(p=>p.folder!=='表情包').slice(0,18);
   return {id:actor.id,name:actor.name,details,prior,linked,allowedPhotos};
  });
- const interactable=options.filter(p=>p.linked.length>0);
- if(interactable.length<options.length)return setStatus('所选人物缺少能互动的已有联系人，无法生成每条至少五条评论的历史朋友圈','error');
  const session=captureSession(ctx),instructions=nodes.momentHistoryInstructions.value.trim().slice(0,1000);
  momentHistoryGenerating=true;momentHistoryMessage='';renderMomentHistory();
  try{
@@ -5722,18 +5741,18 @@ async function generateHistoricMoments(){
    allowedCommenters:p.linked,photoCatalog:p.allowedPhotos.map(photo=>({id:photo.id,title:photo.title,description:String(photo.description||'').slice(0,100)}))}));
   const raw=await phoneGenerate(ctx,{
    task:'autonomy',maxTokens:Math.min(13000,1700+count*1600),
-   systemPrompt:'你根据当前角色设定编写过去已发生的朋友圈。严格只返回 JSON，不替用户发言、心理或参与评论，不虚构重大事件与未知好友关系。各角色保持各自语言风格。',
+   systemPrompt:'你根据当前角色设定编写过去已发生的朋友圈。严格只返回 JSON，不替用户发言、心理或参与评论，不虚构重大事件。未详写的日常熟人可以合理补全，但不得改写已经设定的人际关系。各角色保持独立语言风格。',
    prompt:[{role:'user',content:[
     '小手机当前剧情时间：'+rootData.storyTime,
     '模式：'+(randomMode?'随机多个已有联系人':'指定单个角色'),
     '作者资料和可互动联系人：'+JSON.stringify(authorBrief),
     '生成 '+count+' 条此前不同日期的朋友圈，每条至少5条真实且内容不同的评论（可由同一联系人多次回复或由作者回复，不需5个不同人物）。',
     '每条必须指定上面的 authorId；随机模式需要覆盖尽量多位作者并交错分配；单人模式只使用指定作者。',
-    '每条评论只能由该作者的 allowedCommenters 或作者本人发表；作者本人只能作为回复者，不得自说自话凑数。评论可设置 replyToIndex 指向本帖更早评论的索引（0开始）。',
+    '优先使用作者的 allowedCommenters。也可以创作未明确设定的普通朋友、同事、网友等，actorId 写 guest 并提供 name 及自然评论；他们不是用户的好友，也不必建立咕叽聊账号。不可虚构已经写明的人物关系。作者本人只可回复其他人。replyToIndex 指向同帖更早评论索引。',
     '照片必须使用该作者已允许的 photoCatalog 中匹配内容的 photoId，否则留空。不得拿别人的照片冒充自拍。',
     '本次补充要求：'+(instructions||'日常自然生活'),
-    'JSON格式：{"posts":[{"authorId":"作者ID","text":"正文","daysAgo":2,"likes":["允许点赞的联系人ID"],"photoId":"","comments":[{"actorId":"联系人ID或作者ID","text":"评论正文","replyToIndex":0}]}]}',
-    'daysAgo为1到90。每条comments最少5条，必须至少有一位非作者的联系人评论，其他评论互相回应并自然真实。'
+    'JSON格式：{"posts":[{"authorId":"作者ID","text":"正文","daysAgo":2,"likes":["允许点赞的联系人ID"],"photoId":"","comments":[{"actorId":"联系人ID/作者ID/guest","name":"访客姓名（guest必填）","text":"评论正文","replyToIndex":0}]}]}',
+    'daysAgo为1到90。每条comments最少5条，至少一位非作者评论，其他评论可以自然回应；人数和用词不可机械凑数。'
    ].join('\n')}]},readData(ctx,selectedId||PRIMARY_CONTACT_ID));
   if(!sameSession(session))return;
   const cleaned=stripModelReasoning(String(raw||'')),start=cleaned.indexOf('{'),end=cleaned.lastIndexOf('}');
@@ -5749,11 +5768,15 @@ async function generateHistoricMoments(){
    const allowed=new Map(author.linked.map(p=>[p.id,p.name]));
    const comments=[];
    for(const c of (Array.isArray(item.comments)?item.comments:[]).slice(0,22)){
-    if(!c?.text||(!allowed.has(c.actorId)&&c.actorId!==author.id))continue;
+    if(!c?.text)continue;
+    const guest=c.actorId==='guest'||String(c.actorId||'').startsWith('guest:');
+    const guestName=guest?String(c.name||'').trim().slice(0,40):'';
+    if(!allowed.has(c.actorId)&&c.actorId!==author.id&&!(guest&&guestName))continue;
     const parent=Number.isInteger(c.replyToIndex)&&c.replyToIndex>=0?comments[c.replyToIndex]:null;
     if(c.actorId===author.id&&!parent)continue;
+    const actorId=guest?'guest:'+guestName:c.actorId;
     comments.push({id:'comment-'+Math.random().toString(36).slice(2,9),
-     actorId:c.actorId,author:c.actorId===author.id?author.name:allowed.get(c.actorId),
+     actorId,author:guest?guestName:c.actorId===author.id?author.name:allowed.get(c.actorId),
      text:String(c.text).trim().slice(0,120),...(parent?{replyTo:parent.id}:{}),at:date});
    }
    if(comments.length<5||!comments.some(c=>c.actorId!==author.id))continue;
