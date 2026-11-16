@@ -8,11 +8,11 @@ export function createPhoneMemoryModule(api){
   injectMainline:d?.config?.phoneMemory?.injectMainline===true});
  const state=d=>({entries:Array.isArray(d?.phoneMemory?.entries)?d.phoneMemory.entries.slice(-60):[],
   lastDay:day(d?.phoneMemory?.lastDay),cursors:d?.phoneMemory?.cursors||{}});
- let working=false,lastStatus='';
+ let working=false;
  function feedback(s,type='info'){
-  lastStatus=s;const node=ui()?.phoneMemoryStatus;
-  if(node){node.textContent=s;node.dataset.kind=type;}
-  api.notifyInteraction?.(s,type);
+  const node=ui()?.phoneMemoryStatus;
+  if(node)node.textContent='';
+  if(s&&type!=='pending')api.notifyInteraction?.(s,type);
  }
  function gather(d,cursors){
   const threads=[{id:'main',name:api.primaryName?.()||'主角色',msgs:d.messages||[]},
@@ -47,7 +47,7 @@ export function createPhoneMemoryModule(api){
   n.phoneMemorySchedule.textContent=cfg.enabled
    ?'上次处理：'+(mem.lastDay||'尚未开始')+'；距下次自动总结约 '+remaining+' 个剧情日'
    :'自动总结已关闭；已保存记忆仍会保留';
-  if(!n.phoneMemoryStatus.textContent)n.phoneMemoryStatus.textContent=lastStatus;
+  n.phoneMemoryStatus.textContent='';
   const list=n.phoneMemoryList;if(!list)return;
   list.replaceChildren();
   if(!mem.entries.length){const p=document.createElement('p');p.textContent='暂无手机记忆，可设置周期或手动总结。';list.append(p);return;}
