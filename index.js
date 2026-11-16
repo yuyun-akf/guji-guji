@@ -1260,7 +1260,7 @@ async function loadAlbumController(){
     ctx.saveSettingsDebounced();
    },
    worldPhotos,saveWorldPhotos,legacyStickers:legacyAlbumStickers,
-   deleteLegacyStickersFrom:deleteLegacyStickersFrom,worldFolders:worldAlbumFolders,saveWorldFolders:saveWorldAlbumFolders,
+   deleteLegacyStickersFrom:deleteLegacyStickersFrom,deleteLegacySticker,worldFolders:worldAlbumFolders,saveWorldFolders:saveWorldAlbumFolders,
    coverFor:albumCoverFor,saveCover:saveAlbumCover,
    identifyPhotos:identifyAlbumPhotos,albumScope:()=>qunxingAccountCardKey(context()),
    galleryPeople,notifyInteraction,albumSendToChat,albumPostMoment,albumPostWeibo,
@@ -4475,6 +4475,16 @@ function legacyAlbumStickers(ctx=context()){
  return Array.isArray(source)?source.filter(item=>item&&typeof item.id==='string'&&validStickerImage(item.image))
   .map(item=>({...item,legacySticker:true,owner:'world',ownerName:'世界相册',folder:'表情包',
    title:String(item.label||item.title||'表情包').slice(0,60)})):[];
+}
+function deleteLegacySticker(id,ctx=context()){
+ const settings=ctx?.extensionSettings?.[SETTINGS_KEY],list=settings?.stickers;
+ if(!Array.isArray(list)||typeof ctx.saveSettingsDebounced!=='function')throw Error('旧版表情包数据不可用');
+ const index=list.findIndex(item=>item.id===id);
+ if(index<0)throw Error('找不到旧版表情包');
+ const previous=settings.stickers;
+ settings.stickers=list.filter(item=>item.id!==id);
+ try{ctx.saveSettingsDebounced();}catch(error){settings.stickers=previous;throw error;}
+ return true;
 }
 function deleteLegacyStickersFrom(id,ctx=context()){
  const settings=ctx?.extensionSettings?.[SETTINGS_KEY],list=settings?.stickers;
