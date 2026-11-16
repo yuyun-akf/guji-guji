@@ -898,6 +898,7 @@ export function createWeiboModule(api) {
    field(scanner,'额外世界书名称（选填）','scanWorldName',state.scanWorldName||'');
    scanner.append(control(state.scanLoading?'正在检测…':'本地规则检索（不调用 API）','scanAccounts'));
    scanner.append(control(state.scanLoading?'正在检测…':'AI 智能检索（调用一次 API）','scanAccountsAI'));
+   scanner.append(control('清空角色卡共享检索结果','clearScanCatalog'));
    if(state.scanMessage)scanner.append(el('p','lp-wb-scan-message',state.scanMessage));
    if(state.candidates.length){
     scanner.append(heading('待确认账号（'+state.candidates.length+'）','确认人物绑定、职业和个性签名后勾选；未勾选的不会保存'));
@@ -1084,6 +1085,12 @@ if(type==='clearInteractions'){
 if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';render();nodes().weiboMe.parentElement.scrollTop=0;return;}
   if(type==='backMe'){state.subview=state.subview==='accountEditor'?'settings':'';state.editing='';render();nodes().weiboMe.parentElement.scrollTop=0;return;}
   if(type==='retryTopic'){state.topic=null;state.tab='discover';await generateHot();return;}
+  if(type==='clearScanCatalog'){
+   if(!window.confirm('清空当前角色卡共享的人物检索结果？已保存的群星账号、咕叽聊联系人和历史帖子不会删除。'))return;
+   try{api.clearScanCatalog?.();state.candidates=[];state.scanCacheSignature='';state.scanMessage='已清空角色卡共享检索结果。';render();}
+   catch(error){feedback('清空失败：'+error.message);}
+   return;
+  }
   if(type==='scanAccounts'||type==='scanAccountsAI'){
    if(state.scanLoading)return;
    const mode=type==='scanAccountsAI'?'ai':'rules';
