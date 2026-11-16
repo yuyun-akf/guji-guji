@@ -5159,73 +5159,65 @@ function npcEntryKeywords(entry){
  const values=[entry?.key,entry?.keysecondary,entry?.keys,entry?.secondary_keys].flatMap(v=>Array.isArray(v)?v:typeof v==='string'?[v]:[]);
  return [...new Set(values.map(v=>String(v||'').trim()).filter(Boolean))].slice(0,30);
 }
+// A keyword is an activation alias, not evidence that a person exists.
+function npcExplicitNames(content){
+ const names=[];
+ const reg=/(?:^|\n)\s*(?:姓名|本名|真实姓名|角色姓名)[：:]\s*([\u3400-\u9fff·]{2,8})(?=\s|[，,；;。()（）]|$)/g;
+ let m;
+ while((m=reg.exec(String(content||'')))!==null){
+  const name=cleanNpcName(m[1]);
+  if(name&&!names.includes(name))names.push(name);
+ }
+ return names;
+}
 function npcEntryHeaderCandidates(source,mainName){
  if(!source.profileEntry)return [];
- const title=String(source.title||'');
- const fields=[...title.split(/[｜|／/：:—\-]/),...(source.keys||[])];
- const names=[];
- for(const field of fields){
-  const name=likelyNpcPersonalName(field.trim().replace(/^(?:NPC|人物|角色|姓名)[：:\s]*/i,''));
-  if(name&&name!==mainName&&!names.includes(name))names.push(name);
- }
- return names.slice(0,5).map(name=>({
-  name,relation:'',description:(title+'\n'+String(source.content||'')).slice(0,3500),
-  source:source.name,confidence:'世界书标题／关键词'
+ const title=String(source.title||''),content=String(source.content||'');
+ const explicit=npcExplicitNames(content).filter(name=>name!==mainName);
+ if(explicit.length)return explicit.map(name=>({
+  name,relation:'',description:content.slice(0,3500),source:source.name,confidence:'姓名字段'
  }));
+ // Only a biographical entry with a name anchored in its own contents may
+ // create an identity. Never promote title fragments or key/secondary keys.
+ const parts=title.split(/[｜|]/).map(x=>x.trim());
+ const marker=parts.findIndex(x=>/^(?:NPC|人物|角色|人物档案|室友|大学室友|同学|关系)$/i.test(x));
+ if(marker<0||marker+1>=parts.length)return [];
+ const word=parts[marker+1].split(/[／/]/)[0].trim();
+ const name=cleanNpcName(word.match(/^([\u3400-\u9fff·]{2,5})(?=[（(]|$)/)?.[1]);
+ if(!name||name===mainName)return [];
+ const startsName=new RegExp('(?:^|[\\n。])\\s*'+name+'(?:[（(，,：:]|(?:是|为|现年|今年|性格))');
+ const bio=/(?:\d{1,3}岁|男[，,；;]|女[，,；;]|大学|就读|从事|工作|性格|身份|职业|经纪人|演员|同学|室友|朋友|父亲|母亲)/;
+ if(!startsName.test(content)||!bio.test(content))return [];
+ if(new RegExp('(?:^|\\n)\\s*'+name+'\\s*(?:又叫|即|就是|是.*?(?:外号|昵称|绰号))').test(content.slice(0,150)))return [];
+ return [{name,relation:'',description:content.slice(0,3500),source:source.name,confidence:'人物档案标题'}];
 }
-function extractNpcCandidatesFromText(sourceText,source,mainName) {
-    const text=String(sourceText||'').slice(0,40000);
-    const found=[];
-    const lines=text.split(/\r?\n|(?<=[。！？；])(?=[^\s])/).map(v=>v.trim()).filter(Boolean);
-    const rel=NPC_RELATIONS;
-    for(let i=0;i<lines.length&&i<850;i++){
-        const line=lines[i].slice(0,1200);
-        const trimmed=line.replace(/^[-*\d.、\s#]+/,'');
-        const hits=[];
-        let m;
-        // A labeled character entry, e.g. 姓名：人物甲 / 角色：人物乙
-        const labeled=trimmed.match(/^(?:姓名|人物|角色名|角色姓名|NPC|名字|名称)[：:\s]+([\u3400-\u9fff·]{2,8})(?=\s|[,，;；。]|$)/i);
-        if(labeled)hits.push({name:labeled[1],relation:''});
-        const heading=trimmed.match(/^(?:#+\s*)?(?:人物|角色|NPC)[：:\s]+([\u3400-\u9fff·]{2,8})(?=\s|[,，;；。]|$)/i);
-        if(heading)hits.push({name:heading[1],relation:''});
-        // Relation label e.g. 父亲：人物甲
-        const relLabel=new RegExp('(?:^|[，,。；;\\s])('+rel+')[：:\\s]+([\\u3400-\\u9fff·]{2,8})(?=\\s|[，,。；;]|$)','g');
-        while((m=relLabel.exec(trimmed))!==null)hits.push({name:m[2],relation:m[1]});
-        //  {{char}}的母亲人物甲 / 他的老师人物乙
-        const relationWithName=new RegExp('(?:[\\u3400-\\u9fff·]{2,6}|他|她|我|你)的('+rel+')([\\u3400-\\u9fff·]{2,4})(?=[，,。；;\\s（(]|是|为|在|会|曾|现|于|就|还|并|担任)','g');
-        while((m=relationWithName.exec(trimmed))!==null)hits.push({name:m[2],relation:m[1]});
-        const namedAs=new RegExp('(?:[\\u3400-\\u9fff·]{2,6}|他|她|我|你)的('+rel+')叫([\\u3400-\\u9fff·]{2,4})(?=[，,。；;\\s]|是|为|在|$)','g');
-        while((m=namedAs.exec(trimmed))!==null)hits.push({name:m[2],relation:m[1]});
-        const userRelation=new RegExp('(?:user|玩家|\\{\\{user\\}\\})的('+rel+')([\\u3400-\\u9fff·]{2,4})(?=[，,。；;\\s]|是|为|在|会|曾|现|于|$)','gi');
-
-        const namedUserFriend=new RegExp('(?:^|[，,。；;\\s（(])([\\u3400-\\u9fff·]{2,5})\\s*(?:是|为|即|（|\\()\\s*(?:user|玩家|我|\\{\\{user\\}\\})的('+rel+')(?=[，,。；;）)\\s]|$)','gi');
-        while((m=namedUserFriend.exec(trimmed))!==null)hits.push({name:m[1],relation:m[2]});
-        const friendKey=trimmed.match(/^(?:好友|朋友|闺蜜|室友|同学|老师|昵称|外号)[：:\s]+([\u3400-\u9fff·]{2,5})(?=[，,。；;\s]|$)/);
-        if(friendKey)hits.push({name:friendKey[1],relation:trimmed.split(/[：:]/)[0].slice(0,8)});
-
-        while((m=userRelation.exec(trimmed))!==null)hits.push({name:m[2],relation:m[1]});
-        // 人物甲（{{char}}的母亲） / 人物乙：知名导演，{{char}}父亲
-        const namedRelation=new RegExp('^([\\u3400-\\u9fff·]{2,5})[：:（(][^。\\n]{0,85}?(?:'+rel+')(?=[，,。；;）)\\s]|$)');
-        m=trimmed.match(namedRelation);
-        if(m)hits.push({name:m[1],relation:trimmed.match(new RegExp(rel))?.[0]||''});
-        // Explicit named worldbook title, e.g. 人物甲 - 人物档案
-        if(i===0 || trimmed.startsWith('#')){
-            m=trimmed.match(/^#*\s*([\u3400-\u9fff·]{2,5})\s*[-—｜|:：]\s*(?:人物|角色|NPC|档案|父亲|母亲|同学|老师|关系)/);
-            if(m)hits.push({name:m[1],relation:''});
-        }
-        for(const hit of hits){
-            const name=(hit.relation||!labeled||hit.name!==labeled[1])?likelyNpcPersonalName(hit.name):cleanNpcName(hit.name);
-            if(!name||name===mainName)continue;
-            const context=[lines[Math.max(0,i-1)]||'',line,lines[i+1]||''].join('\n').slice(0,900);
-            const meaningful=context.replace(/\s/g,'').length>=8;
-            if(!meaningful)continue;
-            const r=hit.relation ? (new RegExp('(?:user|玩家|\\{\\{user\\}\\})的?'+hit.relation).test(context) ? 'user 的'+hit.relation
-                : context.includes(mainName+'的'+hit.relation) ? mainName+'的'+hit.relation
-                : '当前角色的'+hit.relation+'（请核对）') : '';
-            found.push({name,relation:r,description:context,source,confidence:hit.relation?'关系线索':'人物条目'});
-        }
-    }
-    return found;
+function extractNpcCandidatesFromText(sourceText,source,mainName){
+ const lines=String(sourceText||'').slice(0,40000).split(/\r?\n|(?<=[。！？；])(?=[^\s])/).map(x=>x.trim()).filter(Boolean);
+ const found=[];
+ const add=(raw,relation,line,i,confidence)=>{
+  const name=confidence==='姓名字段'?cleanNpcName(raw):likelyNpcPersonalName(raw);
+  if(!name||name===mainName)return;
+  const surrounding=[lines[Math.max(0,i-1)]||'',line,lines[i+1]||''].join('\n').slice(0,900);
+  if(surrounding.replace(/\s/g,'').length<8)return;
+  found.push({name,relation,description:surrounding,source,confidence});
+ };
+ for(let i=0;i<lines.length&&i<850;i++){
+  const line=lines[i].slice(0,1200);
+  let m;
+  const named=line.match(/^(?:[-*#\s\d.、]+)?(?:姓名|真实姓名|本名|角色姓名)[：:]\s*([\u3400-\u9fff·]{2,8})(?=\s|[，,；;。()（）]|$)/);
+  if(named)add(named[1],'',line,i,'姓名字段');
+  // Explicit roster labels have an unambiguous name delimiter.
+  const labeled=/(?:^|[，,；;。\s])(?:父亲|母亲|哥哥|姐姐|弟弟|妹妹|老师|导师|教授|同学|室友|朋友|经纪人|执行经纪|生活助理|安保司机|公关负责人|法务顾问|造型师|律师|助理|秘书|导演|司机)[：:]\s*([\u3400-\u9fff·]{2,4})(?=[（(，,；;。\s—\-]|$)/g;
+  while((m=labeled.exec(line))!==null)add(m[1],'',line,i,'明确关系');
+  // Avoid arbitrary "XX的室友兼同学" continuations.
+  const kinship=/(?:[\u3400-\u9fff·]{2,6}|他|她|我|你|user|\{\{user\}\}|\{\{char\}\})的(?:父亲|母亲|养父|养母|哥哥|姐姐|弟弟|妹妹|妻子|丈夫|儿子|女儿)([\u3400-\u9fff·]{2,4})(?=[（(，,；;。\s]|$)/g;
+  while((m=kinship.exec(line))!==null)add(m[1],'亲属',line,i,'明确关系');
+  const profile=/(?:^|[，,；;：:\s])([\u3400-\u9fff·]{2,4})[（(](?:男|女)\s*[,，；;]/g;
+  while((m=profile.exec(line))!==null)add(m[1],'',line,i,'具名人物资料');
+  const withAlias=/(?:^|[，,；;：:\s])([\u3400-\u9fff·]{2,4})[（(][^()（）]{1,8}[）)]\s*[,，]\s*(?:男|女)\s*[,，]/g;
+  while((m=withAlias.exec(line))!==null)add(m[1],'',line,i,'具名人物资料');
+ }
+ return found;
 }
 function mergeNpcCandidates(candidates,root,primaryName) {
     const existing=new Set([primaryName,...root.contacts.map(x=>x.name)].map(x=>String(x).trim().toLocaleLowerCase()));
