@@ -1,7 +1,7 @@
 /* 咕叽咕机共享素材库：角色卡人物相册与现代世界公共相册。 */
 export function createAlbumModule(api){
  const el=(tag,cls='',value='')=>{const n=document.createElement(tag);if(cls)n.className=cls;if(value)n.textContent=value;return n;};
- const state={level:'root',owner:'',folder:'',mode:'files',busy:false,message:'',editing:'',selectedFiles:[],pending:null,navReset:false};
+ const state={level:'root',owner:'',folder:'',mode:'files',busy:false,message:'',editing:'',selectedFiles:[],pending:null,navReset:false,dialog:null,warningShown:false};
  const host=()=>api.getNodes()?.albumContent;
  const people=()=>api.galleryPeople();
  const worldId='world';
@@ -26,6 +26,63 @@ export function createAlbumModule(api){
   const copy=el('span','lp-album-folder-copy');copy.append(el('strong','',title),el('small','',sub));b.append(copy);return b;
  };
  const readFiles=()=>state.selectedFiles.slice();
+ const warningText='请勿上传涉及个人隐私、未经授权的画师作品或其他无权使用的图片；建议优先上传已获授权的 AI 生成图片。';
+ const safetyDisabled=()=>api.safetyWarningDisabled?.()===true;
+ function enterImport(){state.dialog=null;state.level='import';state.mode='files';state.selectedFiles=[];state.navReset=true;render();}
+ function requestImport(){if(!safetyDisabled()&&!state.warningShown){state.dialog={type:'warning'};render();}else enterImport();}
+ function openOptions(){state.dialog={type:'options'};render();}
+ function endPhoneSession(){state.warningShown=false;state.dialog=null;state.selectedFiles=[];}
+ function renderDialog(wrap){
+  if(!state.dialog)return;
+  const data=state.dialog,overlay=el('div','lp-album-overlay'),dialog=el('section','lp-album-dialog');
+  dialog.setAttribute('role','dialog');dialog.setAttribute('aria-modal','true');
+  const titles={warning:'图片导入安全提醒',options:'相册说明与安全提醒',edit:'编辑图片资料',move:'移动图片分类',cover:'设置封面',delete:'删除图片'};
+  const title=el('h3','',titles[data.type]||'相册操作');dialog.setAttribute('aria-label',title.textContent);dialog.append(title);
+  const note=msg=>dialog.append(el('p','lp-album-dialog-note',msg));
+  const field=(key,label,value='',kind='input')=>{
+   const box=el('label','lp-album-field',label),input=el(kind);input.dataset.albumDialogField=key;
+   if(kind==='textarea')input.rows=3;if(kind!=='select')input.value=String(value||'');
+   box.append(input);dialog.append(box);return input;
+  };
+  const actions=el('div','lp-album-dialog-actions'),finish=label=>actions.append(button('dialogApply',label));
+  if(data.type==='warning'){
+   note(warningText);note('每次重新打开咕叽咕机后，首次进入图片导入页面时显示一次。');
+   actions.append(button('dialogClose','取消'));finish('我已知晓，继续导入');
+  }else if(data.type==='options'){
+   note('相册素材只在情境相关时调用；不同子相册的使用范围如下：');
+   for(const [label,description] of [
+    ['世界相册','现代世界跨角色卡共享，风景、家居、美食、游戏及角色图等素材可供相关角色使用'],
+    ['公开相册','其他角色可在相关聊天或动态中引用'],
+    ['日常相册','仅相册所属角色可在聊天或动态中使用'],
+    ['私密相册','仅在所属角色与 user 私聊时使用'],
+    ['表情包','作为表情图片资源使用，不按普通照片调用']
+   ]){const p=el('p','lp-album-access-note');p.append(el('strong','',label+'：'),document.createTextNode(description));dialog.append(p);}
+   const toggle=field('disableWarning','永久关闭导入前安全提醒');toggle.type='checkbox';toggle.checked=safetyDisabled();
+   note('此设置只影响导入前弹窗；相册主页的安全提醒始终保留。');
+   actions.append(button('dialogClose','取消'));finish('保存设置');
+  }else{
+   const photo=ownerPhotos().find(p=>p.id===data.photoId);if(!photo){state.dialog=null;return;}
+   if(data.type==='edit'){
+    field('title','图片名称',photo.title||'');field('description','图片描述',photo.description||'','textarea');
+    if(photoFolder(photo)==='表情包')field('usage','表情包用途',photo.usage||'','textarea');
+    actions.append(button('dialogClose','取消'));finish('保存修改');
+   }else if(data.type==='move'){
+    const select=field('folder','移动到子相册','','select');
+    for(const id of folders()){const o=el('option','',labelOf(id));o.value=id;select.append(o);}
+    select.value=photoFolder(photo);actions.append(button('dialogClose','取消'));finish('确认移动');
+   }else if(data.type==='cover'){
+    const select=field('coverTarget','设置为哪个封面','','select');
+    for(const [id,label] of [['owner',world()?'世界相册封面':'人物相册封面'],['folder','当前子相册封面']]){
+     const o=el('option','',label);o.value=id;select.append(o);
+    }
+    actions.append(button('dialogClose','取消'));finish('确认设置');
+   }else if(data.type==='delete'){
+    note('确定删除「'+(photo.title||'未命名图片')+'」？删除后无法恢复，已发送的聊天或动态不会同步删除。');
+    actions.append(button('dialogClose','取消'));finish('确认删除');
+   }
+  }
+  dialog.append(actions);overlay.append(dialog);wrap.append(overlay);
+ }
  function render(){
   const wrap=host();if(!wrap)return;
   const oldTop=wrap.scrollTop;
@@ -36,7 +93,7 @@ export function createAlbumModule(api){
   wrap.dataset.albumOwner=state.owner;wrap.dataset.albumLevel=state.level;
   wrap.replaceChildren();
   if(state.level==='root'){
-   wrap.append(pane('相册','当前人物相册按角色卡保存；现代世界相册跨角色卡共享。'));
+   wrap.append(el('p','lp-album-safety-note',warningText));
    const grid=el('div','lp-album-folder-grid');
    const shared=api.worldPhotos?.()||[];
    grid.append(tile('世界相册',shared.length+' 张公共资源','owner',worldId,api.coverFor?.(worldId,'')||shared.find(p=>validImage(p.image))?.image));
@@ -47,8 +104,8 @@ export function createAlbumModule(api){
    wrap.append(grid);
   }else if(state.level==='owner'){
    const entries=ownerPhotos();
-   wrap.append(pane(ownerName(),world()?'世界通用素材 · 所有角色可用':'所有照片允许本人使用；子相册控制其他账号的调用范围。'));
-   wrap.append(button('root','‹ 返回人物与世界相册'));
+   wrap.append(pane(ownerName()));
+   
    const grid=el('div','lp-album-folder-grid');
    for(const key of folders()){
     const pics=entries.filter(p=>photoFolder(p)===key&&validImage(p.image));
@@ -58,8 +115,8 @@ export function createAlbumModule(api){
    if(world())grid.append(tile('新建子相册','自定义名称','newFolder'));
    wrap.append(grid);
   }else if(state.level==='folder'){
-   wrap.append(pane(ownerName()+' · '+labelOf(state.folder),photos().length+' 张 · 可修改资料、删除或移动照片'));
-   wrap.append(button('owner','‹ 返回子相册'));
+   wrap.append(pane(labelOf(state.folder),photos().length+' 张照片'));
+   
    const list=el('div','lp-album-grid');
    for(const photo of photos()){
     const card=el('article','lp-album-card'),img=el('img');
@@ -69,17 +126,7 @@ export function createAlbumModule(api){
     if(photo.description)info.append(el('p','',photo.description));
     if(photo.usage)info.append(el('small','','用途：'+photo.usage));
     const actions=el('div','lp-album-actions');
-    actions.append(button('edit','编辑资料',photo.id),button('move','移动分类',photo.id),button('cover','设为子相册封面',photo.id),button('ownerCover','设为人物封面',photo.id),button('delete','删除',photo.id));
-    if(state.editing===photo.id){
-     const form=el('div','lp-album-edit-form');
-     for(const [key,label,value]of [['title','名称',photo.title],['description','描述',photo.description],...(state.folder==='表情包'?[['usage','表情包用途',photo.usage]]:[])]){
-      const field=el('label','lp-album-field',label);
-      const input=key==='description'||key==='usage'?el('textarea'):el('input');
-      input.dataset.albumEdit=key;input.value=value||'';field.append(input);form.append(field);
-     }
-     form.append(button('saveEdit','保存修改',photo.id),button('cancelEdit','取消'));
-     info.append(form);
-    }
+    actions.append(button('edit','编辑',photo.id),button('move','移动',photo.id),button('cover','设为封面',photo.id),button('delete','删除',photo.id));
     card.append(img,info,actions);list.append(card);
    }
    if(!photos().length)list.append(el('p','lp-album-empty','这个子相册还没有图片。返回上一页，从「添加照片」导入即可。'));
@@ -88,7 +135,7 @@ export function createAlbumModule(api){
    wrap.append(pane('检查 AI 识图结果','逐张修改名称与描述，确认后一次性保存。'));
    const pending=state.pending;
    if(!pending){state.level='owner';render();return;}
-   wrap.append(button('owner','‹ 放弃并返回'));
+   
    const list=el('div','lp-album-review-list');
    pending.images.forEach((src,index)=>{
     const card=el('div','lp-album-review-card'),img=el('img');img.src=src;img.alt='识图预览';
@@ -108,7 +155,7 @@ export function createAlbumModule(api){
    wrap.append(list,button('saveReview','确认导入 '+pending.images.length+' 张图片'));
   }else if(state.level==='import'){
    wrap.append(pane('添加照片','进入哪个相册就自动获得对应权限，导入后可移动。'));
-   wrap.append(button('owner','‹ 返回子相册'));
+   
    const form=el('div','lp-album-form');
    const target=el('select');target.dataset.albumField='target';
    for(const key of folders()){const option=el('option','',labelOf(key));option.value=key;target.append(option);}
@@ -134,6 +181,7 @@ export function createAlbumModule(api){
    wrap.append(form);
   }
   if(state.message)wrap.append(el('p','lp-album-feedback',state.message));
+   renderDialog(wrap);
   wrap.scrollTop=state.navReset?0:oldTop;state.navReset=false;
  }
  async function encode(file,sticker=false){
@@ -198,33 +246,29 @@ export function createAlbumModule(api){
   finally{state.busy=false;}
  }
  async function saveEdited(photo){
-  const form=host()?.querySelector('.lp-album-edit-form');if(!form)return;
-  const val=key=>form.querySelector('[data-album-edit="'+key+'"]')?.value?.trim()||'';
+  const form=host()?.querySelector('.lp-album-dialog');if(!form)return;
+  const val=key=>form.querySelector('[data-album-dialog-field="'+key+'"]')?.value?.trim()||'';
   const patch={...photo,title:val('title').slice(0,60),description:val('description').slice(0,500)};
   if(photoFolder(photo)==='表情包')patch.usage=val('usage').slice(0,160);
   const list=world()?(api.worldPhotos?.()||[]):(api.sharedPhotos?.()||[]);
   const next=list.map(p=>p.id===photo.id?patch:p);
   if(world())await api.saveWorldPhotos(next);else await api.saveSharedPhotos(next);
-  state.editing='';hint('图片资料已更新');
+  state.dialog=null;hint('图片资料已更新');
  }
  async function remove(photo){
-  if(!window.confirm('删除这张照片？已经发送的聊天或已发布动态不会删除。'))return;
+  
   const list=world()?(api.worldPhotos?.()||[]):(api.sharedPhotos?.()||[]);
   const next=list.filter(p=>p.id!==photo.id);
   if(world())await api.saveWorldPhotos(next);else await api.saveSharedPhotos(next);
-  hint('照片已删除');
+  state.dialog=null;hint('照片已删除');
  }
  async function move(photo){
-  const allowed=folders();
-  const label=allowed.map(labelOf).join('、');
-  const selected=window.prompt('移动到哪个子相册？可选：'+label,labelOf(photoFolder(photo)));
-  if(selected===null)return;
-  const target=allowed.find(k=>k===selected||labelOf(k)===selected.trim());
-  if(!target)return hint('请输入有效的子相册名称',true);
+  const target=host()?.querySelector('[data-album-dialog-field="folder"]')?.value;
+  if(!folders().includes(target))return hint('请选择有效的子相册',true);
   const list=world()?(api.worldPhotos?.()||[]):(api.sharedPhotos?.()||[]);
   const next=list.map(p=>p.id===photo.id?{...p,folder:target,access:world()?'public':target==='public'?'public':target==='private'?'private':'chat'}:p);
   if(world())await api.saveWorldPhotos(next);else await api.saveSharedPhotos(next);
-  hint('已移动到「'+labelOf(target)+'」');
+  state.dialog=null;hint('已移动到「'+labelOf(target)+'」');
  }
  async function saveReview(){
   if(state.busy||!state.pending)return;
@@ -255,7 +299,7 @@ export function createAlbumModule(api){
   if(type==='root'){state.level='root';state.owner='';state.folder='';state.message='';state.navReset=true;render();return true;}
   if(type==='owner'){if(id)state.owner=id;state.level='owner';state.folder='';state.editing='';state.pending=null;state.navReset=true;render();return true;}
   if(type==='folder'){state.folder=id;state.level='folder';state.editing='';state.navReset=true;render();return true;}
-  if(type==='import'){state.level='import';state.mode='files';state.selectedFiles=[];state.navReset=true;render();return true;}
+  if(type==='import'){requestImport();return true;}
   if(type==='mode'){state.mode=id;render();return true;}
   if(type==='newFolder'){
    const name=window.prompt('输入世界相册子相册名称（不超过20字）','');
@@ -264,19 +308,33 @@ export function createAlbumModule(api){
   }
   if(type==='upload'){await upload();return true;}
   if(type==='saveReview'){await saveReview();return true;}
-  if(type==='cancelEdit'){state.editing='';render();return true;}
-  const photo=ownerPhotos().find(p=>p.id===id);if(!photo)return false;
-  try{
-   if(type==='edit'){state.editing=id;render();}
-   else if(type==='saveEdit')await saveEdited(photo);
-   else if(type==='delete')await remove(photo);
-   else if(type==='move')await move(photo);
-   else if(type==='cover'||type==='ownerCover'){
-    await api.saveCover?.(state.owner,type==='cover'?state.folder:'',photo.id);hint('已设置相册封面');
+  if(type==='dialogClose'){state.dialog=null;render();return true;}
+   if(type==='dialogApply'){
+    const data=state.dialog;if(!data)return true;
+    if(data.type==='warning'){state.warningShown=true;enterImport();return true;}
+    if(data.type==='options'){
+     const disabled=Boolean(host()?.querySelector('[data-album-dialog-field="disableWarning"]')?.checked);
+     try{await api.saveSafetyWarningDisabled?.(disabled);state.dialog=null;hint('相册设置已保存');}
+     catch(error){hint('设置保存失败：'+String(error.message||error),true);}
+     return true;
+    }
+    const photo=ownerPhotos().find(p=>p.id===data.photoId);if(!photo){state.dialog=null;render();return true;}
+    try{
+     if(data.type==='edit')await saveEdited(photo);
+     else if(data.type==='move')await move(photo);
+     else if(data.type==='delete')await remove(photo);
+     else if(data.type==='cover'){
+      const scope=host()?.querySelector('[data-album-dialog-field="coverTarget"]')?.value;
+      if(scope!=='owner'&&scope!=='folder')throw Error('请选择封面类型');
+      await api.saveCover?.(state.owner,scope==='owner'?'':state.folder,photo.id);
+      state.dialog=null;hint('封面设置已保存');
+     }
+    }catch(error){hint('照片操作失败：'+String(error.message||error),true);}
+    return true;
    }
-   else return false;
-  }catch(error){hint('照片操作失败：'+String(error.message||error),true);}
-  return true;
+   const photo=ownerPhotos().find(p=>p.id===id);if(!photo)return false;
+   if(['edit','move','cover','delete'].includes(type)){state.dialog={type,photoId:id};render();return true;}
+   return false;
  }
  function handleChange(event){
   if(event.target?.matches?.('[data-album-field="target"]')){
@@ -289,12 +347,13 @@ export function createAlbumModule(api){
   render();return true;
  }
  function back(){
-  if(state.level==='root')return false;
+  if(state.dialog){state.dialog=null;render();return true;}
+   if(state.level==='root')return false;
   if(state.level==='folder'||state.level==='import'||state.level==='review'){
    state.level='owner';state.pending=null;state.editing='';state.folder='';state.navReset=true;
   }else{state.level='root';state.owner='';state.folder='';state.navReset=true;}
   render();return true;
  }
- function open(){state.level='root';state.owner='';state.folder='';state.message='';state.navReset=true;render();}
- return {open,render,handleClick,handleChange,back,state};
+ function open(){state.level='root';state.owner='';state.folder='';state.dialog=null;state.message='';state.navReset=true;render();}
+ return {open,openOptions,endPhoneSession,render,handleClick,handleChange,back,state};
 }
