@@ -1,6 +1,7 @@
 /* Shopping app scaffold. Product inventory and checkout are intentionally not implemented yet. */
 export function createShoppingModule(api){
  const state={scope:null,tab:'browse'};
+ const scrollByTab=new Map();let shownTab='';
  const validTabs=new Set(['browse','cart','me']);
  const create=(tag,cls='',text)=>{
   const element=document.createElement(tag);
@@ -40,8 +41,10 @@ export function createShoppingModule(api){
     create('p','lp-shopping-empty','订单、收货地址与账号资料将在后续加入。'));
   }
   body.append(card);
-  nodes.shoppingContent.replaceChildren(body);
-  nodes.shoppingContent.scrollTop=0;
+  const scroller=nodes.shoppingContent;
+  if(shownTab&&shownTab!==state.tab)scrollByTab.set(shownTab,scroller.scrollTop);
+  const top=shownTab===state.tab?scroller.scrollTop:(scrollByTab.get(state.tab)||0);
+  scroller.replaceChildren(body);scroller.scrollTop=top;shownTab=state.tab;
  }
  function selectTab(tab){
   if(!validTabs.has(tab))return;
@@ -50,7 +53,7 @@ export function createShoppingModule(api){
  }
  function open(){
   const scope=api.context()?.chatMetadata??null;
-  if(state.scope!==scope){state.scope=scope;state.tab='browse';}
+  if(state.scope!==scope){state.scope=scope;state.tab='browse';scrollByTab.clear();shownTab='';}
   render();
  }
  function handleClick(event){
