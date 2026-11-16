@@ -19,11 +19,11 @@ test('v0.29.0: scripts parse with matching dynamic import and manifest versions'
 test('unbounded pins persist independently for private conversations and group chats',async()=>{
  const store={pinnedChats:Array.from({length:31},(_,i)=>'contact:npc:'+i)};
  const ctx={chatMetadata:{}};
- const pin=new Function('context','selectedCharacter','readRootData','writeData','mounted',
+ const pin=new Function('busy','context','selectedCharacter','readRootData','writeData','mounted',
   'nodes','contactCharacter','readData','renderChatLists','recordError','setStatus','PRIMARY_CONTACT_ID',
   section('const phoneThreadPinKey=','function renderChatLists(')+
   'return {pinnedChatIds,togglePhoneThreadPin,phoneThreadPinKey};')(
-   ()=>ctx,()=>({name:'主角色'}),()=>store,async(_,data)=>{Object.assign(store,data);},
+   false,()=>ctx,()=>({name:'主角色'}),()=>store,async(_,data)=>{Object.assign(store,data);},
    false,null,()=>({}),()=>({}),()=>{},()=>{},()=>{},'primary');
  assert.equal(pin.pinnedChatIds(store).length,31);
  await pin.togglePhoneThreadPin(pin.phoneThreadPinKey('group','bedroom'));
@@ -72,11 +72,11 @@ test('bulk scanned NPC import creates incoming friend requests, not existing fri
  const fn=new Function('busy','npcScanning','npcScanSession','sameNpcScanSession','nodes',
   'context','readRootData','selectedCharacter','getCharacterName','cleanNpcName','personaNames',
   'npcCandidates','window','writeData','renderNpcCandidates','render','setScreen','setStatus',
-  'recordError','PRIMARY_CONTACT_ID',section('async function saveSelectedNpcCandidates()','function populateNpcWorldSelect()')+
+  'recordError','PRIMARY_CONTACT_ID','structuredClone',section('async function saveSelectedNpcCandidates()','function populateNpcWorldSelect()')+
   'return saveSelectedNpcCandidates;')(
   false,false,{},()=>true,nodes,()=>ctx,()=>data,()=>({name:'主角色'}),()=> '主角色',
   x=>x,()=>new Set(),[candidate],{confirm:()=>true},
-  async(_,value)=>{written=value;},()=>{},()=>{},()=>{},()=>{},()=>{},'primary');
+  async(_,value)=>{written=value;},()=>{},()=>{},()=>{},()=>{},()=>{},'primary',value=>JSON.parse(JSON.stringify(value)));
  await fn();
  assert.equal(written.contacts.length,1);
  const id=written.contacts[0].id;
