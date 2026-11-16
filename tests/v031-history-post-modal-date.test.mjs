@@ -101,3 +101,54 @@ test('opening edit dialog creates a modal without touching scroll location',()=>
  assert.equal(screen.children[0].children[0].attributes['aria-modal'],'true');
  assert.deepEqual(controls.map(x=>x.action),['cancelHistoryEdit','saveHistoryPost','cancelHistoryEdit','deleteHistoryPost']);
 });
+
+
+test('AI historical generation immediately reports progress and saves only pre-story dates',async()=>{
+ const branch=slice(weibo,"  if(type==='generateAccountHistory'){","  if(type==='newAccount'||type==='editAccount'){");
+ const state={adminHistoryAccount:'actor-1',historyGenerating:false,historyStatus:'',historyInstructions:'',historyCount:'3'};
+ const stored={accounts:[{id:'actor-1',name:'林知远',followers:1000000,publicFigure:true}],posts:[]};
+ const traces=[];let calls=0,release;
+ const deferred=new Promise(resolve=>{release=resolve;});
+ const env={
+  state,data:()=>stored,
+  nodes:()=>({weiboDetail:{querySelector:q=>({value:q.includes('instructions')?'剧组日常':'3'})}}),
+  clean:(x,n=100)=>String(x||'').slice(0,n),scope:()=> 'chat-a',
+  root:()=>({storyTime:'2847-01-09T22:00'}),
+  storyMoment:dates.storyMoment,historyMomentFor:dates.historyMomentFor,
+  feedback:s=>traces.push(['feedback',s]),
+  render:()=>traces.push(['render',state.historyStatus,state.historyGenerating]),
+  api:{accountSubjectContext:()=>'',storyContext:()=>'',phoneGenerate:async()=>{calls++;return deferred;},readData:()=>({})},
+  subjectOfAccount:()=>({type:'primary'}),accountHistory:()=>[],
+  formatFollowers:n=>String(n),savedProfession:()=>'',accountOperatorGuide:()=>'',
+  historicalLikeRange:()=>({min:1000,max:100000}),parse:JSON.parse,
+  uid:p=>p+String(Math.random()).slice(2),countValue:x=>Number(x),stableSeed:()=>.1,
+  mutate:async fn=>fn(stored),context:()=>({})
+ };
+ const run=new Function(...Object.keys(env),
+  'return async function(type,id){'+branch+'};')(...Object.values(env));
+ const task=run('generateAccountHistory','actor-1');
+ assert.equal(calls,1);
+ assert.equal(state.historyGenerating,true);
+ assert.ok(traces.some(x=>x[0]==='render'&&x[2]===true));
+ release(JSON.stringify({posts:[
+  {text:'旧日帖子A',publishedAt:'2847-01-08 17:20',likes:10000,
+   comments:[{name:'甲',text:'看到了'},{name:'乙',text:'支持'}]},
+  {text:'旧日帖子B',publishedAt:'2847-01-10 12:00',daysAgo:3,likes:10001,
+   comments:[{name:'甲',text:'有趣'},{name:'乙',text:'赞同'}]}
+ ]}));
+ await task;
+ assert.equal(stored.posts.length,2);
+ assert.equal(calls,1);
+ assert.equal(state.historyGenerating,false);
+ assert.match(state.historyStatus,/已生成并保存 2 条/);
+ for(const post of stored.posts){
+  assert.ok(dates.storyMoment(post.time).stamp<dates.storyMoment('2847-01-09T22:00').stamp);
+  assert.notEqual(post.category,'历史公开动态');
+ }
+});
+
+test('phone header back closes editor before exiting history manager',()=>{
+ const body=slice(weibo,' function back(){',' function handleInput(');
+ assert.match(body,/if\(state\.historyEditingId\)\{state\.historyEditingId='';render\(\);return true;\}/);
+ assert.match(body,/if\(state\.adminHistoryAccount\)/);
+});
