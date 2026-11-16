@@ -5115,60 +5115,129 @@ async function uploadMomentCover(file){
   renderMomentCover(ctx);notifyInteraction('朋友圈封面已保存','success');
  }catch(error){setStatus('更换朋友圈封面失败：'+String(error.message||error),'error');}
 }
-function renderMoments(ctx) {
-    if(!nodes?.momentsFeed)return;
-    nodes.momentsFeed.replaceChildren();
-    const posts=readRootData(ctx).moments||[];
-    renderPersona(ctx);renderMomentCover(ctx);
-    for(const post of [...posts].reverse()){
-        const authorId=momentAuthorId(ctx,post);
-        if(authorId&&authorId!=='user'&&friendshipState(readData(ctx,authorId))!=='friends')continue;
-        const item=document.createElement('div');item.className='lp-moment';
-        const author=document.createElement('strong');author.textContent=authorId==='user'?phoneUserDisplayName(ctx):(post.author||ctx?.name1||'user');
-        const body=document.createElement('p');body.textContent=resolvePhonePlaceholders(post.text||'',ctx,contactCharacter(ctx));
-        const img=typeof post.image==='string'&&/^data:image\/(png|jpeg|webp);base64,/.test(post.image)?document.createElement('img'):null;
-        if(img){img.className='lp-moment-photo';img.src=post.image;img.alt='朋友圈照片';}
-        const date=document.createElement('small');date.textContent=String(post.storyTime||post.createdAt||'').replace('T',' ').slice(0,16);
-        item.append(author,body);
-        if(post.repostOf){
-            const forwarded=document.createElement('div');forwarded.className='lp-moment-repost';
-            const original=posts.find(p=>p.id===post.repostOf.id);
-            forwarded.textContent=`转发自 ${post.repostOf.author||'原作者'}：${String(original?.text||post.repostOf.text||'原动态已不可用').slice(0,360)}`;
-            item.append(forwarded);
-        }
-        if(img)item.append(img);
-        item.append(date);
-        const likes=Array.isArray(post.likes)?post.likes:[],comments=Array.isArray(post.comments)?post.comments:[];
-        const liked=likes.some(like=>like.actorId===MOMENT_USER_ID);
-        if(likes.length){const line=document.createElement('div');line.className='lp-moment-likes';
-            line.textContent='♥ '+likes.map(like=>like.name||'朋友').join('、');item.append(line);}
-        const commentList=document.createElement('div');commentList.className='lp-moment-comments';
-        let replyTo='';
-        const editor=document.createElement('div');editor.className='lp-moment-editor';editor.hidden=true;
-        const input=document.createElement('textarea');input.rows=2;input.maxLength=300;input.placeholder='写一条评论…';
-        const publish=momentButton('发送评论',async()=>{
-            const value=input.value.trim();if(!value)return;
-            if(await addMomentComment(post.id,value,replyTo)){input.value='';replyTo='';editor.hidden=true;}
-        });
-        editor.append(input,publish);
-        for(const comment of comments){
-            const row=document.createElement('div');row.className='lp-moment-comment';
-            const parent=comments.find(c=>c.id===comment.replyTo);
-            const text=document.createElement('span');text.textContent=(comment.author||'朋友')+
-                (parent&&parent.actorId!==comment.actorId?' 回复 '+(parent.author||'朋友'):'')+'：'+comment.text;
-            row.append(text,momentButton('回复',()=>{replyTo=comment.id;editor.hidden=false;input.placeholder='回复 '+(comment.author||'朋友')+'…';input.focus();}));
-            commentList.append(row);
-        }
-        if(comments.length)item.append(commentList);
-        const actions=document.createElement('div');actions.className='lp-moment-actions';
-        actions.append(momentButton(liked?'♥ 已赞':'♡ 点赞',()=>void toggleMomentLike(post.id)),
-            momentButton('评论',()=>{replyTo='';editor.hidden=!editor.hidden;input.placeholder='写一条评论…';if(!editor.hidden)input.focus();}),
-            momentButton('↗ 转发',()=>void repostMoment(post.id)));
-        const candidates=momentCandidates(ctx,post);
-        if(candidates.length)actions.append(momentButton('生成角色互动（1次请求）',()=>void runMomentBatch(post.id,true)));
-        item.append(actions,editor);nodes.momentsFeed.append(item);
-    }
-    if(!posts.length)nodes.momentsFeed.textContent='还没有动态';
+function momentActorAvatar(ctx,id){
+ if(id==='user')return avatarSources(ctx,readRootData(ctx)).user;
+ return id?avatarSources(ctx,readData(ctx,id)).character:'/img/ai4.png';
+}
+function showMomentImageUnavailable(message=''){
+ const old=root?.querySelector('.lp-moment-vision-warning');if(old)old.remove();
+ const overlay=document.createElement('div');overlay.className='lp-moment-vision-warning';
+ const dialog=document.createElement('section');dialog.className='lp-moment-vision-dialog';
+ dialog.setAttribute('role','dialog');dialog.setAttribute('aria-modal','true');
+ const title=document.createElement('strong');title.textContent='当前模型无法读取图片';
+ const body=document.createElement('p');body.textContent='该模型未能识别图片，请先前往相册补录图片资料，或改用支持视觉的模型。';
+ const actions=document.createElement('div');
+ const cancel=momentButton('取消',()=>overlay.remove());
+ const album=momentButton('前往相册',()=>{overlay.remove();setScreen('album');});
+ actions.append(cancel,album);dialog.append(title,body,actions);
+ if(message){const note=document.createElement('small');note.textContent=String(message).slice(0,140);dialog.append(note);}
+ overlay.append(dialog);root.append(overlay);
+}
+function renderMoments(ctx){
+ if(!nodes?.momentsFeed)return;
+ nodes.momentsFeed.replaceChildren();
+ const posts=readRootData(ctx).moments||[];
+ renderPersona(ctx);renderMomentCover(ctx);
+ for(const post of [...posts].reverse()){
+  const authorId=momentAuthorId(ctx,post);
+  if(authorId&&authorId!=='user'&&friendshipState(readData(ctx,authorId))!=='friends')continue;
+  const item=document.createElement('article');item.className='lp-moment';
+  const head=document.createElement('div');head.className='lp-moment-author-row';
+  const avatar=document.createElement('img');avatar.className='lp-moment-author-avatar';
+  avatar.src=momentActorAvatar(ctx,authorId);avatar.alt='头像';
+  const author=document.createElement('strong');author.textContent=authorId==='user'?phoneUserDisplayName(ctx):(post.author||'联系人');
+  head.append(avatar,author);
+  if(authorId==='user'){
+   const more=momentButton('⋮',()=>{menu.hidden=!menu.hidden;});
+   more.className='lp-moment-more';more.setAttribute('aria-label','编辑或删除自己的朋友圈');head.append(more);
+   const menu=document.createElement('div');menu.className='lp-moment-owner-menu';menu.hidden=true;
+   const edit=momentButton('编辑动态',()=>{menu.hidden=true;openMomentEditDialog(ctx,post);});
+   const remove=momentButton('删除动态',()=>{menu.hidden=true;openMomentEditDialog(ctx,post,'delete');});
+   menu.append(edit,remove);head.append(menu);
+  }
+  item.append(head);
+  if(post.text){const body=document.createElement('p');body.textContent=resolvePhonePlaceholders(post.text,ctx,contactCharacter(ctx));item.append(body);}
+  if(post.repostOf){
+   const forwarded=document.createElement('div');forwarded.className='lp-moment-repost';
+   const original=posts.find(p=>p.id===post.repostOf.id);
+   forwarded.textContent='转发自 '+(post.repostOf.author||'原作者')+'：'+String(original?.text||post.repostOf.text||'原动态已不可用').slice(0,360);
+   item.append(forwarded);
+  }
+  if(typeof post.image==='string'&&/^data:image\/(png|jpeg|webp);base64,/.test(post.image)){
+   const img=document.createElement('img');img.className='lp-moment-photo';img.src=post.image;img.alt='朋友圈图片';item.append(img);
+  }
+  const date=document.createElement('small');date.textContent=String(post.storyTime||post.createdAt||'').replace('T',' ').slice(0,16);item.append(date);
+  const likes=Array.isArray(post.likes)?post.likes:[],comments=Array.isArray(post.comments)?post.comments:[];
+  const liked=likes.some(like=>like.actorId===MOMENT_USER_ID);
+  if(likes.length){
+   const line=document.createElement('div');line.className='lp-moment-likes';
+   line.textContent='♥ '+likes.map(like=>like.actorId===MOMENT_USER_ID?phoneUserDisplayName(ctx):(like.name||'朋友')).join('、');
+   item.append(line);
+  }
+  let replyTo='';
+  const commentList=document.createElement('div');commentList.className='lp-moment-comments';
+  const editor=document.createElement('div');editor.className='lp-moment-comment-input';
+  const input=document.createElement('input');input.type='text';input.maxLength=300;input.placeholder='写一条评论…';
+  const publish=momentButton('发送',async()=>{
+   const value=input.value.trim();if(!value)return;
+   if(await addMomentComment(post.id,value,replyTo)){input.value='';replyTo='';input.placeholder='写一条评论…';}
+  });
+  editor.append(input,publish);
+  input.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();publish.click();}});
+  for(const comment of comments){
+   const row=document.createElement('div');row.className='lp-moment-comment';
+   const parent=comments.find(c=>c.id===comment.replyTo);
+   const name=comment.actorId===MOMENT_USER_ID?phoneUserDisplayName(ctx):(comment.author||'朋友');
+   const parentName=parent?.actorId===MOMENT_USER_ID?phoneUserDisplayName(ctx):(parent?.author||'朋友');
+   const text=document.createElement('span');text.textContent=name+
+    (parent&&parent.actorId!==comment.actorId?' 回复 '+parentName:'')+'：'+comment.text;
+   row.append(text,momentButton('回复',()=>{replyTo=comment.id;input.placeholder='回复 '+name+'…';input.focus();}));
+   commentList.append(row);
+  }
+  if(comments.length)item.append(commentList);
+  const actions=document.createElement('div');actions.className='lp-moment-actions';
+  actions.append(momentButton(liked?'♥ 已赞':'♡ 点赞',()=>void toggleMomentLike(post.id)),
+   momentButton('↗ 转发',()=>void repostMoment(post.id)));
+  const candidates=momentCandidates(ctx,post);
+  if(candidates.length)actions.append(momentButton('生成角色互动（1次请求）',()=>void runMomentBatch(post.id,true)));
+  item.append(actions,editor);nodes.momentsFeed.append(item);
+ }
+ if(!posts.length)nodes.momentsFeed.textContent='还没有动态';
+}
+function openMomentEditDialog(ctx,post,action='edit'){
+ const old=root.querySelector('.lp-moment-edit-overlay');if(old)old.remove();
+ const overlay=document.createElement('div');overlay.className='lp-moment-edit-overlay';
+ const dialog=document.createElement('section');dialog.className='lp-moment-edit-dialog';
+ dialog.setAttribute('role','dialog');dialog.setAttribute('aria-modal','true');
+ const title=document.createElement('strong');title.textContent=action==='delete'?'删除朋友圈':'编辑朋友圈';
+ dialog.append(title);
+ let picture=post.image||'';
+ let textArea=null;
+ if(action==='delete'){
+  const note=document.createElement('p');note.textContent='确定删除这条朋友圈？删除后无法恢复。';dialog.append(note);
+ }else{
+  textArea=document.createElement('textarea');textArea.rows=5;textArea.maxLength=1000;textArea.value=post.text||'';
+  textArea.placeholder='编辑朋友圈内容';dialog.append(textArea);
+  const label=document.createElement('label');label.className='lp-moment-edit-photo-picker';label.textContent='更换图片';
+  const file=document.createElement('input');file.type='file';file.accept='image/jpeg,image/png,image/webp';label.append(file);
+  file.addEventListener('change',async()=>{try{if(file.files?.[0])picture=await encodeMomentPhoto(file.files[0]);}
+   catch(error){notifyInteraction('读取照片失败：'+String(error.message||error),'error');}});
+  dialog.append(label,momentButton('移除配图',()=>{picture='';}));
+ }
+ const actions=document.createElement('div');actions.className='lp-moment-edit-actions';
+ actions.append(momentButton('取消',()=>overlay.remove()));
+ actions.append(momentButton(action==='delete'?'确定删除':'保存修改',async()=>{
+  if(action==='edit'&&!textArea.value.trim()&&!picture)return notifyInteraction('朋友圈不能同时没有文字和图片','error');
+  const result=await editMoments(ctx,data=>{
+   const idx=(data.moments||[]).findIndex(p=>p.id===post.id&&p.authorId==='user');
+   if(idx<0)return false;
+   if(action==='delete')data.moments.splice(idx,1);
+   else{data.moments[idx].text=textArea.value.trim().slice(0,1000);data.moments[idx].image=picture;}
+   return true;
+  });
+  if(result)overlay.remove();
+ }));
+ dialog.append(actions);overlay.append(dialog);root.append(overlay);
 }
 async function editMoments(ctx,edit) {
     if(busy||autonomousWorking)return false;
