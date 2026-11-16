@@ -134,6 +134,7 @@ let shoppingLoadPromise=null;
 let memoryController=null;
 let memoryLoadPromise=null;
 let albumController=null,albumLoadPromise=null,groupsController=null,groupsLoadPromise=null;
+let profileReturnScreen='contacts';
 let pendingSharedPost=null,sharedPostPreview=null,sharedPostOrigin='chat';
 let chatPhotoDrafts=[];
 let clockTicker=null;
@@ -1273,6 +1274,10 @@ async function loadGroupsController(){
   groupsController=mod.createGroupsModule({context,getNodes:()=>nodes,readRootData,writeData,galleryPeople,
    isPhoneFriend,contactCharacter,phoneGenerate,stripModelReasoning,notifyInteraction,openSharedPost,encodeAvatarPhoto,
    refreshChatList:()=>{if(mounted&&nodes&&selectedCharacter(context()))renderChatLists(context(),contactCharacter(context()),readData(context()));},
+   userPhoneName:()=>phoneUserDisplayName(context()),
+   memberAvatar:id=>{const ctx=context();return id==='user'?avatarSources(ctx,readRootData(ctx)).user:avatarSources(ctx,readData(ctx,id)).character;},
+   setGroupTitle:title=>{if(activeScreen==='groups'&&nodes?.title)nodes.title.textContent=title;},
+   setGroupOptionsVisible:visible=>{if(nodes?.groupOptions)nodes.groupOptions.hidden=!visible;},
    galleryPhotosForMember:id=>photosForActor(id,'group')});
   return groupsController;
  }).catch(e=>{recordError('加载群聊',e);groupsLoadPromise=null;if(nodes?.groupsContent)nodes.groupsContent.textContent='群聊加载失败：'+e.message;return null;});
@@ -3909,6 +3914,7 @@ function setScreen(screen, options={}) {
     if (!SCREENS.has(screen) || !nodes) return;
     if(root?.classList.contains('lp-open')&&phoneLockSettings().enabled&&!securityUnlocked&&screen!=='lock')screen='lock';
     const previous = activeScreen;
+    if(screen==='profile'&&previous!=='profile')profileReturnScreen=['chatOptions','contacts','contactManage','chat','addNpc'].includes(previous)?previous:'contacts';
     if(previous!==screen){saveScreenScroll(previous);closePhoneThreadMenu();}
     if(screen!=='profile'&&nodes.profileRoleDialog){nodes.profileRoleDialog.hidden=true;nodes.profileAvatarSheet.hidden=true;}
     if(screen==='groups'&&previous!=='groups')groupsReturnScreen=options.groupReturn||(['contacts','home','chatList'].includes(previous)?previous:'chatList');
@@ -3925,6 +3931,7 @@ function setScreen(screen, options={}) {
     nodes.title.textContent = screen === 'chat' ? contactDisplayName(context()) : titles[screen];
     nodes.chatMenu.hidden = screen !== 'chat';
     if(nodes.albumOptions)nodes.albumOptions.hidden=screen!=='album';
+    if(nodes.groupOptions)nodes.groupOptions.hidden=screen!=='groups';
     if(nodes.homeExit)nodes.homeExit.hidden=screen!=='home';
     if(nodes.lockExit)nodes.lockExit.hidden=screen!=='lock';
     if(screen==='discoverNpc')restoreSharedNpcPreview();
@@ -5346,7 +5353,7 @@ function renderMomentHistory(){
  if(!nodes.momentHistoryTime.value)nodes.momentHistoryTime.value=historicTime(rootData.storyTime,1);
  nodes.momentHistoryGenerate.disabled=momentHistoryGenerating;
  nodes.momentHistoryGenerate.textContent=momentHistoryGenerating?'正在生成历史朋友圈…':'按要求生成过去的朋友圈（一次 API 调用）';
- nodes.momentHistoryStatus.textContent=momentHistoryMessage;
+ nodes.momentHistoryStatus.textContent=momentHistoryGenerating?'':momentHistoryMessage;
  const list=nodes.momentHistoryList;list.replaceChildren();
  const posts=(rootData.moments||[]).filter(p=>p.historical===true).slice(-70).reverse();
  for(const p of posts){
@@ -5443,7 +5450,7 @@ async function generateHistoricMoments(){
  const post={authorId:owner,author:actor.name,comments:[]};
  const linked=momentCandidates(ctx,post).slice(0,8).map(id=>({id,name:contactDisplayName(ctx,id)}));
  const session=captureSession(ctx);
- momentHistoryGenerating=true;momentHistoryMessage='正在生成 '+count+' 条过去的朋友圈…';renderMomentHistory();
+ momentHistoryGenerating=true;momentHistoryMessage='';renderMomentHistory();
  try{
   const raw=await phoneGenerate(ctx,{
    task:'autonomy',maxTokens:Math.min(7000,1200+count*800),
@@ -7503,6 +7510,7 @@ function makeUI() {
           <div class="lp-heading"><div class="lp-title" data-lp="title">咕叽咕机</div>
                <div class="lp-subtitle" data-lp="subtitle">故事中的小手机</div></div>
           <button type="button" class="lp-header-menu lp-album-header-options" data-lp="albumOptions" aria-label="相册说明与设置" hidden>···</button>
+          <button type="button" class="lp-header-menu lp-group-header-options" data-lp="groupOptions" aria-label="群聊设置" hidden>···</button>
           <button type="button" class="lp-header-menu" data-lp="chatMenu" aria-label="聊天设置" hidden>···</button>
           <button type="button" class="lp-close" data-lp="close" aria-label="关闭咕叽咕机">×</button>
         </header>
@@ -7661,8 +7669,10 @@ function makeUI() {
         </section>
         <section class="lp-screen lp-chatlist" data-lp-screen="momentHistory" aria-label="历史朋友圈" hidden>
           <div class="lp-list-body lp-moment-history">
-            <p class="lp-settings-hint">只补录小手机当前剧情时间以前的动态。手动添加无需 API；AI 批量生成需主动点击，当前剧情中尚未发生的内容不得提前发布。</p>
-            <label>发布人物<select data-lp="momentHistoryOwner"></select></label>
+            
+            <label>历史朋友圈生成对象<select data-lp="momentHistoryMode">
+  <option value="single">指定角色</option><option value="random">从已有联系人随机生成</option>
+ </select></label><label data-lp="momentHistoryOwnerLabel">发布人物<select data-lp="momentHistoryOwner"></select></label>
             <label>发布时间（手动补录）<input data-lp="momentHistoryTime" type="datetime-local" /></label>
             <label>朋友圈正文<textarea data-lp="momentHistoryText" rows="3" maxlength="1000" placeholder="写一条已发生的过去动态"></textarea></label>
             <label>配图（可选）<input type="file" data-lp="momentHistoryPhoto" accept="image/png,image/jpeg,image/webp" /></label>
@@ -7678,8 +7688,8 @@ function makeUI() {
         </section>
         <section class="lp-screen lp-chatlist lp-social-screen" data-lp-screen="discover" aria-label="发现" hidden>
   <div class="lp-list-body lp-discover">
-    <div class="lp-discover-heading"><span class="lp-discover-actions"><button type="button" data-lp="momentCamera" class="lp-moment-camera" aria-label="发布朋友圈" title="发布朋友圈"><svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7.5h4l2-3h6l2 3h4v12H3z"/><circle cx="12" cy="13" r="3.2"/></svg></button></span></div>
     <div class="lp-moment-cover-card">
+      <button type="button" data-lp="momentCamera" class="lp-moment-camera" aria-label="发布朋友圈" title="发布朋友圈"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7.5h4l2-3h6l2 3h4v12H3z"/><circle cx="12" cy="13" r="3.2"/></svg></button>
       <label class="lp-moment-cover-background" title="更换朋友圈封面">
         <img data-lp="momentCoverImage" alt="朋友圈封面" />
         <span>✎ 更换封面</span>
@@ -8354,10 +8364,10 @@ function mount() {
     nodes = Object.fromEntries(['title', 'subtitle', 'back', 'close', 'time',
         'homeTime','homeDate','homeScene','homePages','homeDots','homeSwipe','homeHotSearch','homeCharacter','homeLogCount','homeUnreadCount',
         'lockTime','lockDate','lockPin','lockRepeat','lockDots','lockKeypad','lockIntro','lockFeedback','lockAction','lockExit','homeExit','lockOldPin','lockNewPin','lockConfirmPin','lockChangePin','lockChangeFeedback',
-        'albumContent','albumOptions','groupsContent','shareTargets','sharePreview',
+        'albumContent','albumOptions','groupOptions','groupsContent','shareTargets','sharePreview',
         'weiboGenerate','weiboFeedback','weiboFeed','weiboHot','weiboNearby','weiboCompose','weiboMe','weiboDetail','weiboTabs','weiboComposeText','weiboPublish','weiboDetailBack','weiboRefreshBox',
         'desktopSortList','clockMode','clockRate','clockContinueClosed','clockCustomFields','clockSave','lockEnabled','lockSaveEnabled','notification','inlineNotification','calendarPrev','calendarNext','calendarHeading','calendarViews','calendarGrid','calendarSelected','calendarSummary','calendarSelectedTime','calendarStoryToday','calendarRealToday','calendarSaveTime','calendarExactSave',
-        'momentsPost', 'momentsText', 'momentsFeed', 'momentFeedback','momentsPreview','momentImageUpload','momentRemovePhoto','momentCamera','momentComposer','momentCoverImage','momentCoverUpload','momentCoverName','momentCoverAvatar','momentHistoryOpen','momentHistoryOwner','momentHistoryTime','momentHistoryText','momentHistoryPhoto','momentHistoryPhotoPreview','momentHistoryRemovePhoto','momentHistoryManual','momentHistoryInstructions','momentHistoryCount','momentHistoryGenerate','momentHistoryStatus','momentHistoryList','myBio','myBioEdit','profileBio','profileBioEdit','contactMomentList','myAvatarUpload','myAvatarFallback','myAvatarStatus','myIdentity', 'myNameEdit', 'myAvatar', 'myPersona', 'messageBannerToggle','messageBannerStatus','autoMessagesMode','autoMessagesDays','autoMomentsMode','autoMomentsDays','relationAutoSync','phoneInPast','characterRequests','momentInteractions','autonomyStatus','autonomyFeedback','saveAutonomy','rescanRelations','testAutonomy', 'stickerUpload','stickerPackUpload', 'stickerStatus', 'stickerLibrary',
+        'momentsPost', 'momentsText', 'momentsFeed', 'momentFeedback','momentsPreview','momentImageUpload','momentRemovePhoto','momentCamera','momentComposer','momentCoverImage','momentCoverUpload','momentCoverName','momentCoverAvatar','momentHistoryOpen','momentHistoryMode','momentHistoryOwnerLabel','momentHistoryOwner','momentHistoryTime','momentHistoryText','momentHistoryPhoto','momentHistoryPhotoPreview','momentHistoryRemovePhoto','momentHistoryManual','momentHistoryInstructions','momentHistoryCount','momentHistoryGenerate','momentHistoryStatus','momentHistoryList','myBio','myBioEdit','profileBio','profileBioEdit','contactMomentList','myAvatarUpload','myAvatarFallback','myAvatarStatus','myIdentity', 'myNameEdit', 'myAvatar', 'myPersona', 'messageBannerToggle','messageBannerStatus','autoMessagesMode','autoMessagesDays','autoMomentsMode','autoMomentsDays','relationAutoSync','phoneInPast','characterRequests','momentInteractions','autonomyStatus','autonomyFeedback','saveAutonomy','rescanRelations','testAutonomy', 'stickerUpload','stickerPackUpload', 'stickerStatus', 'stickerLibrary',
         'friendLabel', 'friendActions','profileAvatar','profileAvatarAction','profileAvatarSheet','profileChooseAvatar','profileAvatarCancel','profileRoleDialog','profileRoleOpen','profileRoleClose','profileRoleTitle','profileTabDetails','profileTabRelation','profileDetailsPane','profileRelationPane','profileRelationNames','relationAuto','relationManual','relationManualFields','relationChoice','relationCustomLabel','relationCustom','relationDetails','relationCurrent','relationStatus','relationSave','relationDetect','profileName','profileDescription','contactEvidence','contactExchange','contactLinks','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcAiScanButton','npcClearScanButton','npcScanState','npcCandidates','npcSaveCandidates','storyPeopleList','viewPrimaryContact','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','resetCharAvatar',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
@@ -8490,6 +8500,7 @@ function mount() {
     window.addEventListener('focus',pickerFocusListener);
     nodes.chatMenu.addEventListener('click',()=>setScreen('chatOptions'));
     nodes.albumOptions.addEventListener('click',()=>void loadAlbumController().then(m=>m?.openOptions?.()));
+    nodes.groupOptions.addEventListener('click',()=>void loadGroupsController().then(m=>m?.openMenu?.()));
     nodes.momentsPost.addEventListener('click',()=>void postMoment());
     nodes.momentCoverUpload.addEventListener('change',event=>{
       const file=event.target.files?.[0];event.target.value='';
@@ -8506,6 +8517,7 @@ function mount() {
       momentHistoryPhotoDraft='';nodes.momentHistoryPhotoPreview.replaceChildren();
     });
     nodes.momentHistoryGenerate.addEventListener('click',()=>void generateHistoricMoments());
+    nodes.momentHistoryMode.addEventListener('change',()=>{nodes.momentHistoryOwnerLabel.hidden=nodes.momentHistoryMode.value==='random';});
     nodes.momentHistoryList.addEventListener('click',event=>{
       const b=event.target.closest('[data-moment-history-action]');
       if(b)void changeHistoricMoment(b.dataset.momentHistoryAction,b.dataset.momentHistoryId);
@@ -8538,7 +8550,7 @@ function mount() {
         setScreen({
           wallet:'home',shopping:'home',takeout:'home',weibo:'home',album:'home',groups:groupsReturnScreen,sharePicker:'weibo',chat:'chatList',
           contacts:'chatList',discover:'chatList',me:'chatList',
-          profile:'contacts',contactManage:'chatOptions',chatRecords:'chatOptions',meProfile:'me',meSettings:'me',momentHistory:'me',momentCompose:'discover',
+          profile:profileReturnScreen,contactManage:'chatOptions',chatRecords:'chatOptions',meProfile:'me',meSettings:'me',momentHistory:'me',momentCompose:'discover',
           requests:'contacts',addNpc:'contacts',
           discoverNpc:'addNpc',chatOptions:'chat',
           presetPicker:'settings',worldPicker:'settings'
