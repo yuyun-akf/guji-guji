@@ -8,13 +8,13 @@ for(const p of ['index.js','weibo.js','style.css','groups.js','shopping.js','tak
 const index=files['index.js'],weibo=files['weibo.js'];
 const section=(source,start,end)=>source.slice(source.indexOf(start),source.indexOf(end,source.indexOf(start)));
 
-test('v0.30.0: scripts parse and module cache keys are updated',()=>{
- assert.equal(JSON.parse(files['manifest.json']).version,'0.30.0');
+test('v0.31.0: scripts parse and module cache keys are updated',()=>{
+ assert.equal(JSON.parse(files['manifest.json']).version,'0.31.0');
  for(const path of ['index.js','weibo.js','groups.js','shopping.js','takeout.js','album.js','bootstrap.js'])
   assert.doesNotThrow(()=>new Function(files[path].replace(/^export /gm,'')),path);
  for(const path of ['weibo','groups','shopping','takeout','album'])
   assert.match(index,new RegExp(path+'\\.js\\?v=0\\.30\\.0'));
- assert.match(files['bootstrap.js'],/index\.js\?v=0\.30\.0/);
+ assert.match(files['bootstrap.js'],/index\.js\?v=0\.31\.0/);
 });
 
 test('pin buttons are removed; long press opens a menu and scroll memory exists across apps',()=>{
