@@ -9,11 +9,11 @@ const bootstrap=readFileSync(new URL('../bootstrap.js',import.meta.url),'utf8');
 const manifest=JSON.parse(readFileSync(new URL('../manifest.json',import.meta.url),'utf8'));
 const section=(start,end)=>index.slice(index.indexOf(start),index.indexOf(end,index.indexOf(start)));
 
-test('v0.30.0: scripts parse with matching dynamic import and manifest versions',()=>{
- assert.equal(manifest.version,'0.30.0');
+test('v0.31.0: scripts parse with matching dynamic import and manifest versions',()=>{
+ assert.equal(manifest.version,'0.31.0');
  for(const src of [index,groups,bootstrap])assert.doesNotThrow(()=>new Function(src.replace(/^export /gm,'')));
- assert.match(bootstrap,/index\.js\?v=0\.30\.0/);
- assert.match(index,/groups\.js\?v=0\.30\.0/);
+ assert.match(bootstrap,/index\.js\?v=0\.31\.0/);
+ assert.match(index,/groups\.js\?v=0\.31\.0/);
 });
 
 test('unbounded pins persist independently for private conversations and group chats',async()=>{
