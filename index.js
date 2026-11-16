@@ -5146,6 +5146,12 @@ function phoneThreadWrap(openRow,key,pinned){
    e.preventDefault();e.stopPropagation();closePhoneThreadMenu();void togglePhoneThreadPin(key);
   });
   menu.append(item);wrap.append(menu);activePhoneThreadMenu=menu;
+  const area=wrap.closest('.lp-list-body')?.getBoundingClientRect?.();
+  const boundary=area?.bottom||window.innerHeight;
+  if(wrap.getBoundingClientRect().bottom+65>boundary)menu.classList.add('opens-up');
+  // A native long-press/context menu may not dispatch a follow-up click.
+  // Reset suppression so the next ordinary tap still opens the conversation.
+  if(typeof setTimeout==='function')setTimeout(()=>{ignoreClick=false;},750);
  };
  openRow.addEventListener('pointerdown',e=>{
   if(e.button!==0||e.target.closest('input,select,textarea'))return;
