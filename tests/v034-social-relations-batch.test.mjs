@@ -7,11 +7,11 @@ const index=read('index.js'),album=read('album.js'),groups=read('groups.js'),
  weibo=read('weibo.js'),bootstrap=read('bootstrap.js'),css=read('style.css');
 const manifest=JSON.parse(read('manifest.json'));
 
-test('v0.35.0 cache keys, module syntax and all new controls',()=>{
- assert.equal(manifest.version,'0.35.0');
+test('v0.36.1 cache keys, module syntax and all new controls',()=>{
+ assert.equal(manifest.version,'0.36.1');
  assert.match(bootstrap,/index\.js\?v=0\.35\.0/);
  for(const module of ['album','groups','weibo'])
-  assert.ok(index.includes(module+'.js?v=0.35.0'));
+  assert.ok(index.includes(module+'.js?v=0.36.1'));
  for(const source of [index,album,groups,weibo,bootstrap])
   assert.doesNotThrow(()=>new Function(source.replace(/^export /gm,'')));
  const controls=['profileTabDetails','profileTabRelation','profileRelationPane','relationAuto',
@@ -54,7 +54,7 @@ test('Moments allow real user photo, avatar, inline comment, own post editing an
  assert.match(index,/async function encodeMomentPhoto\(/);
  assert.match(index,/image_url/);
  assert.match(index,/showMomentImageUnavailable\(/);
- assert.match(index,/禁止为了凑热闹让所有人集体嘲讽或攻击 user/);
+ assert.match(index,/不得代替 user 发言/);
  assert.match(index,/momentHistoryMode/);
  assert.match(index,/randomMode\?registered/);
  assert.match(index,/comments\.length<5/);
