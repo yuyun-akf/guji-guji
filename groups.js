@@ -2,6 +2,7 @@
 export function createGroupsModule(api){
  const el=(tag,cls='',text='')=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text)n.textContent=text;return n;};
  const state={active:'',busy:false,status:'',manage:false,avatarDraft:'',fromMessageList:false};
+ const scrollByGroup=new Map();let lastView='';
  const host=()=>api.getNodes()?.groupsContent;
  const ctx=()=>api.context();
  const root=()=>api.readRootData(ctx());
@@ -14,7 +15,11 @@ export function createGroupsModule(api){
  function status(text,error=false){state.status=text;api.notifyInteraction?.(text,error?'error':'success');render();}
  function render(){
   const target=host();if(!target)return;
+  const view=state.active?(state.manage?'manage:':'chat:')+state.active:'directory';
+  if(lastView&&lastView!==view)scrollByGroup.set(lastView,target.scrollTop);
+  const top=lastView===view?target.scrollTop:(scrollByGroup.get(view)||0);
   target.replaceChildren();
+  lastView=view;target.scrollTop=top;
   const group=groups().find(g=>g.id===state.active);
   if(group){
    const heading=el('div','lp-group-header');
@@ -32,6 +37,7 @@ export function createGroupsModule(api){
     }
     form.append(button('保存群资料','save-manage'));target.append(form);
     if(state.status)target.append(el('p','lp-group-feedback',state.status));
+    target.scrollTop=top;
     return;
    }
    const feed=el('div','lp-group-messages');
@@ -54,6 +60,7 @@ export function createGroupsModule(api){
    target.append(compose);
    if(state.status)target.append(el('p','lp-group-feedback',state.status));
    feed.scrollTop=feed.scrollHeight;
+   target.scrollTop=top;
    return;
   }
   target.append(el('h3','','群聊'),el('p','lp-group-intro','群成员只读取本群公开的消息，不会得知彼此的私聊记录。'));
@@ -72,6 +79,7 @@ export function createGroupsModule(api){
   }
   create.append(button('建立群聊','create'));target.append(create);
   if(state.status)target.append(el('p','lp-group-feedback',state.status));
+  target.scrollTop=top;
  }
  async function mutate(fn){
   const meta=scope(),r=structuredClone(root());r.groupChats=Array.isArray(r.groupChats)?r.groupChats:[];
