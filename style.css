@@ -5217,3 +5217,94 @@
 }
 #st-little-phone-root .lp-album-remove-candidate{font-size:17px;min-width:32px;}
 #st-little-phone-root .lp-album-review-remove{font-size:12px;}
+
+
+/* v0.36.2 — readable inline comment text (name + colon must stay together) */
+#st-little-phone-root .lp-moment-comment{
+ display:block!important;min-width:0;line-height:1.55;white-space:normal;
+ overflow-wrap:anywhere;
+}
+#st-little-phone-root .lp-moment-comment .lp-moment-comment-author,
+#st-little-phone-root .lp-moment-comment .lp-moment-comment-text{
+ display:inline!important;flex:none!important;width:auto!important;min-width:0;
+ vertical-align:baseline;
+}
+#st-little-phone-root .lp-moment-comment .lp-moment-comment-text{
+ white-space:pre-wrap;word-break:break-word;
+}
+
+/* Mobile group avatar upload with a real, explicit picker control. */
+#st-little-phone-root .lp-group-avatar-editor{
+ width:100%;display:flex;align-items:center;gap:12px;min-width:0;
+ border:1px solid var(--lp-border);border-radius:13px;
+ background:var(--lp-white);padding:12px;box-sizing:border-box;
+}
+#st-little-phone-root .lp-group-avatar-editor .lp-group-avatar,
+#st-little-phone-root .lp-group-avatar-placeholder{
+ flex:0 0 62px;width:62px;height:62px;border-radius:14px;
+ object-fit:cover;display:flex;align-items:center;justify-content:center;
+ background:var(--lp-ice);color:var(--lp-navy);font-size:24px;
+}
+#st-little-phone-root .lp-group-avatar-editor .lp-group-avatar[hidden],
+#st-little-phone-root .lp-group-avatar-editor .lp-group-avatar-placeholder[hidden]{display:none!important;}
+#st-little-phone-root .lp-group-avatar-picker{
+ flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:6px;
+}
+#st-little-phone-root .lp-group-avatar-picker .lp-group-avatar-native-input{
+ position:absolute!important;width:1px!important;height:1px!important;
+ opacity:0!important;pointer-events:none!important;padding:0!important;
+ margin:0!important;border:0!important;overflow:hidden!important;
+}
+#st-little-phone-root .lp-group-avatar-picker .lp-group-avatar-pick{
+ width:100%;min-height:42px;border-radius:10px;
+ border:1px solid var(--lp-border);background:var(--lp-ice);
+ color:var(--lp-navy);padding:8px 10px;font-size:14px;
+}
+#st-little-phone-root .lp-group-avatar-picker .lp-group-avatar-hint{
+ font-size:11px;line-height:1.5;color:var(--lp-slate);overflow-wrap:anywhere;
+}
+
+/* Album review: left-side image vertically centered, full-width data fields,
+   a single small corner remove control; no third action column. */
+#st-little-phone-root .lp-album-review-card{
+ position:relative;display:grid!important;
+ grid-template-columns:clamp(78px,26%,106px) minmax(0,1fr);
+ align-items:stretch;gap:12px!important;
+ padding:12px!important;min-width:0;
+ border-radius:14px;box-sizing:border-box;
+}
+#st-little-phone-root .lp-album-review-visual{
+ min-width:0;width:100%;height:100%;
+ display:flex;align-items:center;justify-content:center;
+}
+#st-little-phone-root .lp-album-review-visual img{
+ display:block;width:100%;max-width:100%;height:auto;
+ max-height:150px;aspect-ratio:1/1;object-fit:contain;
+ object-position:center;border-radius:10px;
+ margin:auto 0;
+}
+#st-little-phone-root .lp-album-review-fields{
+ min-width:0;display:flex;flex-direction:column;gap:11px;
+ padding-top:29px;
+}
+#st-little-phone-root .lp-album-review-fields .lp-album-field{
+ min-width:0;display:flex;flex-direction:column;gap:6px;
+ font-size:13px;color:var(--lp-navy);
+}
+#st-little-phone-root .lp-album-review-fields :is(input,textarea,select){
+ display:block;min-width:0;width:100%;max-width:100%;height:auto;
+ box-sizing:border-box;padding:9px 10px;font:inherit;
+ font-size:13px;line-height:1.45;
+}
+#st-little-phone-root .lp-album-review-fields textarea{
+ min-height:100px;resize:vertical;
+}
+#st-little-phone-root .lp-album-review-card .lp-album-review-remove{
+ position:absolute;right:12px;top:10px;
+ display:flex;align-items:center;justify-content:center;
+ width:29px;height:29px;min-width:29px;
+ padding:0!important;line-height:1;
+ border:1px solid var(--lp-border);border-radius:9px;
+ background:var(--lp-white);color:var(--lp-slate);
+ font-size:21px;z-index:1;
+}
