@@ -26,7 +26,7 @@ export function createAlbumModule(api){
   const copy=el('span','lp-album-folder-copy');copy.append(el('strong','',title),el('small','',sub));b.append(copy);return b;
  };
  const readFiles=()=>state.selectedFiles.slice();
- const warningText='请勿上传涉及个人隐私、未经授权的画师作品或其他无权使用的图片；建议优先上传已获授权的 AI 生成图片。';
+ const warningText='请勿上传涉及个人隐私、真人画师作品或未经授权的图片；建议只上传本人有权使用的 AI 生成图片。';
  const safetyDisabled=()=>api.safetyWarningDisabled?.()===true;
  function enterImport(){state.dialog=null;state.level='import';state.mode='files';state.selectedFiles=[];state.navReset=true;render();}
  function requestImport(){if(!safetyDisabled()&&!state.warningShown){state.dialog={type:'warning'};render();}else enterImport();}
