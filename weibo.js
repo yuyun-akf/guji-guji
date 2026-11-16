@@ -1120,6 +1120,7 @@ export function createWeiboModule(api) {
    const patch={...change};delete patch.newComment;
    post.actions={...(post.actions||{}),...patch};
    if(change.newComment){
+    post.actions.commentsLoaded=false;
     post.comments=[...(post.comments||[]),change.newComment];
     post.commentCount=Math.max(post.comments.length,Number(post.commentCount||0)+1);
    }
@@ -1147,7 +1148,123 @@ export function createWeiboModule(api) {
   }
   if(!observed.has(p))apply(p);
  }
- async function action(type,id){
+
+ // Write the SAME comment snapshot to every storage representation of a post.
+ // In particular, old followed posts may coexist in saved history and a
+ // generated feed, so only changing the visible card leaves stale details.
+ async function replacePostComments(post,comments,count,actionPatch={}){
+  const snapshot=comments.map(c=>({...c})).slice(0,120);
+  const edit=target=>{
+   target.comments=snapshot.map(c=>({...c}));
+   target.commentCount=Math.max(snapshot.length,Number.isFinite(Number(count))?Number(count):snapshot.length);
+   target.actions={...(target.actions||{}),...actionPatch};
+   if(actionPatch.removeOwnComment){
+    delete target.actions.removeOwnComment;
+    target.actions.comments=(target.actions.comments||[]).filter(c=>c.id!==actionPatch.removeOwnComment);
+   }
+  };
+  const patch={...actionPatch},removedId=patch.removeOwnComment||'';
+  delete patch.removeOwnComment;
+  const adjust=target=>{
+   edit(target);
+   if(removedId)target.actions.comments=(target.actions.comments||[]).filter(c=>c.id!==removedId);
+  };
+  await mutate(q=>{
+   const seen=new Set();
+   const visit=items=>{
+    if(!Array.isArray(items))return;
+    for(const item of items){
+     if(item?.id===post.id&&!seen.has(item)){seen.add(item);adjust(item);}
+    }
+   };
+   visit(q.posts);
+   for(const feed of Object.values(q.generated?.feeds||{}))visit(feed);
+   for(const bundle of Object.values(q.generated?.hotBundles||{}))visit(bundle?.posts);
+  });
+  const seen=new Set();
+  for(const items of [state.posts.home,state.posts.nearby,
+      ...Object.values(state.hotBundles).map(x=>x?.posts||[]),state.topic?.posts||[]]){
+   if(!Array.isArray(items))continue;
+   for(const item of items)if(item?.id===post.id&&!seen.has(item)){seen.add(item);adjust(item);}
+  }
+  if(!seen.has(post))adjust(post);
+ }
+ async function deleteOwnComment(post,commentId){
+  if(!commentId||commentBusy.has(post.id)||commentBusy.has('load:'+post.id))return;
+  const original=(post.comments||[]).find(x=>x.id===commentId);
+  if(!original||!isOwnComment(post,original))return;
+  if(typeof window!=='undefined'&&typeof window.confirm==='function'&&
+    !window.confirm('删除这条自己发表的评论？'))return;
+  const remaining=(post.comments||[]).filter(x=>x.id!==commentId).map(c=>{
+   const updated={...c};if(updated.replyTo===commentId)delete updated.replyTo;
+   return updated;
+  });
+  const prior=Math.max((post.comments||[]).length,Number(post.commentCount)||0);
+  await replacePostComments(post,remaining,Math.max(0,prior-1),{removeOwnComment:commentId});
+  commentNotices.set(post.id,'评论已删除');feedback('评论已删除');render();
+ }
+ async function loadFullComments(post){
+  const loadingKey='load:'+post.id;
+  if(commentBusy.has(loadingKey)||commentBusy.has(post.id))return;
+  const current=actionState(post),own=(current.comments||[]).length;
+  if(!own&&!(post.comments||[]).some(x=>x.isMine)){feedback('先评论后才能手动加载完整评论区');return;}
+  const kept=(post.comments||[]).map(c=>({...c})).slice(0,120);
+  const publishedTotal=Math.max(kept.length,Number(post.commentCount)||0);
+  const previouslyLoaded=Boolean(current.commentsLoadedOnce);
+  const missing=Math.max(0,Math.min(120,publishedTotal)-kept.length);
+  const interactionSlots=previouslyLoaded?Math.min(4,Math.max(0,120-kept.length)):0;
+  const target=missing+interactionSlots;
+  if(!target){
+   await replacePostComments(post,kept,publishedTotal,{commentsLoaded:true,commentsLoadedOnce:true});
+   commentNotices.set(post.id,'完整评论已显示，无须调用 API');
+   feedback('全部评论已显示，无须再次调用 API');render();return;
+  }
+  const session=scope();
+  commentBusy.add(loadingKey);commentNotices.set(post.id,'正在加载完整评论区…');render();
+  try{
+   const acct=actor(post),subject=acct?subjectOfAccount(acct):null;
+   const role=subject?clean(api.accountSubjectContext?.(subject)||'',1300):'';
+   const samples=[...kept.filter(c=>isOwnComment(post,c)),...kept.filter(c=>!isOwnComment(post,c)).slice(0,25)];
+   const raw=await api.phoneGenerate(context(),{
+    task:'weibo',maxTokens:15500,
+    systemPrompt:'你负责虚构社交平台群星的评论区。一次返回有效 JSON。不要编造 user 的新言行，不得泄露角色未公开的私聊、身份及情感关系。人物不是必须回复 user；但必须生成有内容的评论供用户阅读。不要复制已有评论，也不要把随机网友当作已绑定的角色。仅输出严格 JSON：{"comments":[{"name":"公开评论昵称","text":"自然评论文本","replyTo":"可选，仅限已提供的现有评论ID"}]}。',
+    prompt:[{role:'user',content:JSON.stringify({
+     storyTime:root().storyTime||'',post:{author:post.author,handle:post.handle,category:post.category,text:post.text},
+     accountPublicInfo:acct?publicAccountInfo(acct):post.author,
+     roleBackgroundForStyleOnly:role,storyPublicContext:clean(api.storyContext?.()||'',1100),
+     commentTotalOnPlatform:publishedTotal,displayLimit:120,
+     requiredNewComments:target,backfillMissing:missing,optionalNewReactions:interactionSlots,
+     alreadyVisibleComments:samples.map(c=>({id:c.id,name:c.name,text:c.text,isMine:isOwnComment(post,c)})),
+     instructions:'只生成 '+target+' 条与帖子匹配、没有重复的评论。优先补全原有未展示的历史评论'+
+      (interactionSlots?'，其中最多 '+interactionSlots+' 条可以是新发生的楼中楼互动':'')+
+      '。需要保留已存在的用户评论；不得替用户重复发表。微博博主及其他网友可自然回复，也可不回复用户，重点是生成真实丰富的整段评论区。'
+    })}]
+   },api.readData(context()));
+   if(scope()!==session)return;
+   const parsed=parse(raw),existing=new Set(kept.map(c=>c.name+'\u0000'+c.text));
+   const valid=(Array.isArray(parsed.comments)?parsed.comments:[]).slice(0,target).flatMap(c=>{
+    const name=clean(c?.name||'网友',40),text=clean(c?.text,350),key=name+'\u0000'+text;
+    if(!text||existing.has(key))return [];
+    existing.add(key);
+    const replyTo=clean(c?.replyTo,90);
+    return [{id:uid('comment'),name,text,...(replyTo&&kept.some(x=>x.id===replyTo)?{replyTo}:{})}];
+   });
+   if(!valid.length)throw Error('模型未返回有效评论，本次没有覆盖原评论区');
+   // Keep all own comments. For very large threads, cap the local view to 120.
+   const mine=kept.filter(c=>isOwnComment(post,c)),others=kept.filter(c=>!isOwnComment(post,c));
+   const room=Math.max(0,120-mine.length);
+   const combined=[...others,...valid].slice(-room).concat(mine).slice(-120);
+   const extraBeyondHistory=Math.max(0,valid.length-missing);
+   const total=Math.max(publishedTotal+extraBeyondHistory,combined.length);
+   const loaded=combined.length>=Math.min(120,total);
+   await replacePostComments(post,combined,total,{commentsLoaded:loaded,commentsLoadedOnce:true});
+   commentNotices.set(post.id,loaded?'完整评论区已加载':'已加载 '+combined.length+' 条，可再次加载剩余评论');
+   feedback('已加载 '+combined.length+' 条评论'+(loaded?'':'；模型返回不足，仍可手动继续加载'));
+   render();
+  }catch(error){commentNotices.set(post.id,'加载失败：'+String(error.message||error).slice(0,100));feedback('加载评论失败：'+String(error.message||error));render();}
+  finally{commentBusy.delete(loadingKey);if(scope()===session)render();}
+ }
+ async function action(type,id,commentId=''){
   // Reading/profile/settings interactions remain available during feed generation.
   
 if(type==='clearInteractions'){
@@ -1478,19 +1595,39 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
   if(type==='shareChat'){state.sharingId='';api.sharePost?.(p);return;}
   if(type==='share'){api.sharePost?.(p);return;}
   if(type==='detail'){state.detail=id;render();return;}
+  if(type==='deleteComment'){await deleteOwnComment(p,commentId);return;}
+  if(type==='loadFullComments'){await loadFullComments(p);return;}
   if(type==='follow'||type==='unfollow'){await followPost(p,type==='follow');render();return;}
   if(type==='sendComment'){
+   if(commentBusy.has(p.id)||commentBusy.has('load:'+p.id))return;
    const input=nodes().weiboDetail?.querySelector('[data-wb-comment-for="'+p.id+'"]')||
     nodes().weiboFeed?.querySelector('[data-wb-comment-for="'+p.id+'"]')||
     nodes().weiboNearby?.querySelector('[data-wb-comment-for="'+p.id+'"]')||
     nodes().weiboHot?.querySelector('[data-wb-comment-for="'+p.id+'"]');
    const text=clean(input?.value,500);if(!text)return;
-   const c={id:uid('comment'),name:data().profile.nickname||'我',text};
-   await persistAction(p,{comments:[...(actionState(p).comments||[]),c],newComment:c});
-   if(isPermanentPost(p)){
-    const d=structuredClone(root());api.publishPhoneAppEvent(d,{app:'weibo',action:'commented',id:c.id,detail:'评论 '+p.author+'：'+text,reference:p.id});
-    await api.writeData(context(),{...d,__contactId:'primary'});
-   }
+   const button=input?.closest('.lp-wb-inline-comment')?.querySelector('[data-wb-action="sendComment"]');
+   const session=scope();commentBusy.add(p.id);
+   if(button){button.disabled=true;button.textContent='发送中…';button.setAttribute('aria-busy','true');}
+   try{
+    const c={id:uid('comment'),name:data().profile.nickname||'我',text,isMine:true,authorId:'self'};
+    await persistAction(p,{comments:[...(actionState(p).comments||[]),c],newComment:c});
+    if(isPermanentPost(p)){
+     const d=structuredClone(root());
+     api.publishPhoneAppEvent(d,{app:'weibo',action:'commented',id:c.id,detail:'评论 '+p.author+'：'+text,reference:p.id});
+     try{await api.writeData(context(),{...d,__contactId:'primary'});}
+     catch(e){api.recordError?.('群星评论事件通知',e);}
+    }
+    if(scope()!==session)return;
+    if(input)input.value='';
+    commentNotices.set(p.id,'✓ 评论已发送');
+    feedback('评论已发送，已同步首页与详情');
+    render();
+   }catch(error){
+    commentNotices.set(p.id,'评论发送失败，可重试');
+    feedback('评论发送失败：'+String(error.message||error));
+    if(button){button.disabled=false;button.textContent='↗';button.removeAttribute('aria-busy');}
+   }finally{commentBusy.delete(p.id);}
+   return;
   }else{
    const a=actionState(p);let change={};
    if(type==='like')change={liked:!a.liked};
@@ -1585,7 +1722,7 @@ if(type==='subview'){state.subview=id;state.profileAccount='';state.editing='';r
  function handleClick(event){
   const n=event.target?.closest?.('[data-wb-action],[data-wb-topic]');if(!n)return false;
   if(n.dataset.wbTopic!==undefined){void openTopic(n.dataset.wbTopic,n.dataset.wbZone==='nearby'?'nearby':'home');return true;}
-  void action(n.dataset.wbAction,n.dataset.wbPost).catch(e=>feedback('操作失败：'+String(e.message||e)));return true;
+  void action(n.dataset.wbAction,n.dataset.wbPost,n.dataset.wbCommentId||'').catch(e=>feedback('操作失败：'+String(e.message||e)));return true;
  }
  function handleFile(event){
   const input=event.target?.closest?.('[data-wb-field="accountAvatar"],[data-wb-field="ownerAvatar"]');
