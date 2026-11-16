@@ -391,7 +391,7 @@ export function createWeiboModule(api) {
   // Manual refresh replaces the selected feed immediately, before requesting
   // new posts. Original posts and interaction records are never erased here.
   state.posts[nearby?'nearby':'home']=[];
-  feedback('正在刷新'+name+'帖子…');render();
+  render(); // Refresh button already displays pending state; do not duplicate it in a banner.
   const all=[];let headlineCandidate='';
   try{
    await persistGenerated(nearby?'nearby':'home');
