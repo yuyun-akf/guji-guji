@@ -31,8 +31,8 @@ export function createTakeoutModule(api){
   if(lastFeedbackState===current)return;
   lastFeedbackState=current;
   if(state.error)api.notifyInteraction?.(state.error,'error');
-  else if(state.loading)api.notifyInteraction?.('正在处理外卖操作…','pending');
-  else if(state.message)api.notifyInteraction?.(state.message,'success');
+  else if(!state.loading&&state.message)api.notifyInteraction?.(state.message,'success');
+  if(!state.loading){state.error='';state.message='';}
  };
  const mutate=fn=>{
   queue=queue.catch(()=>{}).then(async()=>{
@@ -61,8 +61,6 @@ export function createTakeoutModule(api){
   const route=routeKey();
   if(previousRoute&&previousRoute!==route)scrollByRoute.set(previousRoute,host.scrollTop);
   const savedTop=previousRoute===route?host.scrollTop:(scrollByRoute.get(route)||0);
-  if(state.error)body.append(create('p','lp-takeout-error',state.error));
-  if(state.message)body.append(create('p','lp-takeout-note',state.message));
   if(state.view==='checkout')renderCheckout(body,d);
   else if(state.view==='addresses')renderAddresses(body,d);
   else if(state.view==='profile')renderProfile(body,d);
