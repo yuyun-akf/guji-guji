@@ -5428,3 +5428,31 @@
 #st-little-phone-root .lp-album-review-fields :is(input,textarea,select):focus-visible{
  background:var(--lp-white)!important;border-color:var(--lp-border)!important;
 }
+
+/* Qunxing composer: upload at left, publish at right; photo deletion stays on its thumbnail. */
+#st-little-phone-root .lp-weibo-compose-panel .lp-wb-compose-actions{
+ display:flex;align-items:center;justify-content:space-between;gap:12px;
+ width:100%;min-width:0;margin-top:12px;
+}
+#st-little-phone-root .lp-weibo-compose-panel .lp-wb-compose-actions .lp-wb-compose-picker{
+ margin:0;flex:0 1 auto;white-space:nowrap;
+}
+#st-little-phone-root .lp-weibo-compose-panel .lp-wb-compose-actions [data-lp="weiboPublish"]{
+ margin-left:auto;flex:0 0 auto;white-space:nowrap;
+}
+#st-little-phone-root .lp-wb-compose-preview:empty{display:none;}
+#st-little-phone-root .lp-wb-compose-photo-wrap{
+ display:inline-block;position:relative;max-width:100%;margin-top:12px;
+ vertical-align:top;line-height:0;
+}
+#st-little-phone-root .lp-wb-compose-photo-wrap .lp-wb-compose-photo{
+ display:block;max-width:100%;max-height:225px;object-fit:contain;
+ margin:0;border-radius:10px;
+}
+#st-little-phone-root .lp-weibo-compose-panel .lp-wb-compose-photo-wrap .lp-wb-compose-photo-remove{
+ position:absolute;top:6px;right:6px;display:grid;place-items:center;
+ width:30px;height:30px;min-width:30px;min-height:30px;
+ padding:0;margin:0;border:1px solid var(--lp-border);border-radius:50%;
+ background:var(--lp-white);color:var(--lp-navy);
+ font-size:22px;line-height:1;box-shadow:0 2px 8px rgba(20,32,50,.16);
+}
