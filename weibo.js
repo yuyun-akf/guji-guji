@@ -2120,8 +2120,14 @@ if(type==='settingsSection'){
    if(!state.composePhoto)throw Error('图片压缩后仍过大');
    const preview=nodes()?.weiboCompose?.querySelector('[data-wb-compose-preview]');
    if(preview){
+    const frame=el('div','lp-wb-compose-photo-wrap');
     const image=el('img','lp-wb-compose-photo');image.src=state.composePhoto;image.alt='待发布配图';
-    preview.replaceChildren(image,control('移除图片','removeComposePhoto'));
+    const remove=control('×','removeComposePhoto');
+    remove.classList.add('lp-wb-compose-photo-remove');
+    remove.setAttribute('aria-label','移除已添加图片');
+    remove.title='移除图片';
+    frame.append(image,remove);
+    preview.replaceChildren(frame);
    }
   }catch(error){feedback('图片添加失败：'+String(error.message||error));}
  }
