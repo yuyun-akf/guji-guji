@@ -19,7 +19,7 @@ function story(){
  return {app,data:()=>db};
 }
 test('v0.25 cache markers and no-obstruction top-center feedback',()=>{
- assert.equal(manifest.version,'0.36.2');
+ assert.equal(manifest.version,'0.36.3');
  assert.match(index,/weibo\.js\?v=0\.35\.0/);
  assert.match(css,/lpTouchRipple 450ms/);
  assert.match(css,/lpLikeParticle 420ms/);
