@@ -5332,3 +5332,99 @@
 #st-little-phone-root .lp-moment-comment .lp-moment-comment-text{
  display:inline!important;white-space:pre-wrap;vertical-align:baseline;
 }
+
+
+/* v0.36.3 — final phone-sized Qunxing navigation, no giant stretched cards */
+#st-little-phone-root .lp-wb-settings-menu{
+ display:flex!important;flex-direction:column!important;align-items:center!important;
+ justify-content:flex-start!important;height:auto!important;min-height:0!important;
+ max-height:none!important;gap:12px!important;
+ padding:8px 0 14px!important;background:transparent!important;border:0!important;
+}
+#st-little-phone-root .lp-wb-settings-menu>.lp-wb-settings-link{
+ flex:0 0 62px!important;flex-grow:0!important;flex-shrink:0!important;
+ width:calc(100% - 12px)!important;max-width:520px!important;
+ height:62px!important;min-height:62px!important;max-height:62px!important;
+ padding:0 16px!important;font-size:15px!important;
+ border:1px solid var(--lp-border)!important;border-radius:13px!important;
+ background:var(--lp-white)!important;line-height:1.35!important;
+}
+
+/* A comment is a single inline sentence, not two flex items. */
+#st-little-phone-root .lp-moment-comment{
+ display:block!important;max-width:100%;min-width:0!important;
+ white-space:normal!important;word-break:break-word!important;
+}
+#st-little-phone-root .lp-moment-comment>.lp-moment-comment-line{
+ display:inline!important;width:auto!important;min-width:0!important;
+ max-width:100%;flex:none!important;white-space:pre-wrap!important;
+ overflow-wrap:anywhere!important;
+}
+#st-little-phone-root .lp-moment-comment-line>.lp-moment-comment-author{
+ display:inline!important;white-space:normal!important;max-width:none!important;
+ font-weight:600;vertical-align:baseline!important;
+}
+
+/* A visible native picker reliably opens the Android WebView gallery/file chooser. */
+#st-little-phone-root .lp-group-avatar-picker .lp-group-avatar-pick{
+ display:flex!important;align-items:center!important;justify-content:flex-start!important;
+ min-height:0!important;border:0!important;background:transparent!important;
+ padding:0!important;overflow:visible!important;cursor:pointer;
+}
+#st-little-phone-root .lp-group-avatar-picker .lp-group-avatar-native-input{
+ position:static!important;inset:auto!important;display:block!important;
+ width:100%!important;min-width:0!important;height:auto!important;
+ min-height:40px!important;max-height:none!important;
+ opacity:1!important;pointer-events:auto!important;z-index:auto!important;
+ margin:0!important;padding:6px!important;overflow:visible!important;
+ background:var(--lp-white)!important;color:var(--lp-navy)!important;
+ border:1px solid var(--lp-border)!important;border-radius:9px!important;
+ font:inherit;font-size:12px;
+}
+#st-little-phone-root .lp-group-avatar-native-input::file-selector-button{
+ margin-right:9px;padding:8px 10px;border-radius:8px;
+ border:1px solid var(--lp-slate);background:var(--lp-ice);
+ color:var(--lp-navy);font:inherit;font-size:12px;
+}
+
+/* Album review: two columns only, left thumbnail centered vertically. */
+#st-little-phone-root .lp-album-review-card{
+ display:grid!important;grid-template-columns:minmax(75px,27%) minmax(0,1fr)!important;
+ align-items:stretch!important;column-gap:12px!important;
+ padding:12px!important;position:relative!important;
+}
+#st-little-phone-root .lp-album-review-visual{
+ width:100%!important;height:100%!important;min-height:132px!important;
+ display:flex!important;align-items:center!important;justify-content:center!important;
+ padding-top:16px!important;padding-bottom:0!important;
+ align-self:stretch!important;
+}
+#st-little-phone-root .lp-album-review-visual>img{
+ display:block!important;width:100%!important;max-width:100%!important;
+ height:auto!important;max-height:148px!important;
+ object-fit:contain!important;object-position:center!important;
+ border-radius:10px!important;margin:0!important;
+}
+#st-little-phone-root .lp-album-review-fields{
+ width:100%!important;min-width:0!important;padding-top:33px!important;
+}
+#st-little-phone-root .lp-album-review-fields :is(input,textarea,select){
+ display:block!important;width:100%!important;min-width:0!important;
+ max-width:100%!important;box-sizing:border-box!important;
+}
+#st-little-phone-root .lp-album-review-card .lp-album-review-remove{
+ position:absolute!important;top:10px!important;right:10px!important;
+ width:30px!important;height:30px!important;min-width:30px!important;
+ padding:0!important;flex:none!important;
+}
+
+/* Typing needs a caret, not a click-triggered recolor or glow. */
+#st-little-phone-root :is(input:not([type=checkbox]):not([type=radio]),textarea,select):focus,
+#st-little-phone-root :is(input:not([type=checkbox]):not([type=radio]),textarea,select):focus-visible{
+ outline:none!important;outline-offset:0!important;
+ box-shadow:none!important;filter:none!important;transition:none!important;
+}
+#st-little-phone-root .lp-album-review-fields :is(input,textarea,select):focus,
+#st-little-phone-root .lp-album-review-fields :is(input,textarea,select):focus-visible{
+ background:var(--lp-white)!important;border-color:var(--lp-border)!important;
+}
