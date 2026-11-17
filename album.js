@@ -392,7 +392,12 @@ export function createAlbumModule(api){
     if(target)state.fileErrors.set(target,message);
     hint('导入文件校验失败：'+message,true);
    }
-   finally{state.busy=false;}return;
+   finally{
+    state.busy=false;
+    // A render made during an async operation still shows the busy label.
+    // Repaint after settling so it always returns to the normal action.
+    if(host())render();
+   }return;
   }
   if(state.mode==='manual'&&files.length!==1)return hint('手动补录每次选择一张图片',true);
   if(files.length>10)return hint('一次最多导入10张，请分批处理',true);
@@ -456,7 +461,12 @@ export function createAlbumModule(api){
    state.folder=folder;state.level='import';state.editing='';
    hint('已导入 '+added.length+' 张图片');
   }catch(error){hint('导入失败：'+String(error.message||error),true);}
-  finally{state.busy=false;}
+  finally{
+    state.busy=false;
+    // A render made during an async operation still shows the busy label.
+    // Repaint after settling so it always returns to the normal action.
+    if(host())render();
+   }
  }
  async function saveEdited(photo){
   const form=host()?.querySelector('.lp-album-dialog');if(!form)return;
@@ -560,7 +570,12 @@ export function createAlbumModule(api){
    state.fileErrors.clear();state.fileChecks.clear();state.imageCache.clear();
    state.navReset=true;hint('已导入 '+pictures.length+' 张图片');
   }catch(error){hint('保存图片资料失败：'+String(error.message||error),true);}
-  finally{state.busy=false;}
+  finally{
+    state.busy=false;
+    // A render made during an async operation still shows the busy label.
+    // Repaint after settling so it always returns to the normal action.
+    if(host())render();
+   }
  }
  async function handleClick(event){
   const b=event.target.closest?.('[data-album-action]');if(!b||state.busy)return false;
