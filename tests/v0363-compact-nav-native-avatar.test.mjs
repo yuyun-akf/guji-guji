@@ -6,12 +6,12 @@ const read=name=>readFileSync(new URL('../'+name,import.meta.url),'utf8');
 const index=read('index.js'),album=read('album.js'),
  groups=read('groups.js'),css=read('style.css'),bootstrap=read('bootstrap.js');
 
-test('v0.36.3 module syntax and cache keys',()=>{
+test('v0.36.4 module syntax and cache keys',()=>{
  const manifest=JSON.parse(read('manifest.json'));
- assert.equal(manifest.version,'0.36.3');
+ assert.equal(manifest.version,'0.36.4');
  assert.match(bootstrap,/index\.js\?v=0\.36\.3/);
  for(const part of ['album','weibo','groups'])
-  assert.ok(index.includes(part+'.js?v=0.36.3'));
+  assert.ok(index.includes(part+'.js?v=0.36.4'));
  for(const source of [index,album,groups,read('weibo.js'),bootstrap])
   assert.doesNotThrow(()=>new Function(source.replace(/^export /gm,'')));
 });
