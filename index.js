@@ -5288,7 +5288,6 @@ function momentActorBrief(ctx,id) {
 }
 function momentBatchTask(ctx,post,actors,{writePost=false,replyComments=[]}={}){
  const existing=(Array.isArray(post.comments)?post.comments:[]);
- const needed=Math.max(0,5-existing.length);
  const actorGuide=actors.map(id=>{
   const visible=visibleMomentComments(ctx,post,id).slice(-12);
   return momentActorBrief(ctx,id)+'\n此角色可见评论：'+
@@ -5304,7 +5303,7 @@ function momentBatchTask(ctx,post,actors,{writePost=false,replyComments=[]}={}){
   post.image?'此动态附有图片；需根据实际可见图片生成互动，看不到则返回 {"actions":[],"visionUnavailable":true}，不得猜测。':'',
   '允许互动的角色及其已知资料：\n'+actorGuide,
   '仅可使用以下 actorId：'+actors.join('、')+'。每名角色可以连续说不止一句，但评论应有真实对话逻辑，可自然回应已有评论，不要机械刷屏。',
-  needed?'本次至少新增 '+needed+' 条互不重复的实质评论或回复，最终整条朋友圈必须至少有五句话；点赞不计入这五句。每条评论分别放进 actions 数组。':'自然生成回应，不要求为了数量重复发言。',
+  '按角色关系和语境自然生成评论或回复，没有最低评论条数；不要为了凑数重复发言。',
   '可以在同一次输出中加入多个点赞。likeCount 是合理的累计点赞人数（非角色名单），要符合作者生活圈和可见范围，不能凭空设定网红级热度。',
   '仅返回一个 JSON 对象：'+(writePost?'{"post":"正文",':'{')+'"likeCount":7,"actions":[{"actorId":"角色ID","name":"仅临时熟人填写姓名","kind":"comment","text":"自然评论"},'+
    '{"actorId":"角色ID","kind":"reply","replyTo":"前面可见评论ID","text":"自然回复"},'+
@@ -5464,14 +5463,12 @@ function renderMoments(ctx){
   const more=momentButton('⋮',()=>{menu.hidden=!menu.hidden;});
   more.className='lp-moment-more';more.setAttribute('aria-label','朋友圈操作');
   head.append(more);
-  if(authorId==='user'){
-   menu.append(momentButton('编辑动态',()=>{menu.hidden=true;openMomentEditDialog(ctx,post);}),
-     momentButton('删除动态',()=>{menu.hidden=true;openMomentEditDialog(ctx,post,'delete');}));
-  }
   const candidates=momentCandidates(ctx,post);
-  if(candidates.length)menu.append(momentButton(
-   (Array.isArray(post.comments)?post.comments.length:0)<5?'补齐评论（至少5句）':'生成角色互动',
+  if(candidates.length)menu.append(momentButton('生成角色互动',
    ()=>{menu.hidden=true;void runMomentBatch(post.id,true);}));
+  menu.append(
+   momentButton('编辑该条帖子',()=>{menu.hidden=true;openMomentEditDialog(ctx,post);}),
+   momentButton('删除此条朋友圈',()=>{menu.hidden=true;openMomentEditDialog(ctx,post,'delete');}));
 
   head.append(menu);
   item.append(head);
@@ -5571,7 +5568,7 @@ function openMomentEditDialog(ctx,post,action='edit'){
  actions.append(momentButton(action==='delete'?'确定删除':'保存修改',async()=>{
   if(action==='edit'&&!textArea.value.trim()&&!picture)return notifyInteraction('朋友圈不能同时没有文字和图片','error');
   const result=await editMoments(ctx,data=>{
-   const idx=(data.moments||[]).findIndex(p=>p.id===post.id&&p.authorId==='user');
+   const idx=(data.moments||[]).findIndex(p=>p.id===post.id);
    if(idx<0)return false;
    if(action==='delete'){
     data.moments.splice(idx,1);
@@ -5697,11 +5694,6 @@ async function runMomentBatch(postId,manual=false,commentIds=[]) {
         if(!target)return;
         const count=decision?applyMomentBatch(ctx,fresh,target,actors,decision.actions):0;
         if(decision?.likeCount!=null)target.likeCount=Math.max(target.likes?.length||0,target.likeCount||0,decision.likeCount);
-        if((!commentIds.length||((post.comments||[]).length<5))&&(target.comments||[]).length<5){
-         if(nodes?.momentFeedback)nodes.momentFeedback.textContent='有效评论不足五句，未保存本轮互动；可再次点击生成角色互动。';
-         notifyInteraction('模型生成的有效评论不足五句，未保存本轮互动','error');
-         return;
-        }
         const viewing=root?.classList.contains('lp-open')&&activeScreen==='discover';
         if(count){
             if(!viewing)fresh.unreadMoments=Math.min(99,unreadMoments(fresh)+1);
@@ -8057,9 +8049,11 @@ function makeUI() {
             <div data-lp="weiboCompose" class="lp-weibo-compose-panel" hidden>
               <h3>发布新动态</h3>
               <textarea data-lp="weiboComposeText" rows="6" maxlength="1000" placeholder="分享你的想法…"></textarea>
-              <label class="lp-wb-compose-picker">▧ 添加图片<input type="file" data-wb-field="composePhoto" accept="image/png,image/jpeg,image/webp" hidden /></label>
+              <div class="lp-wb-compose-actions">
+                <label class="lp-wb-compose-picker">▧ 添加图片<input type="file" data-wb-field="composePhoto" accept="image/png,image/jpeg,image/webp" hidden /></label>
+                <button type="button" data-lp="weiboPublish">发布到群星</button>
+              </div>
               <div data-wb-compose-preview class="lp-wb-compose-preview"></div>
-              <button type="button" data-lp="weiboPublish">发布到群星</button>
             </div>
             <div data-lp="weiboMe" class="lp-weibo-me" hidden></div>
             <div data-lp="weiboDetail" class="lp-weibo-detail" hidden></div>
