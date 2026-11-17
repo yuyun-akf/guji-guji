@@ -5456,3 +5456,9 @@
  background:var(--lp-white);color:var(--lp-navy);
  font-size:22px;line-height:1;box-shadow:0 2px 8px rgba(20,32,50,.16);
 }
+
+/* Chat composer grows with text up to five visible lines. */
+#st-little-phone-root .lp-chat .lp-composer textarea[data-lp="input"]{
+ height:auto;min-height:40px;max-height:none;line-height:22px;
+ resize:none;box-sizing:border-box;overflow-y:hidden;
+}
