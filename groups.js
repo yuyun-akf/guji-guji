@@ -45,10 +45,14 @@ export function createGroupsModule(api){
     preview.hidden=!avatarSource;
     const empty=el('span','lp-group-avatar-placeholder','群');
     empty.hidden=!!avatarSource;
-    const pick=el('label','lp-group-avatar-pick');
-    pick.append(el('span','lp-group-avatar-pick-label',avatarSource?'更换群头像':'上传群头像'),avatar);
+    const pick=el('div','lp-group-avatar-pick');
+    pick.append(el('span','lp-group-avatar-pick-label',avatarSource?'更换群头像':'上传群头像'));
+    // Keep an actual, visible file input. Hidden/overlay pickers are unreliable
+    // in several Android WebView file-chooser implementations.
     const pickBox=el('div','lp-group-avatar-picker');
-    pickBox.append(pick,el('small','lp-group-avatar-hint',state.avatarDraft?'已选中图片，保存群设置后生效':'支持 JPG、PNG、WebP、GIF'));
+    pickBox.append(pick,avatar,el('small','lp-group-avatar-hint',
+     state.avatarDraft?'已选中图片，保存群设置后生效':'点击「选择文件」从手机相册上传 JPG、PNG、WebP 或 GIF'));
+    pick.addEventListener('click',()=>avatar.click());
     avatarRow.append(preview,empty,pickBox);
     form.append(el('label','','群名称'),name,el('label','','群聊备注'),remark,el('label','','群头像'),avatarRow);
     const memberGrid=el('div','lp-group-member-grid');
