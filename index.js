@@ -1910,6 +1910,7 @@ function selectionSnapshot(config) {
     const worldEntries=entries(cfg.worldEntries,'book');
     const strings=values=>Array.isArray(values)?[...new Set(values.filter(x=>typeof x==='string'&&x.trim()))]:[];
     return {
+        selectionMode:cfg.selectionMode==='auto'?'auto':'manual',
         presetSource:typeof cfg.presetSource==='string'?cfg.presetSource:'',
         presetEntries:entries(cfg.presetEntries,'preset'),
         worldBooks:Array.isArray(cfg.worldBooks)?strings(cfg.worldBooks):
@@ -1936,7 +1937,7 @@ function inheritLegacyPhoneSelections(ctx) {
     if(savedPhoneSelections(ctx))return;
     const legacy=ctx?.chatMetadata?.[DATA_KEY]?.config;
     if(!legacy||!(legacy.presetSource||legacy.presetEntries?.length||legacy.worldBooks?.length||legacy.worldEntries?.length))return;
-    try{persistPhoneSelections(ctx,legacy);}
+    try{persistPhoneSelections(ctx,{...legacy,selectionMode:'manual'});}
     catch(error){recordError('继承旧手机条目配置',error);}
 }
 function configScope(ctx) {
@@ -1965,7 +1966,7 @@ async function populateConfigLists() {
     }
     nodes.presetSource.value=presets.includes(chosenPreset)?chosenPreset:'';
     if(nodes.saveSelections)nodes.saveSelections.title='将本角色当前选择写入聊天存档和酒馆扩展设置';
-    if(nodes.presetInfo)nodes.presetInfo.textContent='选择预设后默认使用原预设中已启用的条目；世界书勾选后默认按原书的启用状态进行关键词触发。也可在条目列表手动调整，最后点「保存预设与世界书配置」。不会切换酒馆正文的预设。';
+    if(nodes.presetInfo)nodes.presetInfo.textContent=(readRootData(ctx).config?.selectionMode==='manual'?'手动配置：使用本角色保存的选择。':'自动同步：使用酒馆当前预设及角色关联的 User、Char 世界书。')+' 手动修改即独立保存，不改变酒馆正文配置。';
     renderWorldBookSelector(ctx,worlds);
     showPresetEntries();
 }
@@ -1977,7 +1978,7 @@ function onPresetSourceChange() {
         const ctx=context();
         if(!sameConfigScope(scope,ctx))return;
         const data=structuredClone(readRootData(ctx));
-        data.config||={};data.config.presetSource=selected;
+        data.config||={};data.config.selectionMode='manual';data.config.presetSource=selected;
         if(selected)ensureChoiceDefaults(data.config,'preset',selected,presetEntryDefaults(ctx,selected));
         await writeData(ctx,{...data,__contactId:PRIMARY_CONTACT_ID});
         const persisted=persistPhoneSelections(ctx,data.config);
@@ -2017,7 +2018,7 @@ function onWorldBookChange(input) {
         const ctx=context();
         if(!sameConfigScope(scope,ctx))return;
         const data=structuredClone(readRootData(ctx));
-        data.config||={};
+        data.config||={};data.config.selectionMode='manual';
         const names=selectedWorldBookNames(data).filter(item=>item!==name);
         if(enabled){
             names.push(name);
@@ -2096,7 +2097,7 @@ function onConfigChange(input) {
         const ctx = context();
         if (!sameConfigScope(scope,ctx)) return;
         const data = structuredClone(readData(ctx));
-        data.config ||= {};
+        data.config ||= {};data.config.selectionMode='manual';
         if(kind==='preset')ensureChoiceDefaults(data.config,kind,source,presetEntryDefaults(ctx,source));
         else if(typeof ctx.loadWorldInfo==='function'){
             const book=await ctx.loadWorldInfo(source);
@@ -2118,7 +2119,7 @@ async function saveSelectionSettings(returnToSettings=false) {
         const ctx=context();
         if(!sameConfigScope(scope,ctx))throw new Error('聊天存档已切换，请在当前角色中重新打开设置');
         const data=structuredClone(readRootData(ctx));
-        data.config||={};
+        data.config||={};data.config.selectionMode='manual';
         const source=nodes?.presetSource?.value||'';
         data.config.presetSource=source;
         if(source)ensureChoiceDefaults(data.config,'preset',source,presetEntryDefaults(ctx,source));
@@ -2382,14 +2383,35 @@ function selectedCharacter(ctx) {
 function newData() {
     return {version:1,storyTime:localDateTime(),messages:[],friendship:{state:'stranger'},contacts:[],conversations:{},storyEvents:[]};
 }
+function automaticPhoneSelections(ctx) {
+ const manager=ctx?.getPresetManager?.('openai'),presets=manager?.getAllPresets?.()||[];
+ const candidates=[manager?.getSelectedPresetName?.(),manager?.getSelectedPreset?.()?.name,ctx?.chatCompletionSettings?.preset,ctx?.chatCompletionSettings?.preset_name,ctx?.chatCompletionSettings?.presetName];
+ const presetSource=candidates.find(x=>typeof x==='string'&&presets.includes(x))||'';
+ const char=selectedCharacter(ctx),persona=currentPersona(ctx),available=ctx?.getWorldInfoNames?.()||[];
+ const worldBooks=[...new Set([char?.data?.extensions?.world,char?.data?.world,char?.world,persona.lorebook].filter(x=>typeof x==='string'&&available.includes(x)))];
+ return {selectionMode:'auto',presetSource,worldBooks,presetEntries:presetSource?presetEntryDefaults(ctx,presetSource):[],worldEntries:[],presetInitialized:[],worldInitialized:[]};
+}
+function effectivePhoneSelections(ctx,config) {
+ const saved=savedPhoneSelections(ctx);
+ if(saved?.selectionMode==='manual'||(saved&&!saved.selectionMode))return selectionSnapshot({...config,...saved,selectionMode:'manual'});
+ if(!saved&&config?.selectionMode==='manual')return selectionSnapshot(config);
+ return automaticPhoneSelections(ctx);
+}
+function restoreAutomaticPhoneSelections(){
+ const ctx=context(),key=phoneSelectionKey(ctx);if(!key)return;
+ const all=ctx?.extensionSettings?.[SETTINGS_KEY]?.phoneSelections;
+ if(all)delete all[key];
+ ctx?.saveSettingsDebounced?.();
+ const root=ctx?.chatMetadata?.[DATA_KEY];
+ if(root?.config){root.config={...root.config,...automaticPhoneSelections(ctx)};ctx?.saveMetadataDebounced?.();}
+ void populateConfigLists();setStatus('已恢复自动同步');
+}
 function readRootData(ctx) {
     const value=ctx?.chatMetadata?.[DATA_KEY];
     const base=(!value||value.version!==1||!Array.isArray(value.messages))?newData():value;
-    const saved=savedPhoneSelections(ctx);
     return {
         ...base,
-        // Role-scoped persistent choices override old per-chat choices, not chat history or other settings.
-        config:saved?{...(base.config||{}),...selectionSnapshot(saved)}:base.config,
+        config:{...(base.config||{}),...effectivePhoneSelections(ctx,base.config)},
         friendship:FRIEND_STATES.has(base.friendship?.state)?base.friendship:(value?{state:'friends'}:{state:'stranger'}),
         contacts:Array.isArray(base.contacts)?base.contacts.filter(c=>c&&typeof c.id==='string'&&c.id.startsWith('npc:')):[],
         conversations:base.conversations&&typeof base.conversations==='object'&&!Array.isArray(base.conversations)?base.conversations:{}
@@ -8564,7 +8586,7 @@ function makeUI() {
           <div class="lp-worldbook-list" data-lp="worldBookList" aria-label="可用世界书多选列表"></div>
           <button type="button" class="lp-settings-link" data-lp="openWorldPicker">管理已选世界书的条目（0 本）</button>
           <p class="lp-settings-hint">勾选一本世界书后，默认启用书中原本允许的条目，并在聊天时按关键词触发；可进条目列表单独关闭。暂停某本书不删除已保存的勾选。单次世界书注入限约 12,000 字符。</p>
-          <button type="button" class="lp-settings-link" data-lp="saveSelections">保存预设与世界书配置</button>
+          <button type="button" class="lp-settings-link" data-lp="saveSelections">保存预设与世界书配置</button><button type="button" class="lp-settings-link" data-lp="restoreAutoSelections">恢复自动同步</button>
           <div class="lp-settings-status" data-lp="selectionSaveStatus" role="status" aria-live="polite"></div>
           </div>
           <div class="lp-settings-category" data-settings-category="memory" hidden>
@@ -8868,7 +8890,7 @@ function mount() {
         'settingsMenu','apiTask','apiProfile','apiProfileModel','apiProfileModelManual','apiReloadModels','apiProfileFields','apiProfileHint','apiTest',
         'phoneMemoryEnabled','phoneMemoryInterval','phoneMemoryInjectMainline','phoneMemorySchedule','phoneMemoryStatus','phoneMemorySave','phoneMemoryRun','phoneMemoryList',
         'shoppingContent','shoppingTabs','takeoutContent','takeoutTabs','walletBalance','walletPending','walletBills','walletAdjustInput','walletSaveBalance','walletToChat','walletStatus',
-        'presetSource','presetInfo','presetEntries','worldBookList','worldSelectionSummary','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','saveSelections','savePresetPicker','saveWorldPicker','selectionSaveStatus','readMainlineMemory','memorySource','phoneToMainline','eventBridge','saveContextSettings','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themePreset','themeCustomColors','themeSaveColors','themeWallpaperPreview','themeDesktopEffect','interactionMotion','interactionFeedback','themeBindWallpaper','themeName','themeSaveNamed','themeRename','themeDelete','themeExport','themeImport','themeFeedback','themeCssFile','themeCssReset','themeCssStatus','themeFontFile','themeDesktopIconSize','themeDesktopGap','themeBubbleRadius','themeIconTarget','themeIconFile','themeIconReset','themeFloatingIconFile','themeFloatingIconReset','themeCopySelectors',
+        'presetSource','presetInfo','presetEntries','worldBookList','worldSelectionSummary','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','saveSelections','restoreAutoSelections','savePresetPicker','saveWorldPicker','selectionSaveStatus','readMainlineMemory','memorySource','phoneToMainline','eventBridge','saveContextSettings','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themePreset','themeCustomColors','themeSaveColors','themeWallpaperPreview','themeDesktopEffect','interactionMotion','interactionFeedback','themeBindWallpaper','themeName','themeSaveNamed','themeRename','themeDelete','themeExport','themeImport','themeFeedback','themeCssFile','themeCssReset','themeCssStatus','themeFontFile','themeDesktopIconSize','themeDesktopGap','themeBubbleRadius','themeIconTarget','themeIconFile','themeIconReset','themeFloatingIconFile','themeFloatingIconReset','themeCopySelectors',
         'diagnostics', 'diagnosticState', 'copyDiagnostics', 'clearDiagnostics',
         'messages','messageActions','chatPhotoPreview','quotedPreview','quotedText','cancelQuote','emojiPanel','morePanel','chatImageInput','timeJumpPanel','timeJumpHint','timeJumpCurrent','timeJumpAmount','timeJumpUnit','timeJumpApply','timeJumpClose','paymentPanel','paymentTitle','paymentKind','paymentAmount','paymentNote','paymentBalance','paymentClose','paymentSend','input', 'generate', 'send', 'launcher']
         .map(key => [key, key === 'launcher' ? floating : root.querySelector(`[data-lp="${key}"]`)]));
@@ -9087,6 +9109,7 @@ function mount() {
     nodes.openPresetPicker.addEventListener('click',()=>setScreen('presetPicker'));
     nodes.openWorldPicker.addEventListener('click',()=>setScreen('worldPicker'));
     nodes.saveSelections.addEventListener('click',()=>void saveSelectionSettings());
+    nodes.restoreAutoSelections.addEventListener('click',restoreAutomaticPhoneSelections);
     nodes.savePresetPicker.addEventListener('click',()=>void saveSelectionSettings(true));
     nodes.saveWorldPicker.addEventListener('click',()=>void saveSelectionSettings(true));
 
