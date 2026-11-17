@@ -2555,10 +2555,18 @@ function contactDisplayName(ctx,id=activeContactId) {
 // A person's own contacts are not the user's phone contacts. These selections
 // are keyed by character name and shared across saves of the same role card.
 function roleFriendCatalog(ctx=context()){
+ // This list belongs to the selected story card, not the user's phone contacts.
  const existing=galleryPeople(ctx);
  const people=existing.filter(p=>p.id!=='user');
  const names=new Set(existing.map(p=>p.name));
- for(const character of readSharedNpcScan(ctx)){
+ const scanned=[...readSharedNpcScan(ctx),...visibleSharedNpcScan(ctx)];
+ const savedAccounts=sharedQunxingAccounts(ctx)||[];
+ for(const account of savedAccounts){
+  const subject=account?.subject;
+  if(subject?.type==='npc'&&subject.name)
+   scanned.push({name:subject.name,description:account.roleBrief||account.profession||'',source:'saved-account'});
+ }
+ for(const character of scanned){
   const name=String(character?.name||'').trim();
   if(!name||names.has(name))continue;
   people.push({id:'scanned:'+name,name,description:String(character.description||''),scanned:true});
@@ -5501,11 +5509,13 @@ function renderMoments(ctx){
    const parent=comments.find(c=>c.id===comment.replyTo);
    const name=comment.actorId===MOMENT_USER_ID?phoneUserDisplayName(ctx):(comment.author||'朋友');
    const parentName=parent?.actorId===MOMENT_USER_ID?phoneUserDisplayName(ctx):(parent?.author||'朋友');
-   const nameNode=document.createElement('span');nameNode.className='lp-moment-comment-author';
+   // One inline wrapper, rather than separate flex children, keeps the
+   // author's name, colon and message naturally adjacent on narrow screens.
+   const line=document.createElement('span');line.className='lp-moment-comment-line';
+   const nameNode=document.createElement('strong');nameNode.className='lp-moment-comment-author';
    nameNode.textContent=name+(parent&&parent.actorId!==comment.actorId?' 回复 '+parentName:'')+'：';
-   const content=document.createElement('span');content.className='lp-moment-comment-text';
-   content.textContent=comment.text;
-   row.append(nameNode,content);
+   line.append(nameNode,document.createTextNode(String(comment.text||'')));
+   row.append(line);
    if(canReplyToMomentComment(ctx,post,comment)){
     nameNode.classList.add('lp-moment-comment-quotable');
     nameNode.title='长按引用这条评论';
