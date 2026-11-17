@@ -18,11 +18,11 @@ const merge=(items,root,primary)=>{
  }).slice(0,45);
 };
 
-test('v0.36.2: modules load with updated cache keys and two explicit scan modes',()=>{
- assert.equal(manifest.version,'0.36.2');
+test('v0.36.3: modules load with updated cache keys and two explicit scan modes',()=>{
+ assert.equal(manifest.version,'0.36.3');
  assert.doesNotThrow(()=>new Function(index.replace(/^export /gm,'')));
  assert.doesNotThrow(()=>new Function(weibo.replace(/^export /gm,'')));
- for(const p of ['weibo.js','album.js','groups.js'])assert.ok(index.includes(p+'?v=0.36.2'));
+ for(const p of ['weibo.js','album.js','groups.js'])assert.ok(index.includes(p+'?v=0.36.3'));
  assert.match(index,/data-lp="npcAiScanButton"/);
  assert.match(index,/scanNpcUI\('rules'\)/);
  assert.match(index,/scanNpcUI\('ai'\)/);
