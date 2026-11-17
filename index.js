@@ -7622,6 +7622,7 @@ async function sendUserMessage(text,image='',sticker=null,extra={}) {
         await writeData(ctx,data);
         if(!sameSession(session))return;
         nodes.input.value='';
+        nodes.input.dispatchEvent(new Event('input'));
         clearQuote();
         nodes.morePanel.hidden=true;nodes.emojiPanel.hidden=true;
         setStatus('');
@@ -9296,6 +9297,20 @@ function mount() {
         renderDiagnostics();
         setStatus('已清空本次运行日志。');
     });
+    const resizeChatInput=()=>{
+        const input=nodes.input;
+        if(!input)return;
+        const style=getComputedStyle(input);
+        const line=parseFloat(style.lineHeight)||22;
+        const padding=(parseFloat(style.paddingTop)||0)+(parseFloat(style.paddingBottom)||0);
+        const border=(parseFloat(style.borderTopWidth)||0)+(parseFloat(style.borderBottomWidth)||0);
+        const max=Math.ceil(line*5+padding+border);
+        input.style.height='auto';
+        input.style.height=Math.min(input.scrollHeight,max)+'px';
+        input.style.overflowY=input.scrollHeight>max?'auto':'hidden';
+    };
+    nodes.input.addEventListener('input',resizeChatInput);
+    resizeChatInput();
     nodes.input.addEventListener('focus', () => setTimeout(syncPhoneViewport, 120));
     nodes.input.addEventListener('blur', () => setTimeout(syncPhoneViewport, 120));
     viewportListener = () => {syncPhoneViewport();positionLauncher();};
