@@ -5,14 +5,14 @@ import {readFileSync} from 'node:fs';
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 const index=read('index.js'),groups=read('groups.js'),album=read('album.js'),css=read('style.css');
 
-test('v0.36.2 compiles the edited module files',()=>{
+test('v0.36.3 compiles the edited module files',()=>{
  for(const code of [index,groups,album])
   assert.doesNotThrow(()=>new Function(code.replace(/^export /gm,'')));
 });
 
 test('scanned but unimported characters can be bound as a role friend and used in Moments',()=>{
  const source=index.slice(index.indexOf('function roleFriendCatalog('),index.indexOf('function renderRoleFriends('));
- const factory=new Function('galleryPeople','readSharedNpcScan','qunxingAccountCardKey','SETTINGS_KEY','contactDisplayName',
+ const factory=new Function('galleryPeople','readSharedNpcScan','visibleSharedNpcScan','sharedQunxingAccounts','qunxingAccountCardKey','SETTINGS_KEY','contactDisplayName',
   source+'\nreturn {roleFriendCatalog,roleFriendsOf,roleFriendGuest,roleFriendActorId};');
  const ctx={extensionSettings:{gujiguji:{roleFriendsByCard:{cardA:{
   '林知远':{known:['陈之恒'],custom:[]}
@@ -20,6 +20,7 @@ test('scanned but unimported characters can be bound as a role friend and used i
  const api=factory(
   ()=>[{id:'user',name:'我'},{id:'primary',name:'林知远'}],
   ()=>[{name:'陈之恒',description:'从故事资料中扫描出来的朋友'}],
+  ()=>[],()=>null,
   ()=>'cardA','gujiguji',(_,id)=>id
  );
  assert.equal(api.roleFriendCatalog(ctx).find(p=>p.name==='陈之恒').scanned,true);
@@ -32,18 +33,19 @@ test('scanned but unimported characters can be bound as a role friend and used i
 });
 
 test('Moments commenter names and colon stay inline',()=>{
- assert.match(index,/row\.append\(nameNode,content\)/);
+ assert.match(index,/row\.append\(line\)/);
+ assert.match(index,/line\.append\(nameNode,document\.createTextNode/);
  assert.match(css,/\.lp-moment-comment\{\s*display:block!important/);
- assert.match(css,/\.lp-moment-comment \.lp-moment-comment-text\{\s*display:inline!important/);
+ assert.match(css,/\.lp-moment-comment>\.lp-moment-comment-line\{/);
 });
 
 test('group avatar can be uploaded with a native tap and saved',()=>{
- assert.match(groups,/const pick=el\('label','lp-group-avatar-pick'\)/);
- assert.match(groups,/pick\.append\(el\('span','lp-group-avatar-pick-label'/);
+ assert.match(groups,/const pick=el\('div','lp-group-avatar-pick'\)/);
+ assert.match(groups,/pickBox\.append\(pick,avatar/);
  assert.match(groups,/avatar\.addEventListener\('change'/);
  assert.match(groups,/event\.stopPropagation\(\);void handleFile\(event\)/);
  assert.match(groups,/if\(state\.avatarDraft\)g\.avatar=state\.avatarDraft/);
- assert.match(css,/\.lp-group-avatar-native-input\{\s*position:absolute!important;inset:0!important/);
+ assert.match(css,/\.lp-group-avatar-picker \.lp-group-avatar-native-input\{\s*position:static!important/);
  assert.match(css,/pointer-events:auto!important/);
 });
 
