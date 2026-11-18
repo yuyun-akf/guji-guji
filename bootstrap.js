@@ -4,7 +4,8 @@
  */
 const DIAG_ID = 'gujiguji-bootstrap-diagnostic';
 const ROOT_ID = 'st-little-phone-root';
-const VERSION = '0.36.4';
+const VERSION = '0.36.5';
+const MANIFEST_URL = 'https://raw.githubusercontent.com/yuyun-akf/guji-guji/main/manifest.json';
 
 let mainPromise = null;
 let mainModule = null;
@@ -14,6 +15,32 @@ let detailNode = null;
 let diagnosticNode = null;
 let activationPromise = null;
 let lifecycle = 0;
+let updateChecked = false;
+let updateRequest = null;
+
+async function checkForUpdate() {
+    if (!enabled || updateChecked || updateRequest || typeof globalThis.toastr?.info !== 'function') return;
+    const controller = new AbortController();
+    updateRequest = controller;
+    try {
+        const response = await fetch(MANIFEST_URL, {
+            cache: 'no-cache', credentials: 'omit', referrerPolicy: 'no-referrer', signal: controller.signal,
+        });
+        if (!response.ok) return;
+        const { version } = await response.json();
+        if (!enabled || controller.signal.aborted) return;
+        updateChecked = true;
+        if (typeof version !== 'string' || !/^\d+\.\d+\.\d+$/.test(version)) return;
+        if (version.localeCompare(VERSION, undefined, { numeric: true }) <= 0) return;
+        const noticeKey = 'gujiguji:last-update-notice';
+        try {
+            if (sessionStorage.getItem(noticeKey) === version) return;
+            sessionStorage.setItem(noticeKey, version);
+        } catch { /* Storage can be disabled in a WebView. */ }
+        globalThis.toastr.info(`咕叽咕机 v${version} 已发布，请到「管理扩展」更新。`);
+    } catch { /* Update checking should not interrupt startup. */ }
+    finally { if (updateRequest === controller) updateRequest = null; }
+}
 
 function redact(message) {
     return String(message ?? '未知错误')
@@ -101,7 +128,7 @@ async function loadMain() {
     const token = lifecycle;
     if (!mainPromise) {
         report('B1', '入口脚本已运行，开始加载主模块');
-        mainPromise = import('./index.js?v=0.36.4&contact-ui=1').then(module => {
+        mainPromise = import('./index.js?v=0.36.5').then(module => {
             mainModule = module;
             return module;
         }).catch(error => {
@@ -113,6 +140,7 @@ async function loadMain() {
             if (!enabled || token !== lifecycle) return null;
             report('B2', '主模块已加载，正在检查界面');
             module.onActivate?.();
+            void checkForUpdate();
             if (checkTimer) clearTimeout(checkTimer);
             checkTimer = setTimeout(checkInterface, 5000);
             return module;
@@ -142,6 +170,8 @@ export function onEnable() {
 export function onDisable() {
     enabled = false;
     lifecycle += 1;
+    updateRequest?.abort();
+    updateRequest = null;
     activationPromise = null;
     if (checkTimer) clearTimeout(checkTimer);
     checkTimer = null;

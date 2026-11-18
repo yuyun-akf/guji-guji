@@ -25,10 +25,10 @@ function setup(withModel=false){
   zone:'world',time:'2026-11-14T18:00',actions:{}};
  let db={storyTime:'2026-11-16T20:00',contacts:[],messages:[],qunxing:{
   accounts:[
-   {id:'official',name:'顾明舟',handle:'@official',source:'manual',followers:46127300,
-    subject:{type:'primary',name:'顾明舟'},operatorMode:'team'},
+   {id:'official',name:'林知远',handle:'@official',source:'manual',followers:46127300,
+    subject:{type:'primary',name:'林知远'},operatorMode:'team'},
    {id:'secret',name:'路过的人',handle:'@secret',source:'manual',followers:32,
-    subject:{type:'primary',name:'顾明舟'},identityVisibility:'private',operatorMode:'self'}],
+    subject:{type:'primary',name:'林知远'},identityVisibility:'private',operatorMode:'self'}],
   following:[],posts:[],generated:{feeds:{home:[initial]},attempted:{world:true}}
  }};
  let calls=0;
@@ -44,7 +44,7 @@ function setup(withModel=false){
  }};
  const api={context:()=>ctx,readRootData:()=>db,readData:()=>db,
   writeData:async(_,value)=>{db=value;},getNodes:()=>({weiboFeed:null,weiboMe:editor}),
-  selectedCharacter:()=>({name:'顾明舟'}),currentPersona:()=>({name:'我'}),
+  selectedCharacter:()=>({name:'林知远'}),currentPersona:()=>({name:'我'}),
   stripModelReasoning:x=>x,
   ...(withModel?{phoneGenerate:async()=>{
    calls++;
@@ -109,13 +109,13 @@ test('refresh replaces current transient posts; it does not build a persistent N
 });
 test('same-character official/private accounts remain separate, and private binding is not public',()=>{
  const h=setup(),accounts=h.db().qunxing.accounts;
- const official=h.app.normalize({author:'顾明舟',handle:'@official',text:'公告',
+ const official=h.app.normalize({author:'林知远',handle:'@official',text:'公告',
   comments:[{name:'甲',text:'好'},{name:'乙',text:'好'}]},'world');
  const secret=h.app.normalize({author:'路过的人',handle:'@secret',text:'日常',
   comments:[{name:'甲',text:'嗯'},{name:'乙',text:'好的'}]},'world');
  assert.equal(official.authorId,'official');
  assert.equal(secret.authorId,'secret');
- assert.equal(h.app.publicAccountInfo(accounts[1]).includes('顾明舟'),false);
+ assert.equal(h.app.publicAccountInfo(accounts[1]).includes('林知远'),false);
  assert.equal(h.app.publicAccountInfo(accounts[0]).includes('工作室'),true);
 });
 test('discover search starts empty and only finds entered nicknames/IDs',()=>{
@@ -137,7 +137,7 @@ test('discover search starts empty and only finds entered nicknames/IDs',()=>{
 test('another account may bind same subject with independent operator and private identity',async()=>{
  const h=setup();
  await h.app.action('newAccount');
- Object.assign(h.fields,{accountName:'顾明舟的小号',accountHandle:'@private_alt',
+ Object.assign(h.fields,{accountName:'林知远的小号',accountHandle:'@private_alt',
   accountSubject:'primary',accountFollowers:'120',accountFollowersUnit:'person',
   accountProfession:'个人',accountOperatorMode:'self',accountIdentityVisibility:'private',
   accountIdentityKnownTo:'',accountOperatorName:'',accountPublic:false,

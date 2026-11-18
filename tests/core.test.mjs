@@ -14,6 +14,17 @@ vm.createContext(sandbox);
 vm.runInContext(`${source}\nglobalThis.helpers = {newData, readData, writeData, friendshipState, rememberFriendship, buildPrompt, createSystemPrompt, redactDiagnostic, makeUI, composePhonePrompt, availablePresetEntries, worldEntryTriggered, readExternalMemory, mainlineHistory, syncMainlinePrompt,selectedWorldBookNames,nextMessageStoryTime,appendPhoneMessage,storyHourLabel,resolvePhonePlaceholders,totalUnread};`, sandbox);
 const { newData, readData, writeData, friendshipState, rememberFriendship, buildPrompt, createSystemPrompt, redactDiagnostic, makeUI, composePhonePrompt, availablePresetEntries, worldEntryTriggered, readExternalMemory, mainlineHistory, syncMainlinePrompt,selectedWorldBookNames,nextMessageStoryTime,appendPhoneMessage,storyHourLabel,resolvePhonePlaceholders,totalUnread } = sandbox.helpers;
 
+test('standalone reply prefixes are hidden while intentional emoji and user messages are preserved', () => {
+    const {splitPhoneReply,cleanPhoneHistory}=vm.runInContext('({splitPhoneReply,cleanPhoneHistory})',sandbox);
+    assert.deepEqual(Array.from(splitPhoneReply('🫧\n正文[PHONE_NEXT]\n🫧\n第二条',{})),['正文','第二条']);
+    assert.deepEqual(Array.from(splitPhoneReply('🫧\n正文',{config:{messageStyle:'unrestricted'}})),['正文']);
+    assert.deepEqual(Array.from(splitPhoneReply('🫧',{})),['🫧']);
+    assert.deepEqual(Array.from(splitPhoneReply('吹泡泡🫧',{})),['吹泡泡🫧']);
+    const original=[{from:'character',text:'🫧\n旧消息'},{from:'user',text:'🫧\n我写的'}];
+    assert.deepEqual(Array.from(cleanPhoneHistory(original),message=>message.text),['旧消息','🫧\n我写的']);
+    assert.equal(original[0].text,'🫧\n旧消息');
+});
+
 test('new story starts without contact details or a friendship', () => {
     const data = newData();
     assert.equal(data.version, 1);
@@ -979,14 +990,14 @@ test('choosing a source enables the original active prompts and worldbook entrie
             {identifier:'main',enabled:true},{identifier:'off',enabled:false}]}]};
     const book={entries:{
         1:{uid:1,constant:true,content:'PHONE_BOOK_CONSTANT'},
-        2:{uid:2,key:['顾明舟'],content:'PHONE_BOOK_TRIGGER'},
+        2:{uid:2,key:['林知远'],content:'PHONE_BOOK_TRIGGER'},
         3:{uid:3,key:['never'],content:'PHONE_BOOK_MISS'},
         4:{uid:4,constant:true,disable:true,content:'PHONE_BOOK_DISABLED'}}};
     const ctx={name1:'面具甲',getPresetManager:()=>({getCompletionPresetByName:()=>preset}),
         loadWorldInfo:async()=>book};
     const data=newData();
-    data.config={presetSource:'手机预设',worldBooks:['顾明舟设定']};
-    const result=await composePhonePrompt(ctx,{name:'顾明舟'},data);
+    data.config={presetSource:'手机预设',worldBooks:['林知远设定']};
+    const result=await composePhonePrompt(ctx,{name:'林知远'},data);
     assert.match(result,/PHONE_PRESET_ACTIVE/);
     assert.doesNotMatch(result,/PHONE_PRESET_DISABLED/);
     assert.match(result,/PHONE_BOOK_CONSTANT/);
@@ -994,10 +1005,10 @@ test('choosing a source enables the original active prompts and worldbook entrie
     assert.doesNotMatch(result,/PHONE_BOOK_MISS|PHONE_BOOK_DISABLED/);
     const optedOut=structuredClone(data);
     optedOut.config.presetInitialized=['手机预设'];
-    optedOut.config.worldInitialized=['顾明舟设定'];
+    optedOut.config.worldInitialized=['林知远设定'];
     optedOut.config.presetEntries=[];
     optedOut.config.worldEntries=[];
-    const nothing=await composePhonePrompt(ctx,{name:'顾明舟'},optedOut);
+    const nothing=await composePhonePrompt(ctx,{name:'林知远'},optedOut);
     assert.doesNotMatch(nothing,/PHONE_PRESET_ACTIVE|PHONE_BOOK_CONSTANT/);
 });
 test('reasoning tags are stripped before splitting; old broken fragments stay out of model context',()=>{
@@ -1094,7 +1105,7 @@ test('story jump arithmetic handles minute, hour and calendar day boundaries',()
     assert.ok(html.includes('data-jump-unit="days"'));
 });
 test('time jump is persisted and applies to next message only; prior timestamps stay intact',async()=>{
-    const ctx={characterId:0,groupId:null,chatId:'time-test',characters:[{name:'顾明舟',avatar:'a.png'}],
+    const ctx={characterId:0,groupId:null,chatId:'time-test',characters:[{name:'林知远',avatar:'a.png'}],
         chatMetadata:{st_little_phone_v1:{...newData(),storyTime:'2025-12-17T19:00',
             messages:[{id:'old',from:'character',text:'开了开了',storyTime:'2025-12-17T19:00'}],
             friendship:{state:'friends'}}},saveMetadata:async()=>{}};
@@ -1167,7 +1178,7 @@ test('calendar dates are browse-only until Save and prior message dates remain u
         const button=new Fake('button');button.dataset.calendarView=view;fixture.calendarViews.append(button);
     }
     const ctx={characterId:0,chatId:'calendar-story',groupId:null,
-        characters:[{name:'顾明舟',avatar:'avatar.png'}],
+        characters:[{name:'林知远',avatar:'avatar.png'}],
         chatMetadata:{st_little_phone_v1:{...newData(),storyTime:'2026-11-15T18:50',
             messages:[{id:'old',from:'user',text:'聊天',storyTime:'2026-11-15T18:50'}],
             friendship:{state:'friends'}}},saveMetadata:async()=>{}};

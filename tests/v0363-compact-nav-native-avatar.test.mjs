@@ -1,32 +1,59 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import vm from 'node:vm';
 
 const read=name=>readFileSync(new URL('../'+name,import.meta.url),'utf8');
 const index=read('index.js'),album=read('album.js'),
  groups=read('groups.js'),css=read('style.css'),bootstrap=read('bootstrap.js');
 
-test('v0.36.4 module syntax and cache keys',()=>{
+test('module syntax and bootstrap version agree with the manifest',()=>{
  const manifest=JSON.parse(read('manifest.json'));
- assert.equal(manifest.version,'0.36.4');
- assert.match(bootstrap,/index\.js\?v=0\.36\.4&contact-ui=1/);
+ assert.ok(bootstrap.includes("const VERSION = '"+manifest.version+"'"));
+ assert.ok(bootstrap.includes("index.js?v="+manifest.version+"'"));
  for(const part of ['album','weibo','groups'])
   assert.ok(index.includes(part+'.js?v=0.36.4'));
  for(const source of [index,album,groups,read('weibo.js'),bootstrap])
   assert.doesNotThrow(()=>new Function(source.replace(/^export /gm,'')));
 });
 
+test('update notice checks for a newer version and announces it once per session',async()=>{
+ const notices=[],storage=new Map();
+ let version='0.36.10',requests=0;
+ const check=()=>{
+  const sandbox={
+   AbortController,document:{addEventListener(){}},toastr:{info:text=>notices.push(text)},
+   sessionStorage:{getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value)},
+   async fetch(url,options){
+    assert.equal(new URL(url).pathname,'/yuyun-akf/guji-guji/main/manifest.json');
+    assert.equal(options.credentials,'omit');
+    requests++;
+    return {ok:true,json:async()=>({version})};
+   },
+  };
+  return vm.runInNewContext(bootstrap.replace(/^export /gm,'')+'\ncheckForUpdate;',sandbox);
+ };
+ const active=check();
+ await Promise.all([active(),active()]);
+ assert.equal(requests,1);
+ await check()();
+ assert.deepEqual(notices,['咕叽咕机 v0.36.10 已发布，请到「管理扩展」更新。']);
+ version='0.36.4';
+ await check()();
+ assert.equal(notices.length,1);
+});
+
 test('a card can bind acquaintances scanned from other social directories',()=>{
  const source=index.slice(index.indexOf('function roleFriendCatalog('),index.indexOf('function roleFriendsStore('));
  const catalog=new Function('galleryPeople','readSharedNpcScan','visibleSharedNpcScan',
   'sharedQunxingAccounts',source+'\nreturn roleFriendCatalog;')(
-   ()=>[{id:'user',name:'我'},{id:'primary',name:'顾明舟'}],
-   ()=>[{name:'陈之恒',description:'扫描候选'}],
+   ()=>[{id:'user',name:'我'},{id:'primary',name:'林知远'}],
+   ()=>[{name:'唐晓禾',description:'扫描候选'}],
    ()=>[{name:'许小川',description:'关联世界书'}],
    ()=>[{subject:{type:'npc',name:'姜乐'},roleBrief:'另一位故事人物'}]
   );
  const options=catalog({});
- assert.deepEqual(options.map(x=>x.name).sort(),['顾明舟','陈之恒','姜乐','许小川'].sort());
+ assert.deepEqual(options.map(x=>x.name).sort(),['林知远','唐晓禾','姜乐','许小川'].sort());
  assert.ok(options.filter(x=>x.scanned).every(x=>x.id.startsWith('scanned:')));
 });
 

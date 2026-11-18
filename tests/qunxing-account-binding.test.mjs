@@ -7,8 +7,8 @@ const bridge=readFileSync(new URL('../index.js',import.meta.url),'utf8');
 const clone=x=>JSON.parse(JSON.stringify(x));
 const begin=source.indexOf(' const subjectChoices='),end=source.indexOf(' const data=()=>',begin);
 function helpers(){
- const api={accountSubjects:()=>[{id:'primary',name:'顾明舟'},{id:'npc:1',name:'林助理'},{id:'npc:2',name:'林助理'}],
-  selectedCharacter:()=>({name:'顾明舟'})};
+ const api={accountSubjects:()=>[{id:'primary',name:'林知远'},{id:'npc:1',name:'林助理'},{id:'npc:2',name:'林助理'}],
+  selectedCharacter:()=>({name:'林知远'})};
  return new Function('api','context','clean',
   source.slice(begin,end)+'return {subjectChoices,subjectOfAccount,subjectValue,readSubject,savedProfession};')(
   api,()=>({}), (text,length=100)=>String(text||'').trim().slice(0,length));
@@ -22,16 +22,16 @@ function mock(){
  let root={messages:[],contacts:[{id:'npc:1',name:'林助理'}],
   qunxing:{posts:[],accounts:[],profile:{},following:[]}};
  let shared=[];
- const fields={accountSubject:'primary',accountName:'顾明舟',accountHandle:'@sample_actor',accountProfession:'演员',
-  accountBio:'今天去看看新剧本',accountFollowers:'3500',accountFollowersUnit:'wan'};
+ const fields={accountSubject:'primary',accountName:'林知远',accountHandle:'@sample_account',accountProfession:'演员',
+  accountBio:'每周记录一次城市散步',accountFollowers:'3500',accountFollowersUnit:'wan'};
  const nodes={weiboFeed:null,weiboMe:{querySelector:selector=>{
    const name=selector.match(/data-wb-field="([^"]+)"/)?.[1];
    return name==='accountPublic'?{checked:true}:name in fields?{value:fields[name]}:null;
  }}};
  const controller=factory({context:()=>ctx,getNodes:()=>nodes,readRootData:()=>root,readData:()=>root,
   writeData:async(_,next)=>{root=next;},currentPersona:()=>({name:'我'}),
-  selectedCharacter:()=>({name:'顾明舟'}),
-  accountSubjects:()=>[{id:'primary',name:'顾明舟'},{id:'npc:1',name:'林助理'}],
+  selectedCharacter:()=>({name:'林知远'}),
+  accountSubjects:()=>[{id:'primary',name:'林知远'},{id:'npc:1',name:'林助理'}],
   readSharedAccounts:()=>shared,saveSharedAccounts:async next=>{shared=clone(next);},
   notifyInteraction:()=>{}});
  return {controller,ctx,fields,root:()=>root,shared:()=>shared};
@@ -39,7 +39,7 @@ function mock(){
 test('故事人物绑定是实名主体，不再依赖自由文本身份类型',()=>{
  const h=helpers(),list=h.subjectChoices();
  assert.deepEqual(list.map(x=>x.value),['primary','npc:'+encodeURIComponent('林助理'),'organization']);
- assert.deepEqual(h.readSubject('primary',list),{type:'primary',name:'顾明舟'});
+ assert.deepEqual(h.readSubject('primary',list),{type:'primary',name:'林知远'});
  assert.deepEqual(h.readSubject('npc:'+encodeURIComponent('林助理'),list),{type:'npc',name:'林助理'});
  assert.deepEqual(h.readSubject('organization',list),{type:'organization',name:''});
  assert.throws(()=>h.readSubject('npc:injected',list),/有效/);
@@ -47,18 +47,18 @@ test('故事人物绑定是实名主体，不再依赖自由文本身份类型',
 });
 test('旧账号不重新创建；保留原签名，并从已有职业类型读取职业',()=>{
  const h=helpers();
- const old={id:'old',name:'顾明舟',kind:'演员',bio:'今天去看看新剧本',
+ const old={id:'old',name:'林知远',kind:'演员',bio:'每周记录一次城市散步',
   followers:46127300,source:'manual'};
- assert.deepEqual(h.subjectOfAccount(old),{type:'primary',name:'顾明舟'});
+ assert.deepEqual(h.subjectOfAccount(old),{type:'primary',name:'林知远'});
  assert.equal(h.savedProfession(old),'演员');
- assert.equal(old.bio,'今天去看看新剧本');
+ assert.equal(old.bio,'每周记录一次城市散步');
  assert.equal(h.subjectOfAccount({name:'校园表白墙',kind:'媒体'}).type,'organization');
  assert.deepEqual(h.subjectOfAccount({name:'林助理',kind:'NPC'}),{type:'npc',name:'林助理'});
 });
 test('主角、NPC、独立组织绑定均保存职业、签名和整数粉丝数；共享账号跨剧情存档',async()=>{
  const h=mock(),check=[];
  for(const [binding,name,job,bio,n,unit] of [
-  ['primary','顾明舟','演员','今天去看看新剧本','3500','wan'],
+  ['primary','林知远','演员','每周记录一次城市散步','3500','wan'],
   ['npc:'+encodeURIComponent('林助理'),'林助理','演员助理','忙到飞起','125','person'],
   ['organization','校园表白墙','校园信息平台','欢迎投稿','1.5','wan']
  ]){
@@ -70,10 +70,10 @@ test('主角、NPC、独立组织绑定均保存职业、签名和整数粉丝�
  assert.deepEqual(check.map(x=>x.subject.type),['primary','npc','organization']);
  assert.deepEqual(check.map(x=>x.kind),['角色','NPC','组织']);
  assert.deepEqual(check.map(x=>x.profession),['演员','演员助理','校园信息平台']);
- assert.deepEqual(check.map(x=>x.bio),['今天去看看新剧本','忙到飞起','欢迎投稿']);
+ assert.deepEqual(check.map(x=>x.bio),['每周记录一次城市散步','忙到飞起','欢迎投稿']);
  assert.deepEqual(check.map(x=>x.followers),[35000000,125,15000]);
  const otherChat={...h.ctx,chatId:'story-2',chatMetadata:{}};
- assert.equal(h.shared()[0].name,'顾明舟');
+ assert.equal(h.shared()[0].name,'林知远');
  assert.equal(otherChat.chatId,'story-2');
  assert.equal(h.root().qunxing.accounts.length,3);
 });

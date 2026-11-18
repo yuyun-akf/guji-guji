@@ -20,7 +20,7 @@ function element(tag){
 function story(){
  const ctx={characterId:1,chatId:'v026',chatMetadata:{}};
  let root={storyTime:'2026-11-16T20:30',contacts:[],messages:[],qunxing:{
-  accounts:[{id:'actor',name:'顾明舟',handle:'@sample_actor',profession:'演员',followers:46127300,source:'manual'},
+  accounts:[{id:'actor',name:'林知远',handle:'@sample_account',profession:'演员',followers:46127300,source:'manual'},
    {id:'weather',name:'沪上气象小助手',followers:530000,source:'follow'}],
   posts:[],following:[],settings:{autoEnabled:false,autoEveryMinutes:180,nearbyHint:''}}};
  const source=weibo.replace('export function createWeiboModule','function createWeiboModule')
@@ -30,7 +30,7 @@ function story(){
   value=>JSON.parse(JSON.stringify(value)));
  const app=make({context:()=>ctx,getNodes:()=>({weiboFeed:null}),readRootData:()=>root,
   readData:()=>root,writeData:async(_,next)=>{root=next;},
-  selectedCharacter:()=>({name:'顾明舟'}),currentPersona:()=>({name:'我'})});
+  selectedCharacter:()=>({name:'林知远'}),currentPersona:()=>({name:'我'})});
  return {app,db:()=>root};
 }
 test('v0.36.3 uses a consistent cache key and full-width API reload control',()=>{
@@ -54,7 +54,7 @@ test('account management uses exactly two rows; four buttons always stay in one 
 });
 test('favorite stays icon-only and pressed feedback is CSS-based',()=>{
  const {app}=story();
- const card=app.card({id:'p1',author:'顾明舟',handle:'@sample_actor',text:'工作日常',likes:2900,comments:[],actions:{}});
+ const card=app.card({id:'p1',author:'林知远',handle:'@sample_account',text:'工作日常',likes:2900,comments:[],actions:{}});
  const bar=card.children.find(x=>x.className.includes('lp-wb-actions-inline'));
  const favorite=bar.children.find(x=>x.dataset.wbAction==='favorite');
  assert.equal(favorite.textContent,'☆');
@@ -89,12 +89,12 @@ test('notification appears over ST page and phone, and can be turned off from Me
   code+'return {showPhoneAlert,setMessageBannersEnabled,messageBannersEnabled};')(
   ()=>ctx,nodes,{classList:{contains:()=>inPhone}},
   {createElement:element},'gujiguji',null,()=>1,()=>{});
- f.showPhoneAlert('顾明舟 发来 1 条新消息','chat','actor');
+ f.showPhoneAlert('林知远 发来 1 条新消息','chat','actor');
  assert.equal(outside.hidden,false);
  assert.equal(outside.dataset.contactId,'actor');
  assert.equal(outside.children[1].children[0].textContent,'咕叽聊 · 新消息');
  inPhone=true;
- f.showPhoneAlert('顾明舟 发布了新朋友圈','discover','');
+ f.showPhoneAlert('林知远 发布了新朋友圈','discover','');
  assert.equal(inside.hidden,false);
  assert.equal(inside.children[1].children[0].textContent,'朋友圈 · 新动态');
  f.setMessageBannersEnabled(false);

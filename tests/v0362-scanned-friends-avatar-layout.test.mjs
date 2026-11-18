@@ -15,18 +15,18 @@ test('scanned but unimported characters can be bound as a role friend and used i
  const factory=new Function('galleryPeople','readSharedNpcScan','visibleSharedNpcScan','sharedQunxingAccounts','qunxingAccountCardKey','SETTINGS_KEY','contactDisplayName',
   source+'\nreturn {roleFriendCatalog,roleFriendsOf,roleFriendGuest,roleFriendActorId};');
  const ctx={extensionSettings:{gujiguji:{roleFriendsByCard:{cardA:{
-  '顾明舟':{known:['陈之恒'],custom:[]}
+  '林知远':{known:['唐晓禾'],custom:[]}
  }}}}};
  const api=factory(
-  ()=>[{id:'user',name:'我'},{id:'primary',name:'顾明舟'}],
-  ()=>[{name:'陈之恒',description:'从故事资料中扫描出来的朋友'}],
+  ()=>[{id:'user',name:'我'},{id:'primary',name:'林知远'}],
+  ()=>[{name:'唐晓禾',description:'从故事资料中扫描出来的朋友'}],
   ()=>[],()=>null,
   ()=>'cardA','gujiguji',(_,id)=>id
  );
- assert.equal(api.roleFriendCatalog(ctx).find(p=>p.name==='陈之恒').scanned,true);
- assert.deepEqual(api.roleFriendsOf(ctx,'primary').known,['陈之恒']);
- const token=api.roleFriendActorId('roleknown','顾明舟',0);
- assert.equal(api.roleFriendGuest(ctx,token).name,'陈之恒');
+ assert.equal(api.roleFriendCatalog(ctx).find(p=>p.name==='唐晓禾').scanned,true);
+ assert.deepEqual(api.roleFriendsOf(ctx,'primary').known,['唐晓禾']);
+ const token=api.roleFriendActorId('roleknown','林知远',0);
+ assert.equal(api.roleFriendGuest(ctx,token).name,'唐晓禾');
  assert.match(api.roleFriendGuest(ctx,token).description,/扫描出来/);
  assert.match(index,/knownOutsideContacts=known\.known\.flatMap/);
  assert.match(index,/roleFriendCatalog\(ctx\)/);

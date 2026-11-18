@@ -106,7 +106,7 @@ test('opening edit dialog creates a modal without touching scroll location',()=>
 test('AI historical generation immediately reports progress and saves only pre-story dates',async()=>{
  const branch=slice(weibo,"  if(type==='generateAccountHistory'){","  if(type==='newAccount'||type==='editAccount'){");
  const state={adminHistoryAccount:'actor-1',historyGenerating:false,historyStatus:'',historyInstructions:'',historyCount:'3'};
- const stored={accounts:[{id:'actor-1',name:'顾明舟',followers:1000000,publicFigure:true}],posts:[]};
+ const stored={accounts:[{id:'actor-1',name:'林知远',followers:1000000,publicFigure:true}],posts:[]};
  const traces=[];let calls=0,release;
  const deferred=new Promise(resolve=>{release=resolve;});
  const env={

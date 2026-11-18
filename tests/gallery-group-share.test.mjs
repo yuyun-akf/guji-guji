@@ -53,7 +53,7 @@ test('a forwarded Qunxing post is an independent text and picture snapshot',()=>
  const start=code.indexOf('function makeShareSnapshot('),end=code.indexOf('function openQunxingShare(',start);
  assert.ok(start>=0&&end>start);
  const snapshot=new Function(code.slice(start,end)+'return makeShareSnapshot;')();
- const post={id:'p1',author:'顾明舟',text:'今天的展览结束了',handle:'@sample_actor',image:'data:image/png;base64,AAAA'};
+ const post={id:'p1',author:'林知远',text:'今天的展览结束了',handle:'@sample_account',image:'data:image/png;base64,AAAA'};
  const saved=snapshot(post);post.text='后来被刷新覆盖了';post.image='';
  assert.equal(saved.text,'今天的展览结束了');assert.match(saved.image,/^data:image\/png;base64,/);
  assert.equal(snapshot({...post,image:'https://example.org/private.jpg'}).image,'');

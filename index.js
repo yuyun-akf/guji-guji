@@ -1,5 +1,5 @@
 /**
- * GujiGuji v0.36.4: a modular phone shell with isolated per-chat context.
+ * GujiGuji: a modular phone shell with isolated per-chat context.
  * No direct host-module imports; uses only the documented context surface.
  */
 
@@ -3565,11 +3565,14 @@ function cleanPhoneHistory(messages) {
         }
         const trailing=/\[\[\s*(?:think|thinking|thought|thoughts|analysis|reasoning)(?:\s*[:：][\s\S]*)?$/i.exec(text);
         if(trailing&&!trailing[0].includes(']]'))hidden=true;
-        return {...message,text:stripModelReasoning(text)};
+        return {...message,text:stripPhoneReplyPrefix(stripModelReasoning(text))};
     });
 }
+function stripPhoneReplyPrefix(text) {
+    return text.replace(/(^|\[PHONE_NEXT\][ \t\r\n]*)🫧\uFE0F?[ \t]*\r?\n[ \t]*(?=\S)(?!\[PHONE_NEXT\])/gu,'$1');
+}
 function splitPhoneReply(text, data) {
-    const source = String(text || '').trim();
+    const source = stripPhoneReplyPrefix(String(text || '').trim());
     if (!source) return [];
     if (data?.config?.messageStyle === 'unrestricted') return [source];
     const cap = parts => parts.length > 5 ? [...parts.slice(0,4), parts.slice(4).join('\n')] : parts;
@@ -4670,7 +4673,7 @@ function chooseStickerCandidates(catalog,data){
 function stickerPrompt(catalog) {
     if(!catalog.length)return '';
     return '你可以像真人聊天一样，自然地主动选择以下表情包（并非必须发送）。参考当前语境、人物性格及名称/用途的情绪标签，契合时可与文字搭配，也可只发表情包；无需等待玩家提起，也不要每轮机械发送。名称和用途仅是标签，不能推断未描述的图像细节。'+
-        '用 [[sticker:ID]] 表示角色自己选择发送图片；user 刚发送的表情包属于 user，不要当成角色自己发的，也不必原样复发。只能使用列出的ID，不要编造图片或地址。\n'+
+        '用 [[sticker:ID]] 表示角色选择发送图片。仅可使用下列 ID，玩家发过的图片归玩家。\n'+
         JSON.stringify(catalog.map(({id,label,usage})=>({id,label,...(usage?{usage}:{})})));
 }
 function parseStickerReply(reply,data,catalog,photos=[]) {

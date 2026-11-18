@@ -188,7 +188,7 @@ test('mainline detection only accepts completed character payment statements',()
 });
 test('edited mainline transfer is invalidated and accepted money is reversed',async()=>{
     const ctx={characterId:0,groupId:null,chatId:'room1',name1:'面具甲',
-        characters:[{name:'顾明舟',avatar:'char.png'}],
+        characters:[{name:'林知远',avatar:'char.png'}],
         chat:[{mes:'我给你转了200元',is_user:false}],
         chatMetadata:{st_little_phone_v1:story()},
         saveMetadata:async()=>{},
@@ -213,7 +213,7 @@ test('edited mainline transfer is invalidated and accepted money is reversed',as
     assert.equal(api.readRootData(ctx).wallet.transfers[0].status,'invalidated');
 });
 test('edited mainline source with already spent credits becomes a visible conflict',async()=>{
-    const ctx={characterId:0,groupId:null,chatId:'room2',characters:[{name:'顾明舟',avatar:'char.png'}],
+    const ctx={characterId:0,groupId:null,chatId:'room2',characters:[{name:'林知远',avatar:'char.png'}],
         chat:[{mes:'我给你转了200元',is_user:false}],chatMetadata:{st_little_phone_v1:story()},
         saveMetadata:async()=>{}};
     const api=harness(ctx);
@@ -244,9 +244,9 @@ test('character wallet directives never require an additional API and never deci
 });
 test('friend requests distinguish role speech from the player action',()=>{
     const {classifyStoryFriendEvent}=harness();
-    assert.equal(classifyStoryFriendEvent('我刚向你发了好友申请','顾明舟',true,'character')?.state,'incoming');
-    assert.equal(classifyStoryFriendEvent('我同意了你的好友申请','顾明舟',true,'user')?.state,'friends');
-    assert.equal(classifyStoryFriendEvent('我准备向你发好友申请','顾明舟',true,'character'),null);
+    assert.equal(classifyStoryFriendEvent('我刚向你发了好友申请','林知远',true,'character')?.state,'incoming');
+    assert.equal(classifyStoryFriendEvent('我同意了你的好友申请','林知远',true,'user')?.state,'friends');
+    assert.equal(classifyStoryFriendEvent('我准备向你发好友申请','林知远',true,'character'),null);
 });
 test('interface exposes account, receipt and sync settings with no out-of-story disclaimer',()=>{
     // Static template contract; UI rendering requires the browser and is
@@ -260,7 +260,7 @@ test('interface exposes account, receipt and sync settings with no out-of-story 
 
 test('returning to an earlier story swipe revives a new pending transfer with a new ledger ID',async()=>{
     const ctx={characterId:0,groupId:null,chatId:'swipe-story',
-        characters:[{name:'顾明舟',avatar:'role-avatar.png'}],
+        characters:[{name:'林知远',avatar:'role-avatar.png'}],
         chat:[{is_user:false,mes:'我给你转了200元',swipe_id:0}],
         chatMetadata:{st_little_phone_v1:story()},saveMetadata:async()=>{}};
     const api=harness(ctx);

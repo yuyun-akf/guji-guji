@@ -9,13 +9,13 @@ const manifest=JSON.parse(readFileSync(new URL('../manifest.json',import.meta.ur
 function story(){
  const ctx={characterId:0,chatId:'test',chatMetadata:{}};
  let db={storyTime:'2026-11-16T20:00',contacts:[],messages:[],qunxing:{
-  accounts:[{id:'actor',name:'顾明舟',source:'manual',followers:46127300}],posts:[],following:[]}};
+  accounts:[{id:'actor',name:'林知远',source:'manual',followers:46127300}],posts:[],following:[]}};
  const code=weibo.replace('export function createWeiboModule','function createWeiboModule')
   .replace('return {open,render,','return {action,normalize,open,render,');
  const make=new Function('document','structuredClone',code+'\nreturn createWeiboModule;')(
   {visibilityState:'visible'},x=>JSON.parse(JSON.stringify(x)));
  const app=make({context:()=>ctx,getNodes:()=>({weiboFeed:null}),readRootData:()=>db,readData:()=>db,
-  writeData:async(_,value)=>{db=value;},currentPersona:()=>({name:'我'}),selectedCharacter:()=>({name:'顾明舟'})});
+  writeData:async(_,value)=>{db=value;},currentPersona:()=>({name:'我'}),selectedCharacter:()=>({name:'林知远'})});
  return {app,data:()=>db};
 }
 test('v0.25 cache markers and no-obstruction top-center feedback',()=>{
@@ -42,7 +42,7 @@ test('temporary NPC stats are model-scaled; commentless posts cannot enter feed'
  assert.equal(p.accountLikes,1850000);
  assert.equal(p.accountComments,41000);
  assert.equal(app.normalize({author:'路人',text:'没评论',comments:[]},'world'),null);
- assert.ok(app.normalize({author:'顾明舟',text:'工作日常',likes:300,comments},'world').likes>14000);
+ assert.ok(app.normalize({author:'林知远',text:'工作日常',likes:300,comments},'world').likes>14000);
 });
 test('public profile cannot manage history; settings manager can',async()=>{
  const h=story();
