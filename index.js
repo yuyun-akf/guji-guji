@@ -7009,6 +7009,7 @@ function walletStatusLabel(status) {
 function walletRenderCard(transfer,receipt=false) {
  const pending=transfer.status==='pending',accepted=transfer.status==='accepted';
  const redpacket=transfer.kind==='redpacket';
+ const kindLabel=walletTransferLabel(transfer);
  const statusLabel=redpacket&&accepted?'已领取':walletStatusLabel(transfer.status);
  const card=document.createElement('div');
  card.className='lp-payment-card '+(redpacket?'lp-payment-redpacket':'lp-payment-transfer')+
@@ -7023,10 +7024,11 @@ function walletRenderCard(transfer,receipt=false) {
  const top=document.createElement('strong');
  top.textContent=redpacket&&!receipt?(transfer.note||'恭喜发财'):'¥'+walletMoney(transfer.amountCents);
  const detail=document.createElement('small');
- detail.textContent=(redpacket?'红包':transfer.note||'转账')+' · '+statusLabel;
+ detail.textContent=(redpacket||receipt?kindLabel:transfer.note||kindLabel)+' · '+statusLabel;
  content.append(top,detail);head.append(glyph,content);card.append(head);
  const foot=document.createElement('div');foot.className='lp-payment-foot';
- const label=document.createElement('span');label.textContent=receipt?'领取回执':walletTransferLabel(transfer);
+ const label=document.createElement('span');label.textContent=kindLabel;
+ if(receipt)label.textContent=redpacket?'领取回执':'收款回执';
  foot.append(label);
  if(!receipt&&pending&&transfer.from==='contact'){
   card.classList.add('lp-payment-actionable');
@@ -7373,8 +7375,11 @@ function renderMessages(data){
  const payments=new Map(walletState(data).transfers.map(transfer=>[transfer.id,transfer]));
  let lastSeparator='';
  const currentStoryDate=String(data.storyTime||localDateTime());
- for(const message of list){
+ for(const [index,message] of list.entries()){
   if(typeof message?.text!=='string'||(message.from==='character'&&!message.text.trim()&&!message.image&&!message.images?.length))continue;
+  // Older replies could append this system notice immediately after a receipt.
+  if(message.from==='system'&&message.text==='对方已处理交易'&&
+   payments.get(list[index-1]?.paymentReceiptId)?.from==='user')continue;
   const stamp=String(message.storyTime||'');
   if(stamp&&isChatTimeBreak(lastSeparator,stamp)){
    const separator=document.createElement('div');separator.className='lp-chat-time-divider';
@@ -7382,7 +7387,7 @@ function renderMessages(data){
    fragment.append(separator);lastSeparator=stamp;
   }
   const settled=payments.get(message.paymentReceiptId);
-  const receipt=settled?.kind==='redpacket';
+  const receipt=Boolean(settled);
   const payment=receipt?settled:payments.get(message.paymentId);
   const from=receipt?(settled.from==='user'?'character':'user'):message.from;
   const row=document.createElement('div');

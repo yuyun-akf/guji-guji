@@ -101,7 +101,7 @@ async function loadMain() {
     const token = lifecycle;
     if (!mainPromise) {
         report('B1', '入口脚本已运行，开始加载主模块');
-        mainPromise = import('./index.js?v=0.36.4').then(module => {
+        mainPromise = import('./index.js?v=0.36.4&payment-receipts=2').then(module => {
             mainModule = module;
             return module;
         }).catch(error => {
