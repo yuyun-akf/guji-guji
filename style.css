@@ -5467,3 +5467,13 @@
 #st-little-phone-root .lp-payment-card.lp-payment-actionable{cursor:pointer;}
 #st-little-phone-root .lp-payment-card.lp-payment-actionable:focus-visible{outline:2px solid var(--lp-navy);outline-offset:2px;}
 #st-little-phone-root .lp-payment-card.lp-payment-actionable .lp-payment-foot{pointer-events:none;}
+
+#st-little-phone-root .lp-payment-card.lp-payment-redpacket.lp-payment-pending{
+ background:var(--lp-rose,#e39f9f)!important;
+}
+#st-little-phone-root .lp-payment-card.lp-payment-redpacket.lp-payment-finished{
+ background:var(--lp-blush,#f1d6d6)!important;
+}
+#st-little-phone-root .lp-payment-redpacket .lp-payment-glyph>svg{
+ display:block;width:24px;height:24px;margin:0;
+}

@@ -3151,10 +3151,10 @@ function walletSettleTransfer(data,id,nextStatus,{origin='phone'}={}) {
     }
     payment.status=nextStatus;
     if(nextStatus==='accepted'){
-        const thread=walletThread(data,payment.contactId);
+        const thread=data.__contactId===payment.contactId?data:walletThread(data,payment.contactId);
         if(!thread.messages?.some(m=>m.paymentReceiptId===id)){
-            const receipt=appendPhoneMessage(thread,'system',(payment.from==='user'?'对方已':'你已')+(payment.kind==='redpacket'?'领取红包':'收款')+' ¥'+walletMoney(payment.amountCents));
-            receipt.paymentReceiptId=id;
+            const text=(payment.from==='user'?'对方已':'你已')+(payment.kind==='redpacket'?'领取红包':'收款')+' ¥'+walletMoney(payment.amountCents);
+            appendPhoneMessage(thread,'system',text,{paymentReceiptId:id,storyTime:data.storyTime||localDateTime()});
         }
     }
     walletEvent(data,{id:'evt:'+id+':'+nextStatus,type:payment.kind+'.'+nextStatus,
@@ -7006,42 +7006,42 @@ function walletStatusLabel(status) {
         invalidated:'已失效',conflict:'待核对'})[status]||'';
 }
 
-function walletRenderCard(ctx,message) {
- const transfer=walletState(readRootData(ctx)).transfers.find(item=>item.id===message.paymentId);
- if(!transfer)return null;
+function walletRenderCard(transfer,receipt=false) {
  const pending=transfer.status==='pending',accepted=transfer.status==='accepted';
+ const redpacket=transfer.kind==='redpacket';
+ const statusLabel=redpacket&&accepted?'已领取':walletStatusLabel(transfer.status);
  const card=document.createElement('div');
- card.className='lp-payment-card '+(transfer.kind==='redpacket'?'lp-payment-redpacket':'lp-payment-transfer')+
+ card.className='lp-payment-card '+(redpacket?'lp-payment-redpacket':'lp-payment-transfer')+
    (pending?' lp-payment-pending':accepted?' lp-payment-finished':' lp-payment-expired');
+ if(receipt)card.classList.add('lp-payment-receipt');
  const head=document.createElement('div');head.className='lp-payment-main';
  const glyph=document.createElement('span');glyph.className='lp-payment-glyph';glyph.setAttribute('aria-hidden','true');
- glyph.textContent=pending?(transfer.kind==='redpacket'?'✉':'⇄'):accepted?'✓':'—';
+ if(redpacket){
+  glyph.innerHTML='<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="m4 7 8 6 8-6"/></svg>';
+ }else glyph.textContent=pending?'⇄':accepted?'✓':'—';
  const content=document.createElement('div');content.className='lp-payment-copy';
  const top=document.createElement('strong');
- top.textContent=transfer.kind==='redpacket'
-   ?(transfer.note||'恭喜发财')
-   :'¥'+walletMoney(transfer.amountCents);
+ top.textContent=redpacket&&!receipt?(transfer.note||'恭喜发财'):'¥'+walletMoney(transfer.amountCents);
  const detail=document.createElement('small');
- detail.textContent=transfer.kind==='redpacket'?'红包 · '+walletStatusLabel(transfer.status):
-   (transfer.note||'转账')+' · '+walletStatusLabel(transfer.status);
+ detail.textContent=(redpacket?'红包':transfer.note||'转账')+' · '+statusLabel;
  content.append(top,detail);head.append(glyph,content);card.append(head);
  const foot=document.createElement('div');foot.className='lp-payment-foot';
- const label=document.createElement('span');label.textContent=walletTransferLabel(transfer);
+ const label=document.createElement('span');label.textContent=receipt?'领取回执':walletTransferLabel(transfer);
  foot.append(label);
- if(pending&&transfer.from==='contact'){
+ if(!receipt&&pending&&transfer.from==='contact'){
   card.classList.add('lp-payment-actionable');
   card.dataset.paymentOpen=transfer.id;
   card.setAttribute('role','button');
   card.setAttribute('tabindex','0');
-  card.setAttribute('aria-label',transfer.kind==='redpacket'?'打开红包':'查看待收转账');
-  const hint=document.createElement('span');hint.textContent='点击'+(transfer.kind==='redpacket'?'拆红包':'收款');
+  card.setAttribute('aria-label',redpacket?'打开红包':'查看待收转账');
+  const hint=document.createElement('span');hint.textContent=redpacket?'点击拆红包':'点击收款';
   foot.append(hint);
  }else{
-  const status=document.createElement('span');status.textContent=walletStatusLabel(transfer.status);
+  const status=document.createElement('span');status.textContent=statusLabel;
   foot.append(status);
  }
  card.append(foot);
- if(transfer.kind==='redpacket'&&accepted&&transfer.id===lastOpenedRedpacketId)card.classList.add('lp-payment-opened');
+ if(!receipt&&redpacket&&accepted&&transfer.id===lastOpenedRedpacketId)card.classList.add('lp-payment-opened');
  return card;
 }
 function walletLedgerDisplay(ctx,entry,wallet){
@@ -7370,6 +7370,7 @@ function renderMessages(data){
  }
  const fragment=document.createDocumentFragment();
  const ctx=context(),character=contactCharacter(ctx),avatars=avatarSources(ctx,data);
+ const payments=new Map(walletState(data).transfers.map(transfer=>[transfer.id,transfer]));
  let lastSeparator='';
  const currentStoryDate=String(data.storyTime||localDateTime());
  for(const message of list){
@@ -7380,13 +7381,17 @@ function renderMessages(data){
    separator.textContent=chatTimeLabel(stamp,currentStoryDate);
    fragment.append(separator);lastSeparator=stamp;
   }
+  const settled=payments.get(message.paymentReceiptId);
+  const receipt=settled?.kind==='redpacket';
+  const payment=receipt?settled:payments.get(message.paymentId);
+  const from=receipt?(settled.from==='user'?'character':'user'):message.from;
   const row=document.createElement('div');
-  row.className='lp-message '+(message.from==='system'?'lp-system':message.from==='character'?'lp-theirs':'lp-mine');
+  row.className='lp-message '+(from==='system'?'lp-system':from==='character'?'lp-theirs':'lp-mine');
   row.dataset.messageId=message.id;
   const body=document.createElement('div');body.className='lp-message-body';
-  const bubble=document.createElement('div');bubble.className='lp-bubble'+(message.paymentId?' lp-payment-shell':'');
+  const bubble=document.createElement('div');bubble.className='lp-bubble'+(payment?' lp-payment-shell':'');
   if(message.sticker&&(message.image||message.images?.length))bubble.classList.add('lp-sticker-only');
-  const located=!message.paymentId?locationCard(message.text):null;
+  const located=!payment?locationCard(message.text):null;
   if(located){bubble.classList.add('lp-location-shell');bubble.append(located);}
   else bubble.textContent=visibleStickerText(message,ctx,character);
   if(message.sharePost){
@@ -7398,9 +7403,8 @@ function renderMessages(data){
    if(p.image){const img=document.createElement('img');img.src=p.image;img.alt='群星分享配图';view.append(img);}
    bubble.append(view);
   }
-  if(message.paymentId){
-   const paymentCard=walletRenderCard(ctx,message);
-   if(paymentCard){bubble.textContent='';bubble.append(paymentCard);}
+  if(payment){
+   bubble.replaceChildren(walletRenderCard(payment,receipt));
   }
   if(message.replyQuote){
    const quote=document.createElement('div');quote.className='lp-inline-quote';
@@ -7411,8 +7415,8 @@ function renderMessages(data){
     picture.alt=message.sticker?'表情包图片':'聊天图片';bubble.append(picture);
    }
   body.append(bubble);
-  if(message.from!=='system'){
-   row.append(makeAvatarElement(message.from==='character'?avatars.character:avatars.user,message.from==='character'?'角色头像':'我的头像'),body);
+  if(from!=='system'){
+   row.append(makeAvatarElement(from==='character'?avatars.character:avatars.user,from==='character'?'角色头像':'我的头像'),body);
   }else row.append(body);
   attachMessageHold(bubble,message.id);
   fragment.append(row);
@@ -7570,6 +7574,7 @@ async function runReply(ctx, char, data, session, existingJob = null) {
         const reply=stripModelReasoning(rawReply);
         if(!reply)throw new Error(rawReply?'模型仅返回思考内容，未生成可发送的角色消息，请重试。':'模型返回了空消息或不支持的回复类型。');
         const beforeStatuses=walletState(data).transfers.map(tx=>tx.id+':'+tx.status);
+        const beforeMessages=data.messages.length;
         const afterReceipt=applyPaymentModelTags(data,reply,activeContactId);
         const receiptChanged=walletState(data).transfers.some((tx,i)=>beforeStatuses[i]!==tx.id+':'+tx.status);
         const paymentResult=applyCharacterPaymentSendTag(data,afterReceipt,activeContactId);
@@ -7577,7 +7582,7 @@ async function runReply(ctx, char, data, session, existingJob = null) {
         if(!phoneMessages.length&&!paymentResult.created&&!receiptChanged)
             throw new Error('模型没有返回可发送的角色消息');
         for (const message of phoneMessages) appendPhoneMessage(data,'character',resolvePhonePlaceholders(message.text,ctx,char),message);
-        if(receiptChanged&&!phoneMessages.length&&!paymentResult.created)
+        if(receiptChanged&&!phoneMessages.length&&!paymentResult.created&&data.messages.length===beforeMessages)
             data.messages.push(makeMessage('system','对方已处理交易',data.storyTime));
         if(paymentResult.created){
             const bubble=appendPhoneMessage(data,'character',paymentResult.created.kind==='redpacket'?'[红包]':'[转账]');
