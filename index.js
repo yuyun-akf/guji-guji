@@ -7355,7 +7355,7 @@ function renderMessages(data){
  if(!root?.classList.contains('lp-open')||activeScreen!=='chat')return;
  nodes.messages.replaceChildren();
  closeMessageActions();
- const list=cleanPhoneHistory(data.messages).slice(-120);
+ const list=cleanPhoneHistory(data.messages);
  if(!list.length){
   const empty=document.createElement('p');empty.className='lp-empty';empty.textContent='暂无消息';
   nodes.messages.append(empty);
