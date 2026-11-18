@@ -3150,6 +3150,13 @@ function walletSettleTransfer(data,id,nextStatus,{origin='phone'}={}) {
             kind:'refund',contactId:payment.contactId,counterpartyName:payment.counterpartyName||walletCounterparty(data,payment.contactId),note:payment.note,relatedId:id});
     }
     payment.status=nextStatus;
+    if(nextStatus==='accepted'){
+        const thread=walletThread(data,payment.contactId);
+        if(!thread.messages?.some(m=>m.paymentReceiptId===id)){
+            const receipt=appendPhoneMessage(thread,'system',(payment.from==='user'?'对方已':'你已')+(payment.kind==='redpacket'?'领取红包':'收款')+' ¥'+walletMoney(payment.amountCents));
+            receipt.paymentReceiptId=id;
+        }
+    }
     walletEvent(data,{id:'evt:'+id+':'+nextStatus,type:payment.kind+'.'+nextStatus,
         detail:(nextStatus==='accepted'?'已收款':nextStatus==='expired'?'已过期':
             nextStatus==='declined'?'已拒收':nextStatus==='cancelled'?'已撤回':'已作废')+
@@ -7022,12 +7029,13 @@ function walletRenderCard(ctx,message) {
  const label=document.createElement('span');label.textContent=walletTransferLabel(transfer);
  foot.append(label);
  if(pending&&transfer.from==='contact'){
-  const buttons=document.createElement('div');buttons.className='lp-payment-actions';
-  for(const [action,text] of [['accept',transfer.kind==='redpacket'?'拆红包':'收款'],['decline','拒收']]){
-   const button=document.createElement('button');button.type='button';button.textContent=text;
-   button.dataset.paymentAction=action;button.dataset.paymentId=transfer.id;
-   button.disabled=busy;buttons.append(button);
-  }foot.append(buttons);
+  card.classList.add('lp-payment-actionable');
+  card.dataset.paymentOpen=transfer.id;
+  card.setAttribute('role','button');
+  card.setAttribute('tabindex','0');
+  card.setAttribute('aria-label',transfer.kind==='redpacket'?'打开红包':'查看待收转账');
+  const hint=document.createElement('span');hint.textContent='点击'+(transfer.kind==='redpacket'?'拆红包':'收款');
+  foot.append(hint);
  }else{
   const status=document.createElement('span');status.textContent=walletStatusLabel(transfer.status);
   foot.append(status);
@@ -9202,6 +9210,13 @@ function mount() {
         if(tool&&root.contains(tool)){startChatTool(tool.dataset.chatTool);return;}
         const sticker=event.target.closest('button[data-sticker-id]');
         if(sticker&&root.contains(sticker)){void useSticker(sticker.dataset.stickerId,sticker.dataset.stickerAction);return;}
+        const paymentCard=event.target.closest('[data-payment-open]');
+        if(paymentCard&&root.contains(paymentCard)){
+            const id=paymentCard.dataset.paymentOpen;
+            const tx=walletState(readRootData(context())).transfers.find(item=>item.id===id);
+            if(tx&&window.confirm(tx.kind==='redpacket'?'领取这个红包？':'收取这笔转账？'))void handlePaymentAction(id,'accept');
+            return;
+        }
         const paymentButton=event.target.closest('button[data-payment-action][data-payment-id]');
         if(paymentButton&&root.contains(paymentButton)){
             void handlePaymentAction(paymentButton.dataset.paymentId,paymentButton.dataset.paymentAction);
@@ -9209,6 +9224,11 @@ function mount() {
         }
         const action=event.target.closest('button[data-message-action]');
         if(action&&root.contains(action)){if(action.dataset.messageAction==='cancel')closeMessageActions();else void handleMessageOperation(action.dataset.messageAction);}
+    });
+    root.addEventListener('keydown',event=>{
+        if((event.key==='Enter'||event.key===' ')&&event.target?.matches?.('[data-payment-open]')){
+            event.preventDefault();event.target.click();
+        }
     });
     nodes.generate.addEventListener('click', () => void generateReply());
     nodes.cancelQuote.addEventListener('click',clearQuote);
