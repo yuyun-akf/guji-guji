@@ -77,8 +77,8 @@ test('ST saved site model fetch uses server secret id rather than exposing plain
 function roleApp(mockResult){
  const context={characterId:0,chatId:'a',chatMetadata:{}};
  let state={storyTime:'2026-11-15T21:00',contacts:[],messages:[],qunxing:{
-  accounts:[{id:'actor',name:'林知远',source:'manual',kind:'角色',profession:'演员',publicFigure:true,
-   bio:'每周记录一次城市散步',followers:46127300}],posts:[],following:['actor'],profile:{nickname:'u'}}};
+  accounts:[{id:'actor',name:'顾明舟',source:'manual',kind:'角色',profession:'演员',publicFigure:true,
+   bio:'今天去看看新剧本',followers:46127300}],posts:[],following:['actor'],profile:{nickname:'u'}}};
  const inputs={instructions:'只写日常，不允许喵喵梗，严格按角色性格',
   count:'3',text:'代发的一条历史帖',likes:'138000',time:'2026-11-12T19:00',
   comments:'粉丝甲：终于营业了\n粉丝乙：哥今天很帅'};
@@ -92,7 +92,7 @@ function roleApp(mockResult){
    const key=selector.match(/data-wb-history-field="([^"]+)"/)?.[1];
    return {value:inputs[key]??''};
   }}}),readRootData:()=>state,readData:()=>state,writeData:async(_ctx,updated)=>{state=updated;},
-  selectedCharacter:()=>({name:'林知远'}),currentPersona:()=>({name:'u'}),
+  selectedCharacter:()=>({name:'顾明舟'}),currentPersona:()=>({name:'u'}),
   accountSubjectContext:()=> '展览讲解员，休息时喜欢观鸟和做拼图',
   storyContext:()=> '期末周，不可公开私人聊天',
   stripModelReasoning:value=>value,notifyInteraction:()=>{},recordActivity:()=>{},recordError:()=>{},
@@ -166,7 +166,7 @@ test('following list actually routes a click on the avatar/name row to the profi
   .replace('return {open,render,','return {renderMine,open,render,');
  const factory=new Function('document','structuredClone',source+'\nreturn createWeiboModule;')(document,clone);
  const context={characterId:0,chatId:'one',chatMetadata:{}};
- const db={qunxing:{accounts:[{id:'actor',name:'林知远',handle:'@sample_account',
+ const db={qunxing:{accounts:[{id:'actor',name:'顾明舟',handle:'@sample_actor',
   source:'manual',kind:'角色',followers:46127300}],following:['actor'],posts:[]},contacts:[],messages:[]};
  const view=makeElement('div');
  const app=factory({context:()=>context,getNodes:()=>({weiboMe:view,weiboFeed:null}),

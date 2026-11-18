@@ -1207,7 +1207,7 @@ function albumIdentityPrompt(actorId,ctx=context()){
 function albumCatalogPrompt(actorId,access='chat'){
  const photos=photosForActor(actorId,access).slice(0,24);
  if(!photos.length)return '';
- return '【授权相册：只能根据正在表述的内容关联照片，绝不随机配图；公开相册/世界相册照片可以被任何角色在相关内容中引用，日常相册只有所属角色自己可用；私密照片仅所属角色与 user 私聊可用】'+photos.map(p=>
+ return '【授权相册：只能根据正在表述的内容关联照片，绝不随机配图；公开相册/世界相册照片可以被任何角色在相关内容中引用，日常相册只有所属角色自己可用；私密照片仅所属角色与玩家私聊可用】'+photos.map(p=>
   p.id+'：'+(p.title||'照片')+'；'+(p.description||'尚无描述')+'；所属 '+(p.ownerName||'世界')).join('；')+
   '。只有内容确实涉及图片主体或场景时，才可输出 [[photo:照片ID]]；无相关照片就发文字；不得用别人的照片假冒自己的自拍。';
 }
@@ -1272,7 +1272,7 @@ async function loadAlbumController(){
 async function loadGroupsController(){
  if(groupsController)return groupsController;
  if(groupsLoadPromise)return groupsLoadPromise;
- groupsLoadPromise=import('./groups.js?v=0.36.4').then(mod=>{
+ groupsLoadPromise=import('./groups.js?v=0.36.4&persona=1').then(mod=>{
   groupsController=mod.createGroupsModule({context,getNodes:()=>nodes,readRootData,writeData,galleryPeople,
    isPhoneFriend,contactCharacter,phoneGenerate,stripModelReasoning,notifyInteraction,openSharedPost,encodeAvatarPhoto,
    stickerLibrary:()=>stickerLibrary(context()),
@@ -1966,7 +1966,9 @@ async function populateConfigLists() {
     }
     nodes.presetSource.value=presets.includes(chosenPreset)?chosenPreset:'';
     if(nodes.saveSelections)nodes.saveSelections.title='将本角色当前选择写入聊天存档和酒馆扩展设置';
-    if(nodes.presetInfo)nodes.presetInfo.textContent=(readRootData(ctx).config?.selectionMode==='manual'?'手动配置：使用本角色保存的选择。':'自动同步：使用酒馆当前预设及角色关联的 User、Char 世界书。')+' 手动修改即独立保存，不改变酒馆正文配置。';
+    if(nodes.presetInfo)nodes.presetInfo.textContent=readRootData(ctx).config?.selectionMode==='manual'
+        ?'使用本角色保存的配置。'
+        :resolvePhonePlaceholders('同步酒馆当前预设，以及 {{user}} 和 {{char}} 绑定的世界书。',ctx,selectedCharacter(ctx));
     renderWorldBookSelector(ctx,worlds);
     showPresetEntries();
 }
@@ -2369,7 +2371,10 @@ function storyHourLabel(time) {
 function resolvePhonePlaceholders(value,ctx,char) {
     if(typeof value!=='string')return value;
     return value.replace(/\{\{\s*(user|char)\s*\}\}/gi,(_,key)=>key.toLowerCase()==='user'
-        ?String(ctx?.name1||'user'):getCharacterName(char||contactCharacter(ctx)));
+        ?personaName(ctx):getCharacterName(char||contactCharacter(ctx)));
+}
+function personaName(ctx) {
+    return String(ctx?.name1||'').trim()||'我';
 }
 
 function selectedCharacter(ctx) {
@@ -2634,10 +2639,10 @@ function roleFriendKnownConnected(ctx,first,second){
  const a=roleFriendName(ctx,first),b=roleFriendName(ctx,second);
  return !!(a&&b&&(roleFriendsOf(ctx,first).known.includes(b)||roleFriendsOf(ctx,second).known.includes(a)));
 }
-function renderRoleFriends(){
+function renderRoleFriends(selectedId){
  if(!nodes?.roleFriendsOwner||!nodes.roleFriendsContent)return;
  const ctx=context(),owners=roleFriendCatalog(ctx);
- const select=nodes.roleFriendsOwner,old=select.value;
+ const select=nodes.roleFriendsOwner,old=selectedId||select.value;
  select.replaceChildren();
  for(const person of owners){const o=document.createElement('option');o.value=person.id;o.textContent=person.name;select.append(o);}
  select.value=owners.some(p=>p.id===old)?old:owners[0]?.id||'';
@@ -2645,9 +2650,6 @@ function renderRoleFriends(){
  container.replaceChildren();
  if(!owner){container.textContent='暂无可设置的角色';return;}
  const saved=roleFriendsOf(ctx,owner.id);
- const intro=document.createElement('p');intro.className='lp-role-friend-note';
- intro.textContent='这里记录的是「'+owner.name+'」自己的好友，不要求你与这些人互加好友；没有写出的其他熟人也允许在生成朋友圈时自然出现。';
- container.append(intro);
  const heading=document.createElement('strong');heading.textContent='绑定已知故事人物';container.append(heading);
  const filter=document.createElement('input');filter.type='search';
  filter.className='lp-role-friend-filter';filter.placeholder='搜索已扫描人物或通讯录联系人';
@@ -2734,9 +2736,18 @@ function renderContactLinks(ctx=context()) {
     for(const id of others){
         const label=document.createElement('label');label.className='lp-checkline';
         const checkbox=document.createElement('input');checkbox.type='checkbox';
-        checkbox.dataset.linkOther=id;checkbox.checked=charactersHaveContact(ctx,current,id);
+        const saved=data.contactLinks?.[contactLinkKey(current,id)]===true;
+        const linkedByRoleFriends=roleFriendKnownConnected(ctx,current,id);
+        checkbox.dataset.linkOther=id;
+        checkbox.checked=saved||linkedByRoleFriends;
+        checkbox.disabled=linkedByRoleFriends&&!saved;
         const name=document.createElement('span');name.textContent=`与 ${contactDisplayName(ctx,id)} 互有联系方式`;
-        label.append(checkbox,name);nodes.contactLinks.append(label);
+        label.append(checkbox,name);
+        if(linkedByRoleFriends){
+            const source=document.createElement('small');source.textContent='角色好友列表';
+            label.append(source);
+        }
+        nodes.contactLinks.append(label);
     }
 }
 async function changeContactLink(otherId,enabled) {
@@ -3242,9 +3253,9 @@ function mainlineStructuredEvents(rootData){
         .slice(-8).map(evt=>evt.storyTime+' · '+evt.detail);
     const facts=[...events,...friends,...appEvents].filter(Boolean);
     return facts.length?'【咕叽咕机已确认的事件】\n'+facts.join('\n')+
-        '\n以上是手机中已经完成的事件，不代表 user 还要重复操作。角色仅知道自己参与或已被告知的部分。':'';
+        '\n以上是手机中已经完成的事件，不代表玩家还要重复操作。角色仅知道自己参与或已被告知的部分。':'';
 }
-function mainlineHistory(rootData) {
+function mainlineHistory(rootData,ctx=context()) {
     const threads=[{name:'主角色',messages:rootData.messages || []},
         ...(rootData.contacts || []).map(contact=>({name:contact.remark || contact.name || 'NPC',
             messages:rootData.conversations?.[contact.id]?.messages || []}))];
@@ -3254,9 +3265,9 @@ function mainlineHistory(rootData) {
         .sort((a,b)=>String(a.createdAt || '').localeCompare(String(b.createdAt || '')))
         .slice(-18);
     if(!messages.length)return '';
-    const lines=messages.map(message=>`${message.storyTime || '未知时间'} · ${message.name} · ${message.from==='user'?'user':'角色'}：${message.text.slice(0,250)}`);
+    const lines=messages.map(message=>`${message.storyTime || '未知时间'} · ${message.name} · ${message.from==='user'?personaName(ctx):'角色'}：${message.text.slice(0,250)}`);
     // Kept short and factual; never inject mobile messages into the actual host chat array.
-    return clipContext('【咕叽咕机手机经历（独立于正文消息）】\n以下仅为玩家选择同步的手机聊天记录。请根据正文时间线与已知关系判断是否适用；不可改写 user 的正文行为，也不能把手机事件当作正文里已经表演过的情节。\n'+lines.join('\n'),4200);
+    return clipContext('【咕叽咕机手机经历（独立于正文消息）】\n以下仅为玩家选择同步的手机聊天记录。请根据正文时间线与已知关系判断是否适用；不可改写玩家的正文行为，也不能把手机事件当作正文里已经表演过的情节。\n'+lines.join('\n'),4200);
 }
 
 
@@ -3275,7 +3286,7 @@ function syncMainlinePrompt(ctx) {
     const enabled=extensionEnabled && Boolean(selectedCharacter(ctx));
     const cfg=contextSettings(data);
     const segments=[];
-    if(enabled&&cfg.phoneToMainline)segments.push(mainlineHistory(data));
+    if(enabled&&cfg.phoneToMainline)segments.push(mainlineHistory(data,ctx));
     if(enabled&&!socialConfig(data).phoneInPast&&data?.config?.phoneMemory?.injectMainline===true)
       segments.push(phoneMemoryText(data,'',3800));
     if(enabled)segments.push(mainlineStructuredEvents(data));
@@ -3365,7 +3376,7 @@ function worldEntryTriggered(entry, scanText) {
 function phoneScanText(char, data, ctx=null) {
     const recent=cleanPhoneHistory(data?.messages||[]).filter(m=>['user','character'].includes(m.from)).slice(-12);
     const names=[getCharacterName(char),ctx?.name1||''].filter(Boolean).join('\n');
-    return (names+'\n'+recent.map(m=>`${m.from==='user'?'user':getCharacterName(char)}: ${m.text||''}`).join('\n')).slice(-16000);
+    return (names+'\n'+recent.map(m=>`${m.from==='user'?personaName(ctx):getCharacterName(char)}: ${m.text||''}`).join('\n')).slice(-16000);
 }
 
 function clipContext(text, budget) {
@@ -3472,7 +3483,7 @@ async function composePhonePrompt(ctx, char, data) {
     return resolvePhonePlaceholders(prompt,ctx,char);
 }
 
-function createSystemPrompt(char, data, persona = {name:'user',description:''}) {
+function createSystemPrompt(char, data, persona = {name:'我',description:''}) {
     const info = char.data || char;
     const privacyFacts=[info.description,info.personality,info.scenario,info.system_prompt]
         .filter(value=>typeof value==='string').join('\n').split(/[。！？\n]/)
@@ -3496,21 +3507,21 @@ function createSystemPrompt(char, data, persona = {name:'user',description:''}) 
         .join('；');
 
     return [
-        `你正在扮演角色「${getCharacterName(char)}」，与 user 通过手机进行私聊。`,
-        '只回复这一角色实际发出的手机消息。不要写旁白、动作描写、镜头说明、心理活动、双方对话或 user 的行为。',
+        `你正在扮演角色「${getCharacterName(char)}」，与玩家通过手机进行私聊。`,
+        '只回复这一角色实际发出的手机消息。不要写旁白、动作描写、镜头说明、心理活动、双方对话或玩家的行为。',
         '只输出角色要发送的消息正文，不要输出内部推理、分析、thinking 标记或隐藏思考内容。',
-        '不要替 user 发言，也不要强行推进关系。角色的人格、边界与关系阶段以角色卡和实际已经发生的事为准；正文记忆仅用于识别既有事实，不得把未发生的未来当作经历。',
-        '角色能够看到 user 的公开人设，但不能凭人设臆断 user 的内心、秘密、意愿或行动；手机聊天中 user 未说的话不能视作说过。',
-        '【保密与视角】角色卡中关于真实身份、职业、公众身份、家境及幕后工作的资料，是扮演依据，并不代表 user 已经获悉。若设定表明双方为网友、身份尚未公开、或角色刻意隐瞒信息，不得主动自曝或通过导演、剧本、拍摄、资源等职业细节变相暴露，除非当前时间线已有明确公开证据。不要用角色的上帝视角补充 user 尚未知晓的事实。',
+        '不要替玩家发言，也不要强行推进关系。角色的人格、边界与关系阶段以角色卡和实际已经发生的事为准；正文记忆仅用于识别既有事实，不得把未发生的未来当作经历。',
+        '角色能够看到玩家的公开人设，但不能凭人设臆断玩家的内心、秘密、意愿或行动；手机聊天中玩家未说的话不能视作说过。',
+        '【保密与视角】角色卡中关于真实身份、职业、公众身份、家境及幕后工作的资料，是扮演依据，并不代表玩家已经获悉。若设定表明双方为网友、身份尚未公开、或角色刻意隐瞒信息，不得主动自曝或通过导演、剧本、拍摄、资源等职业细节变相暴露，除非当前时间线已有明确公开证据。不要用角色的上帝视角补充玩家尚未知晓的事实。',
         '手机聊天时间由玩家设置，与正文时间可能不同。不得假定角色已经经历了这个日期之后的事件。',
         `当前手机故事时间：${String(data.storyTime || localDateTime()).replace('T', ' ')}（${storyHourLabel(data.storyTime)}）。消息内容与此时段一致，不要在傍晚当作深夜，也不要无缘无故把晚饭称作夜宵；若想跳时段，先由玩家调整手机时间。`,
         `当前好友关系：${FRIEND_LABELS[friendshipState(data)]}`,
         relationEvents ? `当前存档已发生的好友关系变化：${relationEvents}` : '',
-        `当前 user 身份：${shortText(persona.name,100)}`,
-        persona.description ? `当前 user 人设（事实背景，不等于角色知情）：\n${shortText(persona.description,3500)}` : '',
+        `当前玩家身份：${shortText(persona.name,100)}`,
+        persona.description ? `当前玩家人设（事实背景，不等于角色知情）：\n${shortText(persona.description,3500)}` : '',
         privacyFacts ? `【重要关系与保密设定（优先遵守）】\n${privacyFacts}` : '',
         profile,
-        `【发出消息前核对】现在是 ${String(data.storyTime||localDateTime()).replace('T',' ')}，属于${storyHourLabel(data.storyTime)}；据此判断吃饭、课程、作息等日常活动。关系阶段和职业保密以手机日期当时 user 确实已知的事实为准，不要以职业细节不经意暴露隐藏身份。`,
+        `【发出消息前核对】现在是 ${String(data.storyTime||localDateTime()).replace('T',' ')}，属于${storyHourLabel(data.storyTime)}；据此判断吃饭、课程、作息等日常活动。关系阶段和职业保密以手机日期当时玩家确实已知的事实为准，不要以职业细节不经意暴露隐藏身份。`,
     ].filter(Boolean).join('\n\n');
 }
 
@@ -3733,7 +3744,7 @@ function formatQunxingScan(ctx,result){
 async function loadWeiboController(){
  if(weiboController)return weiboController;
  if(weiboLoadPromise)return weiboLoadPromise;
- weiboLoadPromise=import('./weibo.js?v=0.36.4').then(module=>{
+ weiboLoadPromise=import('./weibo.js?v=0.36.4&persona=1').then(module=>{
   weiboController=module.createWeiboModule({
    context,getNodes:()=>nodes,readRootData,writeData,readData,
    phoneGenerate:(ctx,options,data)=>phoneGenerate(ctx,{...options,task:options?.task||'weibo'},data),
@@ -3829,13 +3840,14 @@ async function loadTakeoutController(){
 async function loadPhoneMemoryController(){
  if(memoryController)return memoryController;
  if(memoryLoadPromise)return memoryLoadPromise;
- memoryLoadPromise=import('./memory.js?v=0.36.4').then(module=>{
+ memoryLoadPromise=import('./memory.js?v=0.36.4&persona=1').then(module=>{
   memoryController=module.createPhoneMemoryModule({
    context,getNodes:()=>nodes,readRootData,writeData,recordError,recordActivity,
    stripModelReasoning,notifyInteraction,
    phoneGenerate:(ctx,options,data)=>phoneGenerate(ctx,{...options,task:'memory'},data),
    isPhoneOpen:()=>!!root?.classList.contains('lp-open')&&document.visibilityState!=='hidden',
-   primaryName:()=>getCharacterName(selectedCharacter(context()))
+   primaryName:()=>getCharacterName(selectedCharacter(context())),
+   personaName
   });
   return memoryController;
  }).catch(error=>{
@@ -4068,6 +4080,7 @@ function saveInteractionMotion(){
  notifyInteraction('交互动画已保存','success');
 }
 let groupsReturnScreen='chatList';
+let roleFriendsReturnScreen='me';
 const phoneScrollPositions=new Map();
 let phoneScrollChatMetadata=null;
 function screenScrollers(screen){
@@ -4097,12 +4110,54 @@ function restoreScreenScroll(screen){
  if(typeof setTimeout==='function')setTimeout(restore,60);
 }
 
+let dismissPhoneConfirmation=null;
+function confirmPhoneAction(title,detail,action) {
+    const panel=root?.querySelector('.lp-panel');
+    if(!panel||dismissPhoneConfirmation)return Promise.resolve(false);
+    const dialog=document.createElement('dialog');
+    dialog.className='lp-action-confirm';
+    dialog.setAttribute('aria-labelledby','lp-action-confirm-title');
+    dialog.setAttribute('aria-describedby','lp-action-confirm-detail');
+    const heading=document.createElement('h2');
+    heading.id='lp-action-confirm-title';heading.textContent=title;
+    const message=document.createElement('p');
+    message.id='lp-action-confirm-detail';message.textContent=detail;
+    const buttons=document.createElement('div');
+    const cancel=document.createElement('button');
+    cancel.type='button';cancel.textContent='取消';cancel.autofocus=true;
+    const accept=document.createElement('button');
+    accept.type='button';accept.textContent=action;
+    buttons.append(cancel,accept);dialog.append(heading,message,buttons);
+    return new Promise(resolve=>{
+        const finish=confirmed=>{
+            dismissPhoneConfirmation=null;
+            dialog.close();
+            dialog.remove();
+            resolve(confirmed);
+        };
+        dismissPhoneConfirmation=()=>finish(false);
+        cancel.addEventListener('click',dismissPhoneConfirmation);
+        accept.addEventListener('click',()=>finish(true));
+        dialog.addEventListener('cancel',event=>{
+            event.preventDefault();event.stopPropagation();
+            finish(false);
+        });
+        dialog.addEventListener('keydown',event=>{
+            if(event.key!=='Escape')return;
+            event.preventDefault();event.stopPropagation();
+            finish(false);
+        });
+        panel.append(dialog);
+        dialog.showModal();
+    });
+}
+
 function setScreen(screen, options={}) {
     if (!SCREENS.has(screen) || !nodes) return;
     if(root?.classList.contains('lp-open')&&phoneLockSettings().enabled&&!securityUnlocked&&screen!=='lock')screen='lock';
     const previous = activeScreen;
     if(screen==='profile'&&previous!=='profile')profileReturnScreen=['chatOptions','contacts','contactManage','chat','addNpc'].includes(previous)?previous:'contacts';
-    if(previous!==screen){saveScreenScroll(previous);closePhoneThreadMenu();}
+    if(previous!==screen){saveScreenScroll(previous);closePhoneThreadMenu();dismissPhoneConfirmation?.();}
     if(!['profile','profileRole'].includes(screen)&&nodes.profileRoleDialog){nodes.profileRoleDialog.hidden=true;nodes.profileAvatarSheet.hidden=true;}
     if(screen==='groups'&&previous!=='groups')groupsReturnScreen=options.groupReturn||(['contacts','home','chatList'].includes(previous)?previous:'chatList');
     if(previous!==screen)phoneInteraction?.dismiss();
@@ -4160,7 +4215,11 @@ function setScreen(screen, options={}) {
     if (screen === 'meProfile')renderPersona(context());
     if (screen === 'meSettings')loadAutonomyUI(context());
     if (screen === 'momentHistory')renderMomentHistory();
-    if (screen === 'roleFriends')renderRoleFriends();
+    if (screen === 'contactManage')renderContactLinks();
+    if (screen === 'roleFriends'){
+        if(previous!==screen)roleFriendsReturnScreen=previous==='contactManage'?'contactManage':'me';
+        renderRoleFriends(options.roleFriendOwner);
+    }
     if (screen === 'discover') renderMoments(context());
     if (screen === 'discover' && previous !== 'discover' && unreadMoments(readRootData(context())))
         void clearMomentsUnread();
@@ -4311,6 +4370,7 @@ function switchContact(id,screen='profile') {
     const ctx=context();
     const root=readRootData(ctx);
     if (!validContactId(root,id)) return setStatus('联系人不存在','error');
+    dismissPhoneConfirmation?.();
     activeContactId=id;
     discardChatPhotoDraft();
     if(nodes?.timeJumpPanel)nodes.timeJumpPanel.hidden=true;
@@ -4467,15 +4527,15 @@ async function maybeAutoFriendRequest(ctx=context()) {
         const person=contactCharacter(ctx,eligible);
         const system=await composePhonePrompt(ctx,person,data);
         const answer=await generateWithTimeout(ctx,{
-            task:'autonomy',systemPrompt:system+'\n\n【是否主动申请好友】主线里这两个人已经交换联系方式，但尚未互加好友。请按当前角色的自主意愿决定是否向 user 发起好友申请。可以不申请。只输出 APPLY 或 SKIP。',
+            task:'autonomy',systemPrompt:system+'\n\n【是否主动申请好友】主线里这两个人已经交换联系方式，但尚未互加好友。请按当前角色的自主意愿决定是否向玩家发起好友申请。可以不申请。只输出 APPLY 或 SKIP。',
             prompt:[...buildPrompt(data,ctx,person).slice(-8),{role:'user',content:'【主线已发生】'+evidence+'\n是否由你主动发起好友申请？'}]
         },data);
         if(!same()||!/^APPLY$/i.test(stripModelReasoning(answer)))return;
         const latest=structuredClone(readData(ctx,eligible));
         if(friendshipState(latest)!=='stranger')return;
-        rememberFriendship(latest,'incoming','对方根据已发生的联系方式交换事件，主动请求添加 user 为好友。');
+        rememberFriendship(latest,'incoming','对方已向 {{user}} 发送好友申请。');
         await writeData(ctx,{...latest,__contactId:eligible});
-        recordActivity('收到好友申请',getContactInfo(ctx,eligible).name+' 已申请添加 user','success');
+        recordActivity('收到好友申请',getContactInfo(ctx,eligible).name+' 已向 '+personaName(ctx)+' 发送好友申请','success');
         if(mounted)render();
     }catch(e){recordError('角色主动好友申请',e);}
     finally{autoRequestWorking=false;finishBusy(job);}
@@ -4493,19 +4553,23 @@ function contactAccess(ctx,id=activeContactId) {
 }
 async function markContactExchanged() {
     if(busy)return;
-    if(!window.confirm('确认剧情中已经认识并交换了联系方式？这不是自动加好友，只是允许发送申请。'))return;
-    const ctx=context(),data=structuredClone(readData(ctx));
+    const ctx=context();
+    if(!selectedCharacter(ctx)||contactAccess(ctx).allowed)return;
+    const session=captureSession(ctx),id=activeContactId;
+    const detail=resolvePhonePlaceholders('{{user}} 与 ',ctx)+contactDisplayName(ctx,id)+' 已交换联系方式。';
+    if(!await confirmPhoneAction('确认交换联系方式',detail,'确认')||!sameSession(session)||busy||contactAccess(ctx,id).allowed)return;
+    const data=structuredClone(readData(ctx,id));
     data.contactAccess='manual';
     try {
-        if(activeContactId!==PRIMARY_CONTACT_ID){
+        if(id!==PRIMARY_CONTACT_ID){
             const root=structuredClone(readRootData(ctx));
-            const info=root.contacts.find(x=>x.id===activeContactId);
+            const info=root.contacts.find(x=>x.id===id);
             if(info)info.contactAccess='manual';
             data.contacts=root.contacts;
         }
         await writeData(ctx,data);
-        render();
-    }catch(e){setStatus(recordError('保存联系方式',e),'error');}
+        if(sameSession(session))render();
+    }catch(e){if(sameSession(session))setStatus(recordError('保存联系方式',e),'error');}
 }
 
 
@@ -4605,7 +4669,7 @@ function chooseStickerCandidates(catalog,data){
 }
 function stickerPrompt(catalog) {
     if(!catalog.length)return '';
-    return '你可以像真人聊天一样，自然地主动选择以下表情包（并非必须发送）。参考当前语境、人物性格及名称/用途的情绪标签，契合时可与文字搭配，也可只发表情包；无需等待 user 提起，也不要每轮机械发送。名称和用途仅是标签，不能推断未描述的图像细节。'+
+    return '你可以像真人聊天一样，自然地主动选择以下表情包（并非必须发送）。参考当前语境、人物性格及名称/用途的情绪标签，契合时可与文字搭配，也可只发表情包；无需等待玩家提起，也不要每轮机械发送。名称和用途仅是标签，不能推断未描述的图像细节。'+
         '用 [[sticker:ID]] 表示角色自己选择发送图片；user 刚发送的表情包属于 user，不要当成角色自己发的，也不必原样复发。只能使用列出的ID，不要编造图片或地址。\n'+
         JSON.stringify(catalog.map(({id,label,usage})=>({id,label,...(usage?{usage}:{})})));
 }
@@ -4663,7 +4727,7 @@ async function useSticker(id,action) {
     const ctx=context(),list=stickerLibrary(ctx),item=list.find(sticker=>sticker.id===id);
     if(!item)return;
     if(action==='send'){
-        recordActivity('表情包发送','用户选择了 '+item.id+'；应先保存为 user 消息，角色回复是随后独立生成的。');
+        recordActivity('表情包发送','已保存表情包消息');
         return sendUserMessage('[表情包：'+item.label+']',item.image,item);
     }
     try{
@@ -4842,7 +4906,7 @@ function currentPersona(ctx) {
         const matches=Object.entries(settings.personas||{}).filter(([id,name])=>name===ctx?.name1);
         if(matches.length===1)avatar='/User Avatars/'+encodeURIComponent(matches[0][0]);
     }
-    return { name: String(ctx?.name1 || 'user'), description: String(settings.persona_description || ''),
+    return { name: personaName(ctx), description: String(settings.persona_description || ''),
         lorebook: String(settings.persona_description_lorebook || '').trim(), avatar: avatar || '/img/user-default.png' };
 }
 const PHONE_RELATION_LABELS={
@@ -4876,7 +4940,7 @@ function phoneRelationshipPrompt(ctx=context(),id=activeContactId){
  if(saved.relation==='unknown'&&!saved.details)return '';
  return '【咕叽聊关系资料】当前 '+getContactInfo(ctx,id).name+' 与 '+currentPersona(ctx).name+
   ' 的关系：'+label+'。来源：'+(saved.mode==='manual'?'用户明确设定':'依据设定及已发生剧情自动识别')+
-  '。按角色本人性格、世界书关系阶段／好感度阈值、当前时间线和已发生事实决定态度。关系不等于微信好友状态；不得把未来关系当作当前事实，不得替 user 补写心理或言行。';
+  '。按角色本人性格、世界书关系阶段／好感度阈值、当前时间线和已发生事实决定态度。关系不等于微信好友状态；不得把未来关系当作当前事实，不得替玩家补写心理或言行。';
 }
 function renderPhoneRelationshipChoices(){
  const grid=nodes?.relationChoiceGrid,select=nodes?.relationChoice;
@@ -4980,7 +5044,7 @@ function phoneUserDisplayName(ctx=context()){
 }
 function editPhoneUserName(){
  const ctx=context(),persona=currentPersona(ctx),key=String(ctx?.powerUserSettings?.persona||persona.name);
- const next=window.prompt('修改咕叽聊显示名称（留空恢复当前 user 名字）',phoneUserDisplayName(ctx));
+ const next=window.prompt(resolvePhonePlaceholders('修改咕叽聊显示名称（留空恢复为 {{user}}）',ctx),phoneUserDisplayName(ctx));
  if(next===null)return;
  try{
   if(!ctx?.extensionSettings||typeof ctx.saveSettingsDebounced!=='function')throw Error('酒馆设置不可写入');
@@ -5191,13 +5255,13 @@ async function tickAutonomousActivity(manualChannel='') {
         if(channel==='messages'){
             answer=await generateWithTimeout(ctx,{
                 task:'autonomy',systemPrompt:[system,messageStylePrompt(data),stickerPrompt(suggestedStickers),albumCatalogPrompt(id),paymentReplyInstructions(data,id),
-                    '【主动发消息】请你作为当前联系人，结合关系、角色性格、现有私聊和最近生活，自然地给 user 发一条主动消息。不是回复正在等待的提问。可以决定不打扰，此时只输出 [SKIP]。不得替 user 说话，也不要虚构已经发生的事件。'].join('\n\n'),
+                    '【主动发消息】请你作为当前联系人，结合关系、角色性格、现有私聊和最近生活，自然地给玩家发一条主动消息。不是回复正在等待的提问。可以决定不打扰，此时只输出 [SKIP]。不得替玩家说话，也不要虚构已经发生的事件。'].join('\n\n'),
                 prompt:[...buildPrompt(data,ctx,contact).slice(-10),{role:'user',content:'【系统触发：主动发消息时机】可以自主决定是否联系 user。'}]
             },data);
         }else{
             const writePostWithReactions=batchActors.length>0;
             answer=await generateWithTimeout(ctx,{
-                task:'autonomy',systemPrompt:system+'\n\n【角色朋友圈】写一条此角色愿意公开的朋友圈动态，不代替 user 发言，不虚构重大事件；不想发布只输出 [SKIP]。此前已发布的同一人物朋友圈：'+JSON.stringify(previousMoments).slice(0,4300)+'。必须延续其中明确的事实：借来的宠物不能突然变成自己养的，物品所有权和相识过程不得无故改变。如有合适的本人日常或公开相册图片、以及相关世界素材，可在朋友圈正文末尾添加 [[photo:照片ID]]，只能使用以下ID：'+publicPhotos.map(p=>p.id+'（'+(p.description||p.title||'照片')+'）').join('；')+'。'+
+                task:'autonomy',systemPrompt:system+'\n\n【角色朋友圈】写一条此角色愿意公开的朋友圈动态，不代替玩家发言，不虚构重大事件；不想发布只输出 [SKIP]。此前已发布的同一人物朋友圈：'+JSON.stringify(previousMoments).slice(0,4300)+'。必须延续其中明确的事实：借来的宠物不能突然变成自己养的，物品所有权和相识过程不得无故改变。如有合适的本人日常或公开相册图片、以及相关世界素材，可在朋友圈正文末尾添加 [[photo:照片ID]]，只能使用以下ID：'+publicPhotos.map(p=>p.id+'（'+(p.description||p.title||'照片')+'）').join('；')+'。'+
                     (writePostWithReactions?'\n\n'+momentBatchTask(ctx,plannedPost,batchActors,{writePost:true})+'\n本次自动发布如有可信联系人可互动，至少生成一条自然评论，允许额外点赞；互动不得由未知角色凭空参与。':'不超过120字。'),
                 prompt:[{role:'user',content:'【系统触发：朋友圈发布时机】请按角色性格自行决定。'}]
             },data);
@@ -5325,11 +5389,11 @@ function momentBatchTask(ctx,post,actors,{writePost=false,replyComments=[]}={}){
  }).join('\n');
  const targets=replyComments.map(c=>c.id+' '+c.author+'：'+String(c.text||'').slice(0,120)).join('；');
  return [
-  '【朋友圈一次性批量生成】这是角色真实社交圈的互动，不是群聊，不得代替 user 发言或生成其心理活动。',
-  '只能使用提供的角色ID发言。未详写但合理存在的作者熟人可用 ambient ID，普通姓名写在 name 字段；不能把他们设为 user 的好友。',
+  '【朋友圈一次性批量生成】这是角色真实社交圈的互动，不是群聊，不得代替玩家发言或生成其心理活动。',
+  '只能使用提供的角色ID发言。未详写但合理存在的作者熟人可用 ambient ID，普通姓名写在 name 字段；不能把他们设为玩家的好友。',
   '朋友圈作者：'+post.author+'。'+(writePost?'请同时创作一条符合人物设定、剧情时间的朋友圈正文。':'原动态：'+String(post.text||'').slice(0,800)),
   existing.length?'目前已有评论：'+existing.slice(-12).map(c=>c.id+' '+c.author+'：'+String(c.text||'').slice(0,100)).join('；'):'',
-  targets?'user 刚发表的评论，角色可合理回应：'+targets:'',
+  targets?personaName(ctx)+' 刚发表的评论，角色可合理回应：'+targets:'',
   post.image?'此动态附有图片；需根据实际可见图片生成互动，看不到则返回 {"actions":[],"visionUnavailable":true}，不得猜测。':'',
   '允许互动的角色及其已知资料：\n'+actorGuide,
   '固定角色身份、职业、年龄、关系与时间线必须服从已知设定。只能回忆实际参与或有合理信息来源的事件，不为接梗编造同学、同事、摄影者等共同经历。',
@@ -5341,7 +5405,7 @@ function momentBatchTask(ctx,post,actors,{writePost=false,replyComments=[]}={}){
    '{"actorId":"角色ID","kind":"reply","replyTo":"前面可见评论ID","text":"自然回复"},'+
    '{"actorId":"角色ID","kind":"like"}]}。',
   '允许 replyToActor 指向本次之前刚评论的角色，也允许 replyToIndex 指向本次 actions 中更早的评论索引。仅回复当前可见的评论，不虚构联系关系。',
-  '每条回复独立计数，避免重复措辞；尽量由不同的人物自然接话，同一人可以多句；不生成 user 的文字。'
+  '每条回复独立计数，避免重复措辞；尽量由不同的人物自然接话，同一人可以多句；不生成玩家的文字。'
  ].filter(Boolean).join('\n');
 }
 function parseMomentBatch(value){
@@ -6375,7 +6439,7 @@ async function scanNpcSources(ctx,extraWorld='',mode='rules') {
     const sources=[];
     const selfNames=personaNames(ctx);
     const persona=currentPersona(ctx);
-    if(persona.description)sources.push({name:'当前 user 人设',text:persona.description});
+    if(persona.description)sources.push({name:'{{user}} 的人设',text:persona.description});
     const fields=['description','personality','scenario','mes_example','first_mes'];
     const cardText=fields.map(k=>typeof info[k]==='string'?info[k]:'').filter(Boolean).join('\n');
     if(cardText)sources.push({name:'当前角色卡',text:cardText.slice(0,40000)});
@@ -6456,7 +6520,7 @@ async function scanNpcSources(ctx,extraWorld='',mode='rules') {
         const established=verifiedNames.get(name);
         // AI can still find names missed by the deterministic parser, but
         // must prove they appear in source TEXT as a person, not merely a
-        // keyword ("人气嘉宾") or nickname ("方同学").
+        // keyword or nickname.
         const isVerified=source=>{
             const text=String(source.content||source.text||'');
             if(!text.includes(name))return false;
@@ -6540,6 +6604,7 @@ function makeNpcScanSnapshot(ctx) {
 }
 function renderNpcCandidates() {
     if(!nodes?.npcCandidates)return;
+    const ctx=context();
     nodes.npcCandidates.replaceChildren();
     if(!npcCandidates.length) {
         nodes.npcCandidates.textContent='没有找到可确认的人物；可以改为手动创建，或额外指定一部世界书。';
@@ -6552,7 +6617,8 @@ function renderNpcCandidates() {
         const input=document.createElement('input');input.type='checkbox';input.dataset.npcCandidate=String(index);
         const title=document.createElement('strong');title.textContent=c.name;
         header.append(input,title);row.append(header);
-        const meta=document.createElement('small');meta.textContent=c.confidence+' · '+c.source;row.append(meta);
+        const source=c.source==='当前 user 人设'?'{{user}} 的人设':c.source;
+        const meta=document.createElement('small');meta.textContent=c.confidence+' · '+resolvePhonePlaceholders(source,ctx);row.append(meta);
         for(const [field,value,placeholder,max] of [['name',c.name,'姓名',60],['relation',c.relation,'人物关系（可修改）',180]]){
             const edit=document.createElement('input');
             edit.type='text';edit.maxLength=max;edit.dataset.npcField=field;edit.dataset.npcIndex=String(index);
@@ -7183,6 +7249,19 @@ async function sendPhonePayment() {
         }finally{finishBusy(job);if(mounted)render();}
     }catch(error){setStatus(recordError('发送转账或红包',error),'error');}
 }
+async function confirmPaymentReceipt(paymentId) {
+    const ctx=context();
+    if(busy||!selectedCharacter(ctx))return;
+    const session=captureSession(ctx),data=readRootData(ctx);
+    const payment=walletState(data).transfers.find(tx=>tx.id===paymentId);
+    if(payment?.status!=='pending'||payment.from!=='contact')return;
+    const sender=payment.counterpartyName||walletCounterparty(data,payment.contactId)||'联系人';
+    const redpacket=payment.kind==='redpacket';
+    const title=redpacket?'领取红包':'确认收款';
+    const detail=redpacket?sender+' 发来的红包':sender+' 转给你 ¥'+walletMoney(payment.amountCents);
+    if(await confirmPhoneAction(title,detail,redpacket?'领取':'收款')&&sameSession(session))
+        await handlePaymentAction(paymentId,'accept');
+}
 async function handlePaymentAction(paymentId,action) {
     if(!mounted||busy||!selectedCharacter(context()))return;
     if(bridgeSyncWorking||relationSyncWorking)return setStatus('正在同步故事记录，请稍后重试','error');
@@ -7483,15 +7562,16 @@ function render() {
     nodes.profileDescription.textContent=resolvePhonePlaceholders(roleText||'暂无更多角色设定。',ctx,char);
     nodes.profileRoleTitle.textContent=(profileInfo.remark||profileInfo.name||'角色')+' · 角色设定';
     nodes.deleteNpc.hidden = activeContactId===PRIMARY_CONTACT_ID;
-    nodes.contactEvidence.textContent=contactAccess(ctx).evidence||contactAccess(ctx).source;
+    const access=contactAccess(ctx);
+    nodes.contactEvidence.textContent=resolvePhonePlaceholders(access.evidence||access.source,ctx,char);
+    nodes.contactExchange.hidden=!char||access.allowed;
     nodes.profileAvatar.src = avatarSources(ctx,data).character;
-    if(activeScreen==='profile')renderContactLinks(ctx);
     if(['chatList','contacts','requests','addNpc'].includes(activeScreen))renderChatLists(ctx,char,data);
     if(activeScreen==='discover')renderMoments(ctx);
     if(activeScreen==='wallet')renderWallet(ctx);
     nodes.subtitle.textContent = '';
     nodes.homeCharacter.textContent = primary ? resolvePhonePlaceholders('与 {{char}} 相伴 '+storyCompanionDays(data)+' 天',ctx,primary) : '等待进入角色存档';
-    nodes.npcRelation.placeholder=resolvePhonePlaceholders('如：{{char}}的母亲、{{user}}的同学',ctx,primary);
+    nodes.viewPrimaryContact.textContent=resolvePhonePlaceholders('查看 {{char}} 的资料与联系方式',ctx,primary);
     nodes.homeTime.textContent = String(data?.storyTime||localDateTime()).slice(11,16);
     if(activeScreen!=='calendar')nodes.time.value = data?.storyTime || localDateTime();
     if(data)updateTimeJumpUI(data);
@@ -7707,10 +7787,10 @@ async function reviewOutgoingRequest() {
     try {
         const selectedPrompt = await composePhonePrompt(ctx, char, data);
         const result = await generateWithTimeout(ctx, {
-            systemPrompt: `${selectedPrompt}\n\n现在只判断角色是否愿意通过 user 的好友申请。请根据设定、已经发生的相处以及角色自己的意愿决定，不保证同意。只能输出一个英文单词：ACCEPT 或 REJECT。`,
+            systemPrompt: `${selectedPrompt}\n\n现在只判断角色是否愿意通过玩家的好友申请。请根据设定、已经发生的相处以及角色自己的意愿决定，不保证同意。只能输出一个英文单词：ACCEPT 或 REJECT。`,
             prompt: [
                 ...buildPrompt(data,ctx,char).slice(-8),
-                { role: 'user', content: '【好友申请事件】user 请求添加你为手机好友。只输出 ACCEPT 或 REJECT。' },
+                { role: 'user', content: resolvePhonePlaceholders('【好友申请事件】{{user}} 请求添加你为手机好友。只输出 ACCEPT 或 REJECT。',ctx) },
             ],
         }, data);
         if (!sameSession(session)) return;
@@ -7747,7 +7827,7 @@ async function handleFriendAction(action) {
     } else if (action === 'unblock' && state === 'blocked') {
         await changeFriendship('stranger', '你已解除拉黑，可以重新添加好友。');
     } else if (action === 'incoming-manual' && state === 'stranger') {
-        if(!window.confirm(resolvePhonePlaceholders('确认当前剧情中对方向 {{user}} 发来了好友申请？此操作仅补录申请，不会自动成为好友。',ctx,contactCharacter(ctx))))return;
+        if(!window.confirm(resolvePhonePlaceholders('补录对方发给 {{user}} 的好友申请？',ctx)))return;
         if(await changeFriendship('incoming', '对方向你发送了好友申请，等待你同意或拒绝。'))setScreen('requests');
     } else if (action === 'convert-incoming' && state === 'outgoing') {
         if(!window.confirm('将旧版「我申请对方」记录改为「对方向我申请」？不会直接通过好友申请。'))return;
@@ -7851,6 +7931,7 @@ function openPhone() {
 
 function closePhone() {
     if (!mounted || !root) return;
+    dismissPhoneConfirmation?.();
     phoneInteraction?.pause();
     albumController?.endPhoneSession?.();
     // Only closing the entire virtual phone invalidates generated Qunxing posts.
@@ -8263,7 +8344,7 @@ function makeUI() {
         <span>更换</span>
         <input data-lp="myAvatarUpload" class="lp-me-avatar-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" />
       </label>
-      <div class="lp-me-profile"><button type="button" class="lp-me-name-edit" data-lp="myNameEdit" title="修改咕叽聊名字"><strong data-lp="myIdentity">user</strong> <span aria-hidden="true">✎</span></button>
+      <div class="lp-me-profile"><button type="button" class="lp-me-name-edit" data-lp="myNameEdit" title="修改咕叽聊名字"><strong data-lp="myIdentity"></strong> <span aria-hidden="true">✎</span></button>
         <button type="button" data-lp="myBioEdit" class="lp-me-bio" data-lp-bio="self"><span data-lp="myBio">编辑个性签名</span></button>
       </div>
     </div>
@@ -8356,12 +8437,12 @@ function makeUI() {
         <section class="lp-screen lp-chatlist" data-lp-screen="addNpc" aria-label="添加 NPC" hidden>
           <div class="lp-list-body lp-npc-editor">
             <h2>添加故事中的人物</h2>
-            <button type="button" class="lp-npc-discover-button" data-lp="viewPrimaryContact">查看当前 char 的资料与联系方式</button>
+            <button type="button" class="lp-npc-discover-button" data-lp="viewPrimaryContact">查看角色资料与联系方式</button>
             <div data-lp="storyPeopleList"></div>
             <button type="button" class="lp-npc-discover-button" data-lp-open="discoverNpc">从角色设定／世界书扫描人物</button>
             <p class="lp-npc-note">也可以在下方手动创建人物；两种方式都会进入当前存档的联系人系统。</p>
             <label>姓名<input data-lp="npcName" type="text" maxlength="60" placeholder="NPC 姓名" /></label>
-            <label>人物关系（请说明与谁的关系）<input data-lp="npcRelation" type="text" maxlength="180" placeholder="如：{{char}}的母亲、{{user}}的同学" /></label>
+            <label>人物关系<input data-lp="npcRelation" type="text" maxlength="180" placeholder="填写人物关系" /></label>
             <label>人物设定<textarea data-lp="npcDescription" maxlength="3500" rows="6" placeholder="填写或粘贴角色卡、世界书里的 NPC 设定"></textarea></label>
             <button type="button" data-lp="addNpcSave">创建联系人</button>
             <div class="lp-inline-status" data-lp="npcStatus" role="status" aria-live="polite"></div>
@@ -8396,13 +8477,15 @@ function makeUI() {
             <div class="lp-profile-actions" data-lp="friendActions"></div>
           </div>
           <div class="lp-profile-card">
-            <div class="lp-profile-card-title">联系方式</div>
+            <div class="lp-profile-card-title">你与对方的联系方式</div>
             <div class="lp-contact-evidence" data-lp="contactEvidence"></div>
-            <button type="button" class="lp-contact-exchange" data-lp="contactExchange">剧情中已交换联系方式（手动确认）</button>
+            <button type="button" class="lp-contact-exchange" data-lp="contactExchange">确认剧情中已交换联系方式</button>
+          </div>
+          <div class="lp-profile-card">
             <details class="lp-profile-setup lp-contact-links">
               <summary>角色之间的联系方式</summary>
-              <p>这里管理角色之间的好友关系，不要求他们都是 user 的好友；例如可以设置角色与家人、同事互相可见与评论朋友圈。</p>
               <div data-lp="contactLinks"></div>
+              <button type="button" data-lp="manageRoleFriends">打开角色好友列表</button>
             </details>
           </div>
           <div class="lp-profile-card">
@@ -9056,7 +9139,7 @@ function mount() {
     nodes.momentHistoryRemovePhoto.addEventListener('click',()=>{
       momentHistoryPhotoDraft='';nodes.momentHistoryPhotoPreview.replaceChildren();
     });
-    nodes.roleFriendsOwner?.addEventListener('change',renderRoleFriends);
+    nodes.roleFriendsOwner?.addEventListener('change',()=>renderRoleFriends());
     nodes.roleFriendsContent?.addEventListener('click',handleRoleFriendsAction);
     nodes.momentHistoryGenerate.addEventListener('click',()=>void generateHistoricMoments());
     nodes.momentHistoryMode.addEventListener('change',()=>{nodes.momentHistoryOwnerLabel.hidden=false;});
@@ -9092,7 +9175,7 @@ function mount() {
         setScreen({
           wallet:'home',shopping:'home',takeout:'home',weibo:'home',album:'home',groups:groupsReturnScreen,sharePicker:'weibo',chat:'chatList',
           contacts:'chatList',discover:'chatList',me:'chatList',
-          profile:profileReturnScreen,profileRole:'profile',contactManage:'chatOptions',chatRecords:'chatOptions',meProfile:'me',meSettings:'me',roleFriends:'me',momentHistory:'me',momentCompose:'discover',
+          profile:profileReturnScreen,profileRole:'profile',contactManage:'chatOptions',chatRecords:'chatOptions',meProfile:'me',meSettings:'me',roleFriends:roleFriendsReturnScreen,momentHistory:'me',momentCompose:'discover',
           requests:'contacts',addNpc:'contacts',
           discoverNpc:'addNpc',chatOptions:'chat',
           presetPicker:'settings',worldPicker:'settings'
@@ -9222,14 +9305,14 @@ function mount() {
         if(sticker&&root.contains(sticker)){void useSticker(sticker.dataset.stickerId,sticker.dataset.stickerAction);return;}
         const paymentCard=event.target.closest('[data-payment-open]');
         if(paymentCard&&root.contains(paymentCard)){
-            const id=paymentCard.dataset.paymentOpen;
-            const tx=walletState(readRootData(context())).transfers.find(item=>item.id===id);
-            if(tx&&window.confirm(tx.kind==='redpacket'?'领取这个红包？':'收取这笔转账？'))void handlePaymentAction(id,'accept');
+            void confirmPaymentReceipt(paymentCard.dataset.paymentOpen);
             return;
         }
         const paymentButton=event.target.closest('button[data-payment-action][data-payment-id]');
         if(paymentButton&&root.contains(paymentButton)){
-            void handlePaymentAction(paymentButton.dataset.paymentId,paymentButton.dataset.paymentAction);
+            const {paymentId,paymentAction}=paymentButton.dataset;
+            if(paymentAction==='accept')void confirmPaymentReceipt(paymentId);
+            else void handlePaymentAction(paymentId,paymentAction);
             return;
         }
         const action=event.target.closest('button[data-message-action]');
@@ -9252,6 +9335,7 @@ function mount() {
     nodes.saveContactRemark.addEventListener('click',()=>void saveContactRemark());
     nodes.deleteNpc.addEventListener('click',()=>void removeNpcContact());
     nodes.contactExchange.addEventListener('click',()=>void markContactExchanged());
+    root.querySelector('[data-lp="manageRoleFriends"]').addEventListener('click',()=>setScreen('roleFriends',{roleFriendOwner:activeContactId}));
     nodes.contactLinks.addEventListener('change',event=>{
         const otherId=event.target?.dataset?.linkOther;
         if(otherId)void changeContactLink(otherId,event.target.checked);
@@ -9383,6 +9467,7 @@ function mount() {
         listeningSource = ctx.eventSource;
         listeningEvent = ctx.event_types.CHAT_CHANGED;
         chatChangedHandler = () => {
+            dismissPhoneConfirmation?.();
             activeContactId=PRIMARY_CONTACT_ID;
             discardChatPhotoDraft();
             if(nodes?.timeJumpPanel)nodes.timeJumpPanel.hidden=true;

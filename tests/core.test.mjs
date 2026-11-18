@@ -591,7 +591,7 @@ test('current persona joins the phone character prompt and does not become an NP
     const prompt=await composePhonePrompt(ctx,{name:'角色甲',data:{personality:'嘴硬但关心人',mes_example:'别傻了。'}},newData());
     assert.ok(prompt.includes('阿梨') && prompt.includes('喜欢紫色的成年人'));
     assert.ok(prompt.includes('嘴硬但关心人') && prompt.includes('别傻了。'));
-    assert.ok(prompt.includes('不能凭人设臆断 user'));
+    assert.ok(prompt.includes('不能凭人设臆断玩家'));
 });
 test('Gaga memory is read-only; in-past timeline blocks all external memory', () => {
     const ctx={chatMetadata:{st_little_phone_v1:newData()},
@@ -903,9 +903,13 @@ test('chat backup round trip retains multimedia image payload', () => {
 });
 
 
-test('published NPC form uses generic user/char placeholders without private character defaults', () => {
-    const html = makeUI().innerHTML;
-    assert.ok(html.includes('placeholder="如：{{char}}的母亲、{{user}}的同学"'));
+test('published NPC form uses generic labels without private character defaults', () => {
+    let html;
+    const previousDocument=sandbox.document;
+    sandbox.document={createElement:()=>({})};
+    try { html=makeUI().innerHTML; }
+    finally { sandbox.document=previousDocument; }
+    assert.ok(html.includes('placeholder="填写人物关系"'));
     assert.ok(html.includes('placeholder="NPC 姓名"'));
     assert.ok(!html.includes('角色甲的母亲'), 'test fixture names must not leak into the public UI');
 });
@@ -975,14 +979,14 @@ test('choosing a source enables the original active prompts and worldbook entrie
             {identifier:'main',enabled:true},{identifier:'off',enabled:false}]}]};
     const book={entries:{
         1:{uid:1,constant:true,content:'PHONE_BOOK_CONSTANT'},
-        2:{uid:2,key:['林知远'],content:'PHONE_BOOK_TRIGGER'},
+        2:{uid:2,key:['顾明舟'],content:'PHONE_BOOK_TRIGGER'},
         3:{uid:3,key:['never'],content:'PHONE_BOOK_MISS'},
         4:{uid:4,constant:true,disable:true,content:'PHONE_BOOK_DISABLED'}}};
     const ctx={name1:'面具甲',getPresetManager:()=>({getCompletionPresetByName:()=>preset}),
         loadWorldInfo:async()=>book};
     const data=newData();
-    data.config={presetSource:'手机预设',worldBooks:['林知远设定']};
-    const result=await composePhonePrompt(ctx,{name:'林知远'},data);
+    data.config={presetSource:'手机预设',worldBooks:['顾明舟设定']};
+    const result=await composePhonePrompt(ctx,{name:'顾明舟'},data);
     assert.match(result,/PHONE_PRESET_ACTIVE/);
     assert.doesNotMatch(result,/PHONE_PRESET_DISABLED/);
     assert.match(result,/PHONE_BOOK_CONSTANT/);
@@ -990,10 +994,10 @@ test('choosing a source enables the original active prompts and worldbook entrie
     assert.doesNotMatch(result,/PHONE_BOOK_MISS|PHONE_BOOK_DISABLED/);
     const optedOut=structuredClone(data);
     optedOut.config.presetInitialized=['手机预设'];
-    optedOut.config.worldInitialized=['林知远设定'];
+    optedOut.config.worldInitialized=['顾明舟设定'];
     optedOut.config.presetEntries=[];
     optedOut.config.worldEntries=[];
-    const nothing=await composePhonePrompt(ctx,{name:'林知远'},optedOut);
+    const nothing=await composePhonePrompt(ctx,{name:'顾明舟'},optedOut);
     assert.doesNotMatch(nothing,/PHONE_PRESET_ACTIVE|PHONE_BOOK_CONSTANT/);
 });
 test('reasoning tags are stripped before splitting; old broken fragments stay out of model context',()=>{
@@ -1090,7 +1094,7 @@ test('story jump arithmetic handles minute, hour and calendar day boundaries',()
     assert.ok(html.includes('data-jump-unit="days"'));
 });
 test('time jump is persisted and applies to next message only; prior timestamps stay intact',async()=>{
-    const ctx={characterId:0,groupId:null,chatId:'time-test',characters:[{name:'林知远',avatar:'a.png'}],
+    const ctx={characterId:0,groupId:null,chatId:'time-test',characters:[{name:'顾明舟',avatar:'a.png'}],
         chatMetadata:{st_little_phone_v1:{...newData(),storyTime:'2025-12-17T19:00',
             messages:[{id:'old',from:'character',text:'开了开了',storyTime:'2025-12-17T19:00'}],
             friendship:{state:'friends'}}},saveMetadata:async()=>{}};
@@ -1163,7 +1167,7 @@ test('calendar dates are browse-only until Save and prior message dates remain u
         const button=new Fake('button');button.dataset.calendarView=view;fixture.calendarViews.append(button);
     }
     const ctx={characterId:0,chatId:'calendar-story',groupId:null,
-        characters:[{name:'林知远',avatar:'avatar.png'}],
+        characters:[{name:'顾明舟',avatar:'avatar.png'}],
         chatMetadata:{st_little_phone_v1:{...newData(),storyTime:'2026-11-15T18:50',
             messages:[{id:'old',from:'user',text:'聊天',storyTime:'2026-11-15T18:50'}],
             friendship:{state:'friends'}}},saveMetadata:async()=>{}};

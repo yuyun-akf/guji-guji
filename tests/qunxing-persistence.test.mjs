@@ -17,7 +17,7 @@ const make=new Function('document','structuredClone',
  '\nreturn createWeiboModule;');
 const copy=x=>JSON.parse(JSON.stringify(x));
 function setup({shared={},character=0,chat='story-a',legacyAccounts=[],phoneGenerate=null}={}){
- const characters=[{name:'林知远',avatar:'star-a.png'},{name:'另一个角色',avatar:'star-b.png'}];
+ const characters=[{name:'顾明舟',avatar:'star-a.png'},{name:'另一个角色',avatar:'star-b.png'}];
  const c={characterId:character,chatId:chat,characters,
   extensionSettings:{[ROLE_KEY]:shared},saveSettingsDebounced(){this.saves=(this.saves||0)+1;},
   chatMetadata:{db:{version:1,storyTime:'2026-11-15T12:00',contacts:[],messages:[],
@@ -75,8 +75,8 @@ test('manual NPC and char account directory persists across two chats of the sam
  const h=setup();
  h.app.open();
  await h.app.mutate(q=>{q.accounts.push({
-  id:'acc-sample-actor',name:'林知远',kind:'角色',bio:'演员',
-  handle:'@sample_account',followers:32000000,source:'manual',publicFigure:true
+  id:'acc-sample-actor',name:'顾明舟',kind:'角色',bio:'演员',
+  handle:'@sample_actor',followers:32000000,source:'manual',publicFigure:true
  });});
  assert.equal(role.sharedQunxingAccounts(h.c).length,1);
  const second=secondStory(h);
@@ -84,12 +84,12 @@ test('manual NPC and char account directory persists across two chats of the sam
  const account=second.app.data().accounts.find(x=>x.id==='acc-sample-actor');
  assert.ok(account);
  assert.equal(account.followers,32000000);
- assert.equal(account.handle,'@sample_account');
+ assert.equal(account.handle,'@sample_actor');
  assert.equal(second.c.chatMetadata.db.qunxing.posts.length,0);
 });
 test('unrelated character card never sees the saved directory of another card',async()=>{
  const h=setup();await h.app.mutate(q=>{q.accounts.push({
-  id:'a',name:'林知远',kind:'角色',source:'manual',followers:8000000
+  id:'a',name:'顾明舟',kind:'角色',source:'manual',followers:8000000
  });});
  h.c.characterId=1;
  h.c.chatMetadata={db:{version:1,messages:[],qunxing:{accounts:[],posts:[]}}};
@@ -221,7 +221,7 @@ test('scanner picks explicitly configured main-character follower count from cha
  assert.ok(start>=0&&end>start);
  const scan=new Function('context','selectedCharacter','scanNpcSources','getCharacterName',
   'explicitAccountFollowers',index.slice(start,end)+'return scanQunxingAccounts;')(
-  ()=>({characterId:0}),()=>({name:'林知远',data:{
+  ()=>({characterId:0}),()=>({name:'顾明舟',data:{
    description:'演员，微博粉丝数量：3500万',
    personality:'会开玩笑，跟好友相处时嘴欠',
    scenario:'目前在剧组拍戏'
@@ -231,7 +231,7 @@ test('scanner picks explicitly configured main-character follower count from cha
  );
  const result=await scan();
  assert.equal(result.candidates.length,1);
- assert.equal(result.candidates[0].name,'林知远');
+ assert.equal(result.candidates[0].name,'顾明舟');
  assert.equal(result.candidates[0].followers,35000000);
  assert.match(result.candidates[0].reference,/3500万/);
 });
@@ -242,9 +242,9 @@ test('same-name linked worldbook details fill an explicit follower count missing
  const scan=new Function('context','selectedCharacter','scanNpcSources','getCharacterName',
   'explicitAccountFollowers',index.slice(begin,end)+'return scanQunxingAccounts;')(
   ()=>({characterId:0}),
-  ()=>({name:'林知远',data:{description:'职业为演员，其他设定另见世界书'}}),
+  ()=>({name:'顾明舟',data:{description:'职业为演员，其他设定另见世界书'}}),
   async()=>({candidates:[
-   {name:'林知远',description:'微博粉丝数量：2400万；近期分享多套插画教程'},
+   {name:'顾明舟',description:'微博粉丝数量：2400万；近期分享多套插画教程'},
    {name:'编剧',description:'剧组编剧'}
   ],scanned:2,worlds:1}),
   ch=>ch.name,role.explicitAccountFollowers);

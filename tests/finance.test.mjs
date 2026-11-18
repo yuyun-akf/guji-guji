@@ -7,9 +7,9 @@ import vm from 'node:vm';
 
 const source=readFileSync(resolve(dirname(fileURLToPath(import.meta.url)),'../index.js'),'utf8')
     .replaceAll('export function ','function ');
-function harness(ctx=null){
+function harness(ctx=null,document=null){
     const events=[];
-    const scope={console,Date,Intl,structuredClone,Math,events,
+    const scope={console,Date,Intl,structuredClone,Math,events,document,
         window:{SillyTavern:{getContext:()=>ctx}},
         setTimeout,clearTimeout,setInterval:()=>1,clearInterval:()=>{}};
     vm.createContext(scope);
@@ -21,7 +21,12 @@ function harness(ctx=null){
             walletInvalidateMainlinePayment,detectMainlinePayment,mainlineAmountCents,
             syncMainlinePayments,mainlineStructuredEvents,classifyStoryFriendEvent,
             applyPaymentModelTags,applyCharacterPaymentSendTag,buildPrompt,
-            readRootData,writeData,appendPhoneMessage,newData,makeUI
+            readRootData,writeData,appendPhoneMessage,newData,makeUI,
+            confirmPaymentReceipt,markContactExchanged,
+            mountConfirmationPanel(panel){
+                root={querySelector:()=>panel,classList:{contains:()=>true}};
+                mounted=true;render=()=>{};
+            }
         };
     `,scope);
     return {...scope.financeTest,events};
@@ -55,6 +60,67 @@ test('outgoing transfers reserve money once; cancellation refunds exactly once',
     api.walletSettleTransfer(data,tx.id,'cancelled');
     assert.equal(api.walletState(data).balanceCents,100000);
     assert.equal(api.walletState(data).ledger.filter(x=>x.relatedId===tx.id).length,2);
+});
+test('phone confirmation cancels safely and settles one pending payment only after confirmation',async()=>{
+    class Element extends EventTarget {
+        children=[];
+        attrs={};
+        open=false;
+        append(...children){this.children.push(...children);for(const child of children)child.parent=this;}
+        setAttribute(name,value){this.attrs[name]=value;}
+        showModal(){this.open=true;}
+        close(){this.open=false;}
+        remove(){this.parent.children=this.parent.children.filter(child=>child!==this);}
+        click(){this.dispatchEvent(new Event('click'));}
+    }
+    const data=story(),panel=new Element();
+    const ctx={name1:'测试面具',characterId:0,characters:[{name:'测试角色'}],chatId:'story',
+        chatMetadata:{st_little_phone_v1:data},saveMetadata:async()=>{}};
+    const api=harness(ctx,{createElement:()=>new Element(),visibilityState:'visible'});
+    api.mountConfirmationPanel(panel);
+    api.walletCreateTransfer(data,{id:'pay:packet',kind:'redpacket',from:'contact',amountCents:6666});
+    api.walletCreateTransfer(data,{id:'pay:transfer',kind:'transfer',from:'contact',amountCents:5200});
+    const getPayment=id=>api.walletState(api.readRootData(ctx)).transfers.find(item=>item.id===id);
+    const redpacket=api.confirmPaymentReceipt('pay:packet');
+    const [dialog]=panel.children;
+    assert.equal(dialog.open,true);
+    assert.equal(dialog.children[0].textContent,'领取红包');
+    assert.doesNotMatch(dialog.children[1].textContent,/66\.66/);
+    await api.confirmPaymentReceipt('pay:transfer');
+    assert.equal(panel.children.length,1);
+    dialog.dispatchEvent(new Event('cancel',{cancelable:true}));
+    await redpacket;
+    assert.equal(getPayment('pay:packet').status,'pending');
+    assert.equal(panel.children.length,0);
+
+    const transfer=api.confirmPaymentReceipt('pay:transfer');
+    const [title,detail,buttons]=panel.children[0].children;
+    assert.equal(title.textContent,'确认收款');
+    assert.match(detail.textContent,/¥52\.00/);
+    buttons.children[1].click();
+    await transfer;
+    assert.equal(getPayment('pay:transfer').status,'accepted');
+    assert.equal(api.walletState(api.readRootData(ctx)).balanceCents,5200);
+    assert.equal(api.readRootData(ctx).messages.filter(message=>message.paymentReceiptId==='pay:transfer').length,1);
+
+    const stale=api.confirmPaymentReceipt('pay:packet');
+    const previous=ctx.chatMetadata;
+    ctx.chatMetadata=structuredClone(previous);
+    panel.children[0].children[2].children[1].click();
+    await stale;
+    assert.equal(getPayment('pay:packet').status,'pending');
+    assert.equal(api.walletState(previous.st_little_phone_v1).balanceCents,5200);
+
+    ctx.chatMetadata.st_little_phone_v1.friendship={state:'stranger'};
+    ctx.name1='另一个面具';
+    const exchange=api.markContactExchanged();
+    const contactDialog=panel.children[0];
+    assert.equal(contactDialog.children[0].textContent,'确认交换联系方式');
+    assert.equal(contactDialog.children[1].textContent,'另一个面具 与 测试角色 已交换联系方式。');
+    contactDialog.children[2].children[1].click();
+    await exchange;
+    assert.equal(api.readRootData(ctx).contactAccess,'manual');
+    assert.equal(api.readRootData(ctx).friendship.state,'stranger');
 });
 test('balances enforce spending limits; all shopping and takeout use one account',()=>{
     const {data,api}=walletMock();
@@ -122,7 +188,7 @@ test('mainline detection only accepts completed character payment statements',()
 });
 test('edited mainline transfer is invalidated and accepted money is reversed',async()=>{
     const ctx={characterId:0,groupId:null,chatId:'room1',name1:'面具甲',
-        characters:[{name:'林知远',avatar:'char.png'}],
+        characters:[{name:'顾明舟',avatar:'char.png'}],
         chat:[{mes:'我给你转了200元',is_user:false}],
         chatMetadata:{st_little_phone_v1:story()},
         saveMetadata:async()=>{},
@@ -147,7 +213,7 @@ test('edited mainline transfer is invalidated and accepted money is reversed',as
     assert.equal(api.readRootData(ctx).wallet.transfers[0].status,'invalidated');
 });
 test('edited mainline source with already spent credits becomes a visible conflict',async()=>{
-    const ctx={characterId:0,groupId:null,chatId:'room2',characters:[{name:'林知远',avatar:'char.png'}],
+    const ctx={characterId:0,groupId:null,chatId:'room2',characters:[{name:'顾明舟',avatar:'char.png'}],
         chat:[{mes:'我给你转了200元',is_user:false}],chatMetadata:{st_little_phone_v1:story()},
         saveMetadata:async()=>{}};
     const api=harness(ctx);
@@ -178,9 +244,9 @@ test('character wallet directives never require an additional API and never deci
 });
 test('friend requests distinguish role speech from the player action',()=>{
     const {classifyStoryFriendEvent}=harness();
-    assert.equal(classifyStoryFriendEvent('我刚向你发了好友申请','林知远',true,'character')?.state,'incoming');
-    assert.equal(classifyStoryFriendEvent('我同意了你的好友申请','林知远',true,'user')?.state,'friends');
-    assert.equal(classifyStoryFriendEvent('我准备向你发好友申请','林知远',true,'character'),null);
+    assert.equal(classifyStoryFriendEvent('我刚向你发了好友申请','顾明舟',true,'character')?.state,'incoming');
+    assert.equal(classifyStoryFriendEvent('我同意了你的好友申请','顾明舟',true,'user')?.state,'friends');
+    assert.equal(classifyStoryFriendEvent('我准备向你发好友申请','顾明舟',true,'character'),null);
 });
 test('interface exposes account, receipt and sync settings with no out-of-story disclaimer',()=>{
     // Static template contract; UI rendering requires the browser and is
@@ -194,7 +260,7 @@ test('interface exposes account, receipt and sync settings with no out-of-story 
 
 test('returning to an earlier story swipe revives a new pending transfer with a new ledger ID',async()=>{
     const ctx={characterId:0,groupId:null,chatId:'swipe-story',
-        characters:[{name:'林知远',avatar:'role-avatar.png'}],
+        characters:[{name:'顾明舟',avatar:'role-avatar.png'}],
         chat:[{is_user:false,mes:'我给你转了200元',swipe_id:0}],
         chatMetadata:{st_little_phone_v1:story()},saveMetadata:async()=>{}};
     const api=harness(ctx);

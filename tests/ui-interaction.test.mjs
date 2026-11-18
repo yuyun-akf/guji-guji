@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 const source=readFileSync(new URL('../index.js',import.meta.url),'utf8').replaceAll('export function ','function ');
 function harness(){
- const info={characters:[{name:'林知远'}],characterId:0,chatId:'story',chatMetadata:{},extensionSettings:{}};
+ const info={characters:[{name:'顾明舟'}],characterId:0,chatId:'story',chatMetadata:{},extensionSettings:{}};
  const scope={Date,Math,Intl,structuredClone,console,window:{SillyTavern:{getContext:()=>info}},setTimeout,clearTimeout,setInterval:()=>1,clearInterval:()=>{}};
  vm.createContext(scope);
  vm.runInContext(source+'\nglobalThis.uiTest={walletCents,walletMoney,walletCreateTransfer,walletLedgerDisplay,walletState,chatTimeLabel,isChatTimeBreak};',scope);

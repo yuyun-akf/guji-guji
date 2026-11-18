@@ -15,6 +15,7 @@ export function createPhoneMemoryModule(api){
   if(s&&type!=='pending')api.notifyInteraction?.(s,type);
  }
  function gather(d,cursors){
+  const persona=api.personaName?.(ctx())||'我';
   const threads=[{id:'main',name:api.primaryName?.()||'主角色',msgs:d.messages||[]},
    ...(d.contacts||[]).map(c=>({id:c.id,name:c.remark||c.name||'联系人',
     msgs:d.conversations?.[c.id]?.messages||[]}))];
@@ -26,7 +27,7 @@ export function createPhoneMemoryModule(api){
    for(const m of msgs.slice(from)){
     if(!['user','character'].includes(m?.from)||!String(m.text||'').trim())continue;
     lines.push({contactId:thread.id,contactName:thread.name,time:String(m.storyTime||d.storyTime||'').slice(0,19),
-     who:thread.name+'/'+(m.from==='user'?'user':'角色'),text:String(m.text).slice(0,650)});
+     who:thread.name+'/'+(m.from==='user'?persona:'角色'),text:String(m.text).slice(0,650)});
    }
   }
   lines.sort((a,b)=>a.time.localeCompare(b.time));
@@ -96,7 +97,7 @@ export function createPhoneMemoryModule(api){
   try{
    const prompt=[
     '总结以下已发生的手机聊天事实，不要扮演角色，不要推进剧情。',
-    '禁止替 user 补写心理、动机、言行；未经证实的猜测必须写明未证实。',
+    '禁止替玩家补写心理、动机、言行；未经证实的猜测必须写明未证实。',
     '只保留确认过的事件、关系阶段、约定和待解决问题，不能添加没有发生的事。',
     '故事时间：'+start+' 至 '+now+'。请用简洁中文分别总结各个聊天对象，每个摘要最多500字。',
     '不同聊天对象的私聊绝不能混入其他聊天对象的记忆。每个 thread id 保持原样。',

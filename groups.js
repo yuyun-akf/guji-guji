@@ -198,7 +198,7 @@ export function createGroupsModule(api){
    });
    if(!roster.length)throw Error('群聊中没有可回复的好友');
    const history=(group.messages||[]).slice(-30).map(m=>({id:m.id,speaker:m.from,text:String(m.text||'').slice(0,800),replyTo:m.replyTo||'',sharePost:m.sharePost?{author:m.sharePost.author,text:m.sharePost.text}:undefined}));
-   const sys='你正在生成完全虚构的多人聊天。用户是独立参与者；禁止新增用户的言行、心理，禁止读心，禁止知道不在群里的私聊内容。每位成员都有独立人设与知识，发言必须是成员本人合理决定；不要求所有成员轮流回复，也允许本轮无人回复。群成员与他们的设定并非该角色能够看到的其他人的私密资料。如成员有已允许私聊使用的本人相册照片，可在其消息中使用 [[photo:照片ID]]，且仅使用该成员名下照片；不强制发送。允许群成员交错发言、互相回应与引用群内已发生的消息，不能强制轮流。一条回复可通过 replyTo 引用给出的历史消息ID，也可以引用本轮前面消息的索引（从0开始）。仅返回JSON：{"messages":[{"speaker":"成员ID","text":"回复","replyTo":"可选引用ID或本轮索引"}]}。只能使用给出的成员ID，最多8条，不能输出 user 的话。';
+   const sys='你正在生成完全虚构的多人聊天。用户是独立参与者；禁止新增用户的言行、心理，禁止读心，禁止知道不在群里的私聊内容。每位成员都有独立人设与知识，发言必须是成员本人合理决定；不要求所有成员轮流回复，也允许本轮无人回复。群成员与他们的设定并非该角色能够看到的其他人的私密资料。如成员有已允许私聊使用的本人相册照片，可在其消息中使用 [[photo:照片ID]]，且仅使用该成员名下照片；不强制发送。允许群成员交错发言、互相回应与引用群内已发生的消息，不能强制轮流。一条回复可通过 replyTo 引用给出的历史消息ID，也可以引用本轮前面消息的索引（从0开始）。仅返回JSON：{"messages":[{"speaker":"成员ID","text":"回复","replyTo":"可选引用ID或本轮索引"}]}。只能使用给出的成员ID，最多8条，不能输出玩家的话。';
    const raw=await api.phoneGenerate(ctx(),{task:'chat',systemPrompt:sys,prompt:[{role:'user',content:JSON.stringify({storyTime:root().storyTime,members:roster,history})}]},api.readRootData(ctx()));
    if(scope()!==meta)return;
    const text=api.stripModelReasoning?.(raw)||raw;

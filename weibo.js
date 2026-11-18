@@ -343,7 +343,7 @@ export function createWeiboModule(api) {
    .map(p=>({id:p.id,owner:p.ownerName||'世界',title:p.title||'',description:clean(p.description,120)}));
   return [
    '你正在生成完全虚构的剧情世界社交平台「群星」内容。故事日期：'+(r.storyTime||'未设定')+'。',
-   '范围：'+(nearby?'周边与关注：同时包含身边人的动态和 user 关注的账号公开帖子；被关注者不要求位于附近。校园、公司、剧组、社团、邻里与朋友等':'世界：新闻、社会、影视、生活、时尚、体育、游戏、科技、音乐等公共动态')+'。',
+   '范围：'+(nearby?'周边与关注：同时包含身边人的动态和玩家关注的账号公开帖子；被关注者不要求位于附近。校园、公司、剧组、社团、邻里与朋友等':'世界：新闻、社会、影视、生活、时尚、体育、游戏、科技、音乐等公共动态')+'。',
    '主角：'+(char?.name||'未选择')+'；角色简介：'+clean(char?.description,750)+'；已知人物：'+known+'。',
    '已建立的公众/普通账号：'+(accounts||'暂无')+'；用户关注：'+(followed||'暂无')+'；周边补充设定：'+clean(q.settings.nearbyHint,210)+'。',
    '近期剧情：'+contextText+'。必须区分已公开事实与私聊秘密；绝不杜撰用户言行、心理、地下恋情、未发生事件。',
@@ -353,7 +353,7 @@ export function createWeiboModule(api) {
    '固定角色及NPC的身份、职业、年龄、人物关系与时间线必须符合已知资料。评论不得为接梗擅自编造共同上学、工作、在场拍照或共同经历；角色只能依据实际知情范围发言。幽默与活泼取决于个人性格和当下语境，不强迫所有角色接梗。事件因果必须合理。',
    '允许引用公开素材库照片，只有帖子真实在谈论照片主体、人物或场景时才填写photoId，否则不填。公开照片可以被家人、媒体、粉丝、黑粉、陌生网友引用，无需相互认识。严禁在无关人物自拍/自述中配别人的头像。可用图片：'+JSON.stringify(publicPhotos)+'。',
    '账号早已在世界里长期运营，不是第一次刷到才注册！输出粉丝followers、历史累计获赞accountLikes、累计获评accountComments、关注followingCount、本帖likes和本帖评论总数commentCount。80万粉丝成熟媒体号累计获赞通常有几十万到千万以上，不能只计算本条新帖。评论列表展示2到5条样本即可，不等于评论总数。临时账号只属于本轮浏览，无需永久登记。',
-   nearby?'若角色或 user 仍在校（从资料判断，不能直接假设已毕业），校园日常占多数：表白墙、选课考试、老师答疑、寝室、社团活动、求助和吐槽；其他帖子可来自已关注账号以及工作、剧组、生活圈。不得把远方已关注者说成就在附近；不凭空编造真实城市、学校名或隐私。':'全球动态有大小事之分，不要人人都在热榜。',
+   nearby?'若角色或玩家仍在校（从资料判断，不能直接假设已毕业），校园日常占多数：表白墙、选课考试、老师答疑、寝室、社团活动、求助和吐槽；其他帖子可来自已关注账号以及工作、剧组、生活圈。不得把远方已关注者说成就在附近；不凭空编造真实城市、学校名或隐私。':'全球动态有大小事之分，不要人人都在热榜。',
    topic?'帖子主题：'+topic:'',
    '只输出合法紧凑 JSON：{"posts":[{"author":"作者昵称","handle":"@账号","category":"类别","text":"正文","followers":36000,"followingCount":80,"accountLikes":258000,"accountComments":5900,"likes":2300,"commentCount":128,"photoId":"可选的公开素材ID","comments":[{"name":"评论昵称","text":"内容"}]}],"headline":"本轮公开热议话题"}。',
    '生成'+count+'条相互独立、有作者、正文和评论的帖子。headline仅是一个简短话题标题，用于小手机桌面入口，不要返回整张热榜。不要markdown、不要思维过程。'
@@ -1440,7 +1440,7 @@ export function createWeiboModule(api) {
    const samples=[...kept.filter(c=>isOwnComment(post,c)),...kept.filter(c=>!isOwnComment(post,c)).slice(0,25)];
    const raw=await api.phoneGenerate(context(),{
     task:'weibo',maxTokens:15500,
-    systemPrompt:'你负责虚构社交平台群星的评论区。固定NPC须遵守已知身份、职业、关系、年龄、经历及知情范围，不为接梗捏造共同经历或不合理因果，语气随人物与情境自然变化。一次返回有效 JSON。不要编造 user 的新言行，不得泄露角色未公开的私聊、身份及情感关系。人物不是必须回复 user；但必须生成有内容的评论供用户阅读。不要复制已有评论，也不要把随机网友当作已绑定的角色。仅输出严格 JSON：{"comments":[{"name":"公开评论昵称","text":"自然评论文本","replyTo":"可选，仅限已提供的现有评论ID"}]}。',
+    systemPrompt:'你负责虚构社交平台群星的评论区。固定NPC须遵守已知身份、职业、关系、年龄、经历及知情范围，不为接梗捏造共同经历或不合理因果，语气随人物与情境自然变化。一次返回有效 JSON。不要编造玩家的新言行，不得泄露角色未公开的私聊、身份及情感关系。人物不是必须回复 user；但必须生成有内容的评论供用户阅读。不要复制已有评论，也不要把随机网友当作已绑定的角色。仅输出严格 JSON：{"comments":[{"name":"公开评论昵称","text":"自然评论文本","replyTo":"可选，仅限已提供的现有评论ID"}]}。',
     prompt:[{role:'user',content:JSON.stringify({
      storyTime:root().storyTime||'',post:{author:post.author,handle:post.handle,category:post.category,text:post.text},
      accountPublicInfo:acct?publicAccountInfo(acct):post.author,
@@ -1741,7 +1741,7 @@ if(type==='settingsSection'){
      ];
      const response=await api.phoneGenerate(context(),{
       task:'weibo',maxTokens:Math.max(7200,Math.min(18000,2200+batchSize*1350)),
-      systemPrompt:'你负责虚构群星已有账号的历史公开帖子。每条严格归属于给定账号，不捏造已确定事实的相反结论，不替 user 发表言行，只输出有效 JSON。',
+      systemPrompt:'你负责虚构群星已有账号的历史公开帖子。每条严格归属于给定账号，不捏造已确定事实的相反结论，不替玩家发表言行，只输出有效 JSON。',
       prompt:[{role:'user',content:lines.join('\n')}]
      },api.readData(context()));
      if(scope()!==currentScope)return;
@@ -1811,7 +1811,7 @@ if(type==='settingsSection'){
      '当前故事时间：'+scene+'；已知剧情：'+contextText,
      '此前已发布的内容（避免重复）：'+(recent||'暂无'),
      '用户本次生成的明确要求（优先执行，不能覆盖故事已确定事实）：'+(extra||'以符合角色性格的日常公开动态为主'),
-     '生成 '+count+' 条该角色在故事当前时间之前公开发布的旧帖。应像真人发的不同时间的帖子，不要都像搞笑段子，不要重复同一口癖；不能代替 user 言行，不能编造重大工作、恋情或私生活。',
+     '生成 '+count+' 条该角色在故事当前时间之前公开发布的旧帖。应像真人发的不同时间的帖子，不要都像搞笑段子，不要重复同一口癖；不能代替玩家言行，不能编造重大工作、恋情或私生活。',
      '每条都要有 2~6 条符合互联网语境的真实评论，不得输出空评论数组。评论者视角应独立，有粉丝或路人正常互动，允许不同看法。',
      account.publicFigure&&Number(account.followers)>=1000000?
        '已知账号为公众人物，互动量必须与 '+formatFollowers(account.followers)+' 相符。普通公开帖子点赞一般在 '+
@@ -2179,7 +2179,7 @@ if(type==='settingsSection'){
     comments:(p.comments||[]).slice(0,2).map(c=>clean(c.text,65))
    }));
    const raw=await api.phoneGenerate(context(),{task:'autonomy',maxTokens:2200,
-    systemPrompt:'扮演指定故事人物或组织的群星账号自主发布。必须读取已有帖子，尤其是宠物归属、家人朋友、物品和事件，不能将借来的宠物写成自己养的。可以输出 [SKIP]，否则只输出严格 JSON：{"text":"正文","photoId":"已授权照片ID或空字符串","comments":[{"name":"评论昵称","text":"自然评论"}]}。必须带至少两条不同评论，不代替 user 发言，不编造未发生关系。',prompt:[{role:'user',
+    systemPrompt:'扮演指定故事人物或组织的群星账号自主发布。必须读取已有帖子，尤其是宠物归属、家人朋友、物品和事件，不能将借来的宠物写成自己养的。可以输出 [SKIP]，否则只输出严格 JSON：{"text":"正文","photoId":"已授权照片ID或空字符串","comments":[{"name":"评论昵称","text":"自然评论"}]}。必须带至少两条不同评论，不代替玩家发言，不编造未发生关系。',prompt:[{role:'user',
     content:'故事时间：'+scene+'。群星账号：'+account.name+'，职业／公开资料 '+publicAccountDescription(account)+'，账号主体 '+(subjectOfAccount(account).type==='organization'?'组织账号':'故事人物')+'，公众人物：'+(account.publicFigure?'是':'否')+
      '。账号运营方式：'+accountOperatorGuide(account)+'。账号身份公开程度：'+(account.identityVisibility||'public')+
       '；知情者：'+(account.identityKnownTo||'无')+'。绑定人物设定（仅用于保持角色一致，不代表全部内容可公开）：'+subjectContext+

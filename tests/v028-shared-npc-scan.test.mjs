@@ -33,17 +33,17 @@ test('v0.36.3: modules load with updated cache keys and two explicit scan modes'
 });
 
 test('rule scanner: real names from content, worldbook titles and keywords; no 兼同学',()=>{
- const find=text=>detector.extractNpcCandidatesFromText(text,'世界书','林知远').map(p=>p.name);
- assert.deepEqual(find('林知远的同事，习惯早起散步。'),[]);
- assert.deepEqual(find('陈知遥（遥姐），女，36岁，林知远的经纪人。'),['陈知遥']);
- assert.deepEqual(find('林知远的母亲人物乙，社区志愿者。'),['人物乙']);
- assert.deepEqual(find('姓名：唐嘉仪\n身份：大学室友。'),['唐嘉仪']);
- const keys=detector.npcEntryKeywords({key:['唐嘉仪','学委'],keysecondary:['第五人格']});
- assert.deepEqual(keys,['唐嘉仪','学委','第五人格']);
+ const find=text=>detector.extractNpcCandidatesFromText(text,'世界书','顾明舟').map(p=>p.name);
+ assert.deepEqual(find('顾明舟的室友兼同学，喜欢打游戏。'),[]);
+ assert.deepEqual(find('梁佑宁（小梁），女，36岁，顾明舟的经纪人。'),['梁佑宁']);
+ assert.deepEqual(find('顾明舟的母亲谢雨晴，社区志愿者。'),['谢雨晴']);
+ assert.deepEqual(find('姓名：乔向晨\n身份：大学室友。'),['乔向晨']);
+ const keys=detector.npcEntryKeywords({key:['乔向晨','学委'],keysecondary:['第五人格']});
+ assert.deepEqual(keys,['乔向晨','学委','第五人格']);
  assert.deepEqual(detector.npcEntryHeaderCandidates({
-  title:'词条18｜大学室友｜唐嘉仪／原学委',keys,profileEntry:true,
-  content:'唐嘉仪，女，大学室友。',name:'世界书'
- },'林知远').map(c=>c.name),['唐嘉仪']);
+  title:'词条18｜大学室友｜乔向晨／原学委',keys,profileEntry:true,
+  content:'乔向晨，女，大学室友。',name:'世界书'
+ },'顾明舟').map(c=>c.name),['乔向晨']);
  assert.equal(detector.likelyNpcPersonalName('兼同学'),'');
  assert.equal(detector.likelyNpcPersonalName('欧阳明'),'欧阳明');
 });
@@ -59,11 +59,11 @@ test('shared scanner: the same character card works across distinct story chats 
   'selectedCharacter','readRootData','personaNames','scanNpcSources','context','SETTINGS_KEY',
   part('const NPC_SCAN_CATALOG_VERSION=','function sameNpcScanSession(')+
   'return {readSharedNpcScan,saveSharedNpcScan,visibleSharedNpcScan,clearSharedNpcScan};')(
-    ctx=>'card:'+ctx.characterId,merge,()=> '林知远',()=>({name:'林知远'}),
-    ctx=>({contacts:ctx.chatId==='two'?[{name:'人物乙'}]:[]}),()=>new Set(),
+    ctx=>'card:'+ctx.characterId,merge,()=> '顾明舟',()=>({name:'顾明舟'}),
+    ctx=>({contacts:ctx.chatId==='two'?[{name:'谢雨晴'}]:[]}),()=>new Set(),
     async()=>({candidates:[]}),()=>active,'gujiguji');
- facade.saveSharedNpcScan([{name:'人物乙',source:'世界书',description:'社区志愿者',relation:'母亲'}],one);
- assert.equal(facade.readSharedNpcScan(two)[0].name,'人物乙');
+ facade.saveSharedNpcScan([{name:'谢雨晴',source:'世界书',description:'社区志愿者',relation:'母亲'}],one);
+ assert.equal(facade.readSharedNpcScan(two)[0].name,'谢雨晴');
  assert.equal(facade.visibleSharedNpcScan(two).length,0,'already-added contact hidden only from chat-add options');
  assert.equal(facade.readSharedNpcScan(two).length,1,'shared catalog still contains contacts for Qunxing');
  assert.equal(facade.clearSharedNpcScan(two),true);
@@ -74,12 +74,12 @@ test('shared scanner: the same character card works across distinct story chats 
 test('AI scan: a single explicit API call, no hallucinated name, and no auto account creation',async()=>{
  let count=0;
  const source={
-  data:{name:'林知远',description:'',extensions:{world:'测试世界书'}},
-  name:'林知远'
+  data:{name:'顾明舟',description:'',extensions:{world:'测试世界书'}},
+  name:'顾明舟'
  };
  const ctx={characters:[source],characterId:0,
-  async loadWorldInfo(){return {entries:[{comment:'词条03｜NPC｜人物乙',
-   key:['人物乙','苏老师'],content:'人物乙，社区志愿者，林知远的母亲。'}]};}};
+  async loadWorldInfo(){return {entries:[{comment:'词条03｜NPC｜谢雨晴',
+   key:['谢雨晴','谢老师'],content:'谢雨晴，社区志愿者，顾明舟的母亲。'}]};}};
  const scan=new Function('selectedCharacter','personaNames','currentPersona','embeddedCharacterLore',
   'getCharacterName','npcEntryKeywords','extractNpcCandidatesFromText','npcEntryHeaderCandidates','npcExplicitNames',
   'cleanNpcName','mergeNpcCandidates','phoneGenerate','stripModelReasoning','readRootData',
@@ -89,13 +89,13 @@ test('AI scan: a single explicit API call, no hallucinated name, and no auto acc
    detector.npcEntryHeaderCandidates,detector.npcExplicitNames,detector.cleanNpcName,merge,
    async(c,opts)=>{count++;assert.equal(opts.task,'default');
     return JSON.stringify({people:[
-      {name:'人物乙',relation:'林知远的母亲',description:'社区志愿者'},
+      {name:'谢雨晴',relation:'顾明舟的母亲',description:'社区志愿者'},
       {name:'虚构人',relation:'',description:'资料里不存在'}
     ]});},
    s=>s,()=>({contacts:[]}));
  const result=await scan(ctx,'','ai');
  assert.equal(count,1);
- assert.deepEqual(result.candidates.map(c=>c.name),['人物乙']);
+ assert.deepEqual(result.candidates.map(c=>c.name),['谢雨晴']);
  assert.equal(result.worlds,1);
  assert.equal(result.aiTruncated,false);
  assert.match(index,/saveSharedNpcScan\(result.candidates,ctx\)/);
@@ -103,33 +103,33 @@ test('AI scan: a single explicit API call, no hallucinated name, and no auto acc
 });
 
 test('regression: aliases, sex preferences and abstract labels never become standalone people',()=>{
- const source={profileEntry:true,title:'词条17｜关系｜方书言',
-  content:'姓名：方书言\n性别：男\n年龄：23岁\n身份/职业：计算机系学生\n性格：外向',
-  keys:['方书言','小方','方同学','方小友','城南随记'],name:'人物资料'};
- assert.deepEqual(detector.npcEntryHeaderCandidates(source,'林知远').map(x=>x.name),['方书言']);
+ const source={profileEntry:true,title:'词条17｜关系｜程雨竹',
+  content:'姓名：程雨竹\n性别：男\n年龄：23岁\n身份/职业：计算机系学生\n性格：外向',
+  keys:['程雨竹','小程','程同学','程仔','小程在看书'],name:'人物资料'};
+ assert.deepEqual(detector.npcEntryHeaderCandidates(source,'顾明舟').map(x=>x.name),['程雨竹']);
  for(const [title,content,keys] of [
-  ['词条07｜成长｜晨练与方言习惯','日常生活，林知远记录了方言习惯。',['方言习惯']],
-  ['词条08｜职业｜社区馆开放安排','林知远提醒访客留意开放日期。',['开放日期']],
-  ['词条09｜职业｜社区馆与志愿服务','志愿小组负责书架整理。',['经纪团队']],
+  ['词条07｜成长｜晨练与方言习惯','成长经历，顾明舟建立了方言习惯。',['方言习惯']],
+  ['词条08｜职业｜社区馆开放安排','顾明舟被称为开放日期。',['开放日期']],
+  ['词条09｜职业｜顾明舟工作室与核心团队','志愿小组负责书架整理。',['经纪团队']],
   ['词条31｜亲密｜个人偏好','围棋是一种休闲爱好。',['围棋']]
  ]){
-  assert.deepEqual(detector.npcEntryHeaderCandidates({profileEntry:true,title,content,keys,name:'test'},'林知远'),[]);
-  assert.deepEqual(detector.extractNpcCandidatesFromText(content,'test','林知远'),[]);
+  assert.deepEqual(detector.npcEntryHeaderCandidates({profileEntry:true,title,content,keys,name:'test'},'顾明舟'),[]);
+  assert.deepEqual(detector.extractNpcCandidatesFromText(content,'test','顾明舟'),[]);
  }
- assert.deepEqual(detector.extractNpcCandidatesFromText('林知远的同事，习惯早起散步。','test','林知远'),[]);
+ assert.deepEqual(detector.extractNpcCandidatesFromText('顾明舟的室友兼同学，喜欢打游戏。','test','顾明舟'),[]);
 });
 test('old surname-keyword cache cannot reappear after new scan',()=>{
  const ctx={extensionSettings:{gujiguji:{npcRoleScanCatalog:{
-  'card:7':{candidates:[{name:'小方'},{name:'开放日期'},{name:'围棋'}]}
+  'card:7':{candidates:[{name:'小程'},{name:'开放日期'},{name:'围棋'}]}
  }}},characterId:7,chatId:'c',saveSettingsDebounced(){}};
  const facade=new Function('qunxingAccountCardKey','mergeNpcCandidates','getCharacterName',
   'selectedCharacter','readRootData','personaNames','scanNpcSources','context','SETTINGS_KEY',
   part('const NPC_SCAN_CATALOG_VERSION=','function sameNpcScanSession(')+
   'return {readSharedNpcScan,saveSharedNpcScan};')(
-   c=>'card:'+c.characterId,merge,()=> '林知远',()=>({name:'林知远'}),
+   c=>'card:'+c.characterId,merge,()=> '顾明舟',()=>({name:'顾明舟'}),
    ()=>({contacts:[]}),()=>new Set(),async()=>({candidates:[]}),()=>ctx,'gujiguji');
  assert.deepEqual(facade.readSharedNpcScan(ctx),[]);
- facade.saveSharedNpcScan([{name:'方书言',description:'具名人物',source:'NPC'}],ctx);
- assert.deepEqual(facade.readSharedNpcScan(ctx).map(c=>c.name),['方书言']);
+ facade.saveSharedNpcScan([{name:'程雨竹',description:'具名人物',source:'NPC'}],ctx);
+ assert.deepEqual(facade.readSharedNpcScan(ctx).map(c=>c.name),['程雨竹']);
  assert.equal(ctx.extensionSettings.gujiguji.npcRoleScanCatalog['card:7'].version,2);
 });

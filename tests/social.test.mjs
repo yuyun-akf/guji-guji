@@ -254,15 +254,30 @@ test('moments require explicit mutual contact links between characters, not just
 
 test('manually confirming and removing character contact links persists without touching chats',async()=>{
     const {ctx}=socialStory(),box=runtime(ctx);
+    const element=()=>({
+        dataset:{},children:[],append(...children){this.children.push(...children);},
+        replaceChildren(){this.children=[];}
+    });
+    box.document.createElement=element;
+    box.list=element();
+    vm.runInContext(`
+        root={querySelector:()=>null,querySelectorAll:()=>[],dataset:{},classList:{contains:()=>false}};
+        nodes={back:{},title:{},chatMenu:{},contactLinks:list,diagnosticState:{}};
+        setScreen('contactManage');
+    `,box);
+    assert.deepEqual(box.list.children.map(row=>row.children[0].dataset.linkOther),['npc:b','npc:c']);
+    assert.equal(box.list.children[0].children[0].checked,false);
     const change=vm.runInContext('changeContactLink',box);
     await change('npc:b',true);
     let root=ctx.chatMetadata.st_little_phone_v1;
     assert.equal(root.contactLinks['npc:b|primary'],true);
     assert.equal(root.contactLinks['npc:c|primary'],undefined);
     assert.equal(root.messages[0].text,'主角旧消息');
+    assert.equal(box.list.children[0].children[0].checked,true);
     await change('npc:b',false);
     root=ctx.chatMetadata.st_little_phone_v1;
     assert.equal(root.contactLinks['npc:b|primary'],undefined);
+    assert.equal(box.list.children[0].children[0].checked,false);
 });
 
 test('user likes, unlikes, comments, replies and reposts without affecting old private chats',async()=>{

@@ -59,7 +59,7 @@ test('group direct-open supports one-back return to inbox while directory keeps 
 });
 
 test('bulk scanned NPC import creates incoming friend requests, not existing friends',async()=>{
- const fields={name:'唐嘉仪',relation:'面具甲的室友',description:'大学室友的完整人物资料'};
+ const fields={name:'乔向晨',relation:'面具甲的室友',description:'大学室友的完整人物资料'};
  const row={querySelector(selector){
   const key=selector.match(/data-npc-field="([^"]+)"/)?.[1];
   return key?{value:fields[key]}:null;
@@ -68,7 +68,7 @@ test('bulk scanned NPC import creates incoming friend requests, not existing fri
  const nodes={npcCandidates:{querySelectorAll:()=>[check]},npcScanState:{textContent:''}};
  const ctx={chatMetadata:{}},data={contacts:[],conversations:{}};
  let written;
- const candidate={name:'唐嘉仪',source:'世界书',description:'大学室友的完整人物资料'};
+ const candidate={name:'乔向晨',source:'世界书',description:'大学室友的完整人物资料'};
  const fn=new Function('busy','npcScanning','npcScanSession','sameNpcScanSession','nodes',
   'context','readRootData','selectedCharacter','getCharacterName','cleanNpcName','personaNames',
   'npcCandidates','window','writeData','renderNpcCandidates','render','setScreen','setStatus',

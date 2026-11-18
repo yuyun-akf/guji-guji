@@ -54,7 +54,7 @@ test('Moments allow real user photo, avatar, inline comment, own post editing an
  assert.match(index,/async function encodeMomentPhoto\(/);
  assert.match(index,/image_url/);
  assert.match(index,/showMomentImageUnavailable\(/);
- assert.match(index,/不得代替 user 发言/);
+ assert.match(index,/不得代替玩家发言/);
  assert.match(index,/momentHistoryMode/);
  assert.match(index,/randomMode\?registered/);
  assert.match(index,/comments\.length<5/);

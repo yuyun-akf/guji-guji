@@ -9,7 +9,7 @@ const index=read('index.js'),album=read('album.js'),
 test('v0.36.4 module syntax and cache keys',()=>{
  const manifest=JSON.parse(read('manifest.json'));
  assert.equal(manifest.version,'0.36.4');
- assert.match(bootstrap,/index\.js\?v=0\.36\.3/);
+ assert.match(bootstrap,/index\.js\?v=0\.36\.4&contact-ui=1/);
  for(const part of ['album','weibo','groups'])
   assert.ok(index.includes(part+'.js?v=0.36.4'));
  for(const source of [index,album,groups,read('weibo.js'),bootstrap])
@@ -20,13 +20,13 @@ test('a card can bind acquaintances scanned from other social directories',()=>{
  const source=index.slice(index.indexOf('function roleFriendCatalog('),index.indexOf('function roleFriendsStore('));
  const catalog=new Function('galleryPeople','readSharedNpcScan','visibleSharedNpcScan',
   'sharedQunxingAccounts',source+'\nreturn roleFriendCatalog;')(
-   ()=>[{id:'user',name:'我'},{id:'primary',name:'林知远'}],
+   ()=>[{id:'user',name:'我'},{id:'primary',name:'顾明舟'}],
    ()=>[{name:'陈之恒',description:'扫描候选'}],
    ()=>[{name:'许小川',description:'关联世界书'}],
    ()=>[{subject:{type:'npc',name:'姜乐'},roleBrief:'另一位故事人物'}]
   );
  const options=catalog({});
- assert.deepEqual(options.map(x=>x.name).sort(),['林知远','陈之恒','姜乐','许小川'].sort());
+ assert.deepEqual(options.map(x=>x.name).sort(),['顾明舟','陈之恒','姜乐','许小川'].sort());
  assert.ok(options.filter(x=>x.scanned).every(x=>x.id.startsWith('scanned:')));
 });
 

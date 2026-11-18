@@ -1584,8 +1584,26 @@
 #st-little-phone-root .lp-moment-editor{display:flex;gap:8px;align-items:flex-end;}
 #st-little-phone-root .lp-moment-editor[hidden]{display:none!important;}
 #st-little-phone-root .lp-moment-editor textarea{flex:1;min-width:0;min-height:54px;resize:vertical;padding:8px;border:1px solid var(--lp-ice);border-radius:9px;font:inherit;font-size:12px;}
-#st-little-phone-root .lp-contact-links p{color:var(--lp-slate);font-size:12px;line-height:1.5;margin:6px 0;}
 #st-little-phone-root .lp-contact-links [data-lp="contactLinks"]{display:grid;gap:8px;margin-top:10px;font-size:12px;color:var(--lp-navy);}
+#st-little-phone-root .lp-contact-links.lp-profile-setup{border-top:0;}
+#st-little-phone-root .lp-contact-links [data-lp="manageRoleFriends"]{margin:12px 0 0;}
+#st-little-phone-root .lp-contact-links small{margin-inline-start:auto;color:var(--lp-slate);}
+
+#st-little-phone-root .lp-action-confirm{
+  width:min(320px,calc(100vw - 36px));max-height:calc(100dvh - 36px);
+  padding:20px;border:1px solid var(--lp-slate);border-radius:18px;
+  background:var(--lp-ice);color:var(--lp-navy);font:inherit;pointer-events:auto;
+  box-shadow:0 16px 40px color-mix(in srgb,var(--lp-navy) 28%,transparent);
+}
+#st-little-phone-root .lp-action-confirm::backdrop{background:rgba(20,30,48,.45);}
+#st-little-phone-root .lp-action-confirm h2{font-size:18px;line-height:1.35;margin:0;}
+#st-little-phone-root .lp-action-confirm p{margin:10px 0 18px;overflow-wrap:anywhere;}
+#st-little-phone-root .lp-action-confirm div{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+#st-little-phone-root .lp-action-confirm button{
+  min-height:40px;border:1px solid var(--lp-slate);border-radius:10px;
+  background:var(--lp-white);color:var(--lp-navy);font:inherit;cursor:pointer;
+}
+#st-little-phone-root .lp-action-confirm button:last-child{background:var(--lp-navy);color:var(--lp-white);}
 
 #st-little-phone-root .lp-request-entry{display:flex;flex-direction:column;margin:0;background:#fff;border-bottom:1px solid var(--lp-ice);}
 #st-little-phone-root .lp-request-entry .lp-conversation-row{border-bottom:none;}
@@ -5041,9 +5059,6 @@
 }
 #st-little-phone-root .lp-role-friends-page [data-lp="roleFriendsContent"]{
  display:flex;flex-direction:column;gap:12px;min-width:0;
-}
-#st-little-phone-root .lp-role-friend-note{
- font-size:12px;line-height:1.65;margin:0;color:var(--lp-slate);
 }
 #st-little-phone-root .lp-role-friend-known{
  display:flex;flex-direction:column;gap:8px;padding:12px;

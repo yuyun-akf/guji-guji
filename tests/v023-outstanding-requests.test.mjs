@@ -88,10 +88,10 @@ test('Qunxing account search/profile works without paying to generate a heat lis
  const make=new Function('document','structuredClone',source+'\nreturn createWeiboModule;')({visibilityState:'visible'},clone);
  const ctx={chatId:'story',characterId:0,chatMetadata:{}};
  let root={storyTime:'2026-11-15T20:00',contacts:[],messages:[],qunxing:{
-  accounts:[{id:'actor',name:'林知远',handle:'@sample_account',kind:'角色',profession:'演员',source:'manual',followers:35000000}],
+  accounts:[{id:'actor',name:'顾明舟',handle:'@sample_actor',kind:'角色',profession:'演员',source:'manual',followers:35000000}],
   posts:[],profile:{nickname:'u'},following:[]}};
  const app=make({context:()=>ctx,getNodes:()=>({weiboFeed:null}),readRootData:()=>root,readData:()=>root,
-  writeData:async(_ctx,data)=>{root=data;},selectedCharacter:()=>({name:'林知远'}),
+  writeData:async(_ctx,data)=>{root=data;},selectedCharacter:()=>({name:'顾明舟'}),
   currentPersona:()=>({name:'u'}),stripModelReasoning:s=>s,
   phoneGenerate:async()=>JSON.stringify({posts:[{text:'今天的一个普通下午',likes:1,comments:[{name:'甲',text:'收到'},{name:'乙',text:'很好'}]}]}),
   recordActivity:()=>{},recordError:()=>{},notifyInteraction:()=>{}});
