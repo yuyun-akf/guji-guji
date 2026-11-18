@@ -350,6 +350,7 @@ export function createWeiboModule(api) {
    '允许陌生网友完全讨论无关主题，勿全围绕角色。已登记的非公众人物角色仅参与评论，不生成以该角色为作者的群星帖子；随机原创网友和普通博主仍可以发帖。公众人物可以合理上热搜，但不要每条都写成公共事件。',
    '营造真实复杂的互联网：多数网友正常且观点各异，偶尔可以有0至1个理直气壮、反常识到令人怀疑的“神人”发言，让其他网友有自然吐槽或反驳；题材随机覆盖职场、学习、生活、饭圈、科技、性别刻板印象等，不要总围绕男女关系，也不要把偏激观点当事实。',
    '每条帖子配2至5条不同语气的评论，允许争论与冷幽默、网络流行语，但不要每条都是段子。',
+   '固定角色及NPC的身份、职业、年龄、人物关系与时间线必须符合已知资料。评论不得为接梗擅自编造共同上学、工作、在场拍照或共同经历；角色只能依据实际知情范围发言。幽默与活泼取决于个人性格和当下语境，不强迫所有角色接梗。事件因果必须合理。',
    '允许引用公开素材库照片，只有帖子真实在谈论照片主体、人物或场景时才填写photoId，否则不填。公开照片可以被家人、媒体、粉丝、黑粉、陌生网友引用，无需相互认识。严禁在无关人物自拍/自述中配别人的头像。可用图片：'+JSON.stringify(publicPhotos)+'。',
    '账号早已在世界里长期运营，不是第一次刷到才注册！输出粉丝followers、历史累计获赞accountLikes、累计获评accountComments、关注followingCount、本帖likes和本帖评论总数commentCount。80万粉丝成熟媒体号累计获赞通常有几十万到千万以上，不能只计算本条新帖。评论列表展示2到5条样本即可，不等于评论总数。临时账号只属于本轮浏览，无需永久登记。',
    nearby?'若角色或 user 仍在校（从资料判断，不能直接假设已毕业），校园日常占多数：表白墙、选课考试、老师答疑、寝室、社团活动、求助和吐槽；其他帖子可来自已关注账号以及工作、剧组、生活圈。不得把远方已关注者说成就在附近；不凭空编造真实城市、学校名或隐私。':'全球动态有大小事之分，不要人人都在热榜。',
@@ -1439,7 +1440,7 @@ export function createWeiboModule(api) {
    const samples=[...kept.filter(c=>isOwnComment(post,c)),...kept.filter(c=>!isOwnComment(post,c)).slice(0,25)];
    const raw=await api.phoneGenerate(context(),{
     task:'weibo',maxTokens:15500,
-    systemPrompt:'你负责虚构社交平台群星的评论区。一次返回有效 JSON。不要编造 user 的新言行，不得泄露角色未公开的私聊、身份及情感关系。人物不是必须回复 user；但必须生成有内容的评论供用户阅读。不要复制已有评论，也不要把随机网友当作已绑定的角色。仅输出严格 JSON：{"comments":[{"name":"公开评论昵称","text":"自然评论文本","replyTo":"可选，仅限已提供的现有评论ID"}]}。',
+    systemPrompt:'你负责虚构社交平台群星的评论区。固定NPC须遵守已知身份、职业、关系、年龄、经历及知情范围，不为接梗捏造共同经历或不合理因果，语气随人物与情境自然变化。一次返回有效 JSON。不要编造 user 的新言行，不得泄露角色未公开的私聊、身份及情感关系。人物不是必须回复 user；但必须生成有内容的评论供用户阅读。不要复制已有评论，也不要把随机网友当作已绑定的角色。仅输出严格 JSON：{"comments":[{"name":"公开评论昵称","text":"自然评论文本","replyTo":"可选，仅限已提供的现有评论ID"}]}。',
     prompt:[{role:'user',content:JSON.stringify({
      storyTime:root().storyTime||'',post:{author:post.author,handle:post.handle,category:post.category,text:post.text},
      accountPublicInfo:acct?publicAccountInfo(acct):post.author,
