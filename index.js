@@ -4123,6 +4123,7 @@ function setScreen(screen, options={}) {
     }
     if (screen === 'diagnostics') renderDiagnostics();
     if (screen === 'chatList' && previous !== 'chatList') renderChatLists(context(),selectedCharacter(context()),readData(context()));
+    if (screen === 'chat' && previous !== 'chat') renderMessages(readData(context()));
     if (screen === 'album'){
         try{migrateLegacyStickers(context());}
         catch(error){notifyInteraction('旧版表情包迁移失败：'+String(error.message||error),'error');}
@@ -5305,7 +5306,7 @@ function momentActorBrief(ctx,id) {
     if(guest)return id+'｜'+guest.name+'：'+(guest.description||'角色已有的日常好友，独立决定是否互动')+
       (guest.ambient?'；此人暂无详细设定，请生成符合作者生活圈的普通姓名，使用 action.name 字段，不制造重大关系。':'');
     const char=contactCharacter(ctx,id),description=[char?.data?.scenario,char?.data?.personality,char?.data?.description,char?.personality,char?.description]
-        .filter(Boolean).join('\n').slice(0,520);
+        .filter(Boolean).join('\n').slice(0,1300);
     return id+'｜'+contactDisplayName(ctx,id)+'：'+(description||'按当前角色的人设与关系行动');
 }
 function momentBatchTask(ctx,post,actors,{writePost=false,replyComments=[]}={}){
@@ -5324,6 +5325,8 @@ function momentBatchTask(ctx,post,actors,{writePost=false,replyComments=[]}={}){
   targets?'user 刚发表的评论，角色可合理回应：'+targets:'',
   post.image?'此动态附有图片；需根据实际可见图片生成互动，看不到则返回 {"actions":[],"visionUnavailable":true}，不得猜测。':'',
   '允许互动的角色及其已知资料：\n'+actorGuide,
+  '固定角色身份、职业、年龄、关系与时间线必须服从已知设定。只能回忆实际参与或有合理信息来源的事件，不为接梗编造同学、同事、摄影者等共同经历。',
+  '事件与因果符合现实及剧情逻辑；幽默程度由人物性格和语境决定，不强迫所有角色活泼接梗。信息不足时只回应可见内容或点赞。',
   '仅可使用以下 actorId：'+actors.join('、')+'。每名角色可以连续说不止一句，但评论应有真实对话逻辑，可自然回应已有评论，不要机械刷屏。',
   '按角色关系和语境自然生成评论或回复，没有最低评论条数；不要为了凑数重复发言。',
   '可以在同一次输出中加入多个点赞。likeCount 是合理的累计点赞人数（非角色名单），要符合作者生活圈和可见范围，不能凭空设定网红级热度。',
@@ -7349,9 +7352,10 @@ function locationCard(text){
  return card;
 }
 function renderMessages(data){
+ if(!root?.classList.contains('lp-open')||activeScreen!=='chat')return;
  nodes.messages.replaceChildren();
  closeMessageActions();
- const list=cleanPhoneHistory(data.messages);
+ const list=cleanPhoneHistory(data.messages).slice(-120);
  if(!list.length){
   const empty=document.createElement('p');empty.className='lp-empty';empty.textContent='暂无消息';
   nodes.messages.append(empty);
@@ -7452,7 +7456,7 @@ function render() {
 
     nodes.profileName.textContent = char ? contactDisplayName(ctx) : '请先选择角色';
     if(nodes.profileBio)nodes.profileBio.textContent=phoneBio(activeContactId,ctx)||'编辑个性签名';
-    renderContactMoments(ctx);
+    if(activeScreen==='profile')renderContactMoments(ctx);
     nodes.contactRemark.value = getContactInfo(ctx).remark || '';
     const profileInfo=getContactInfo(ctx);
     const mainInfo=primary?.data||primary||{};
@@ -7464,10 +7468,10 @@ function render() {
     nodes.deleteNpc.hidden = activeContactId===PRIMARY_CONTACT_ID;
     nodes.contactEvidence.textContent=contactAccess(ctx).evidence||contactAccess(ctx).source;
     nodes.profileAvatar.src = avatarSources(ctx,data).character;
-    renderContactLinks(ctx);
-    renderChatLists(ctx,char,data);
-    renderMoments(ctx);
-    renderWallet(ctx);
+    if(activeScreen==='profile')renderContactLinks(ctx);
+    if(['chatList','contacts','requests','addNpc'].includes(activeScreen))renderChatLists(ctx,char,data);
+    if(activeScreen==='discover')renderMoments(ctx);
+    if(activeScreen==='wallet')renderWallet(ctx);
     nodes.subtitle.textContent = '';
     nodes.homeCharacter.textContent = primary ? resolvePhonePlaceholders('与 {{char}} 相伴 '+storyCompanionDays(data)+' 天',ctx,primary) : '等待进入角色存档';
     nodes.npcRelation.placeholder=resolvePhonePlaceholders('如：{{char}}的母亲、{{user}}的同学',ctx,primary);
@@ -7479,8 +7483,8 @@ function render() {
     updateLauncherVisibility();
     applyTheme();
     renderDesktop();
-    if (data) renderMessages(data);
-    else {
+    if (data && activeScreen==='chat') renderMessages(data);
+    else if(!data && activeScreen==='chat') {
         nodes.messages.replaceChildren();
         const message = document.createElement('div');
         message.className = 'lp-empty';
@@ -7761,6 +7765,7 @@ async function copyDiagnostics() {
     }
 }
 
+let lastPhoneViewportLayout='';
 function syncPhoneViewport() {
     if (!root?.classList.contains('lp-open')) return;
     const panel = root.querySelector('.lp-panel');
@@ -7769,15 +7774,14 @@ function syncPhoneViewport() {
     const height=viewport?.height || window.innerHeight || 700;
     const offset=viewport?.offsetTop || 0;
     const targetHeight=Math.max(230,Math.min(670,height-18));
+    const layout=targetHeight+'|'+Math.round(offset+(height-targetHeight)/2);
+    if(layout===lastPhoneViewportLayout)return;
+    lastPhoneViewportLayout=layout;
     panel.style.height=targetHeight+'px';
     panel.style.maxHeight=targetHeight+'px';
     panel.style.top=Math.max(4,offset+(height-targetHeight)/2)+'px';
     panel.style.left='50%';
     panel.style.transform='translateX(-50%)';
-    if (activeScreen==='chat') {
-        const messages=nodes?.messages;
-        if (messages) messages.scrollTop=messages.scrollHeight;
-    }
 }
 
 function openPhone() {
@@ -7798,7 +7802,7 @@ function openPhone() {
         securityUnlocked=!phoneLockSettings().enabled;
         lockSetupStep=0;lockVerifyAttempt++;
         if(nodes?.lockPin){nodes.lockPin.value='';nodes.lockRepeat.value='';}
-        setScreen(securityUnlocked?'home':'lock');
+        activeScreen=securityUnlocked?'home':'lock';
         render();
         void tickStoryClock({onOpen:true});
         void syncStoryRelationships(context());
@@ -7834,6 +7838,7 @@ function closePhone() {
     // Only closing the entire virtual phone invalidates generated Qunxing posts.
     weiboController?.endPhoneSession?.();
     root.classList.remove('lp-open');
+    lastPhoneViewportLayout='';
     securityUnlocked=false;lockVerifyAttempt++;
     void tickStoryClock({onClose:true});
     const panel = root.querySelector('.lp-panel');
