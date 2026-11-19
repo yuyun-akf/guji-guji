@@ -96,6 +96,31 @@ test('unavailable saved connection has explicit error, never silently reuses act
  await assert.rejects(()=>api.phoneGenerate(ctx,{task:'weibo',prompt:'test'},
   {config:{api:{mode:'inherit'},apiRoutes:{weibo:{mode:'profile',profileId:'gone'}}}}),/站点.*失效/);
 });
+test('saved connection errors log the underlying cause without credentials or echoed request content',async()=>{
+ const cause=new Error('HTTP 400 {"api_key":"test-secret","messages":[{"content":"private-fixture"}]}');
+ const ctx={
+  getRequestHeaders:()=>({'Content-Type':'application/json'}),
+  ConnectionManagerRequestService:{
+   getSupportedProfiles:()=>[{id:'p2',name:'测试站点'}],
+   getProfile:()=>({api:'custom','api-url':'https://saved.example.test/v1',model:'test-model'}),
+   sendRequest:async()=>{throw new Error('API request failed',{cause});}
+  }
+ };
+ const api=apiFactory(()=> 'scope',()=>ctx,new Map(),new Map(),MiniURL,noSecretFetch);
+ const entries=[];
+ const start=index.indexOf('function redactDiagnostic('),end=index.indexOf('function renderDiagnostics(',start);
+ const recordError=new Function('diagnostics','DIAGNOSTIC_LIMIT','renderDiagnostics','notifyInteraction','console',
+  index.slice(start,end)+'return recordError;')(entries,10,()=>{},()=>{},{error(){}});
+ await assert.rejects(()=>api.phoneGenerate(ctx,{task:'chat',prompt:'fixture'},
+  {config:{apiRoutes:{chat:{mode:'profile',profileId:'p2'}}}}),error=>{
+   const status=recordError('生成角色回复',error);
+   assert.match(status,/API request failed.*HTTP 400/);
+   assert.equal(entries[0].code,'400');
+   assert.match(entries[0].detail,/\[已隐藏的请求内容\]/);
+   assert.doesNotMatch(entries[0].detail,/test-secret|private-fixture/);
+   return true;
+  });
+});
 test('independent API secret is never forwarded to a different destination',async()=>{
  const ctx={ChatCompletionService:{sendRequest:async()=>{throw Error('should not send request');}}};
  const api=apiFactory(()=> 'scope',()=>ctx,

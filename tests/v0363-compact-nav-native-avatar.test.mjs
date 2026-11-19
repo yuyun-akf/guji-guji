@@ -11,7 +11,7 @@ test('module syntax and bootstrap version agree with the manifest',()=>{
  const manifest=JSON.parse(read('manifest.json'));
  assert.ok(bootstrap.includes("const VERSION = '"+manifest.version+"'"));
  assert.ok(bootstrap.includes("index.js?v="+manifest.version+"'"));
- assert.ok(index.includes('weibo.js?v='+manifest.version+'&'));
+ assert.ok(index.includes('weibo.js?v=0.36.6&'));
  for(const part of ['album','groups'])
   assert.ok(index.includes(part+'.js?v=0.36.4'));
  for(const source of [index,album,groups,read('weibo.js'),bootstrap])

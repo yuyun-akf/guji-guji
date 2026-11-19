@@ -1710,7 +1710,7 @@ async function testPhoneApi(){
    systemPrompt:'只回复 OK 两个字母。',prompt:[{role:'user',content:'回复 OK'}]},d);
   if(!String(response||'').trim())throw new Error('连接未返回内容');
   setStatus('连接测试通过（不代表所有模型均支持图片或长文本）');
- }catch(e){setStatus('连接测试失败：'+String(e.message||e),'error');}
+ }catch(e){setStatus(recordError('连接测试',e),'error');}
 }
 function loadPhoneMessageStyle() {
     if (!nodes?.messageStyle) return;
@@ -3653,6 +3653,8 @@ function redactDiagnostic(text) {
     return String(text || '未知错误')
         .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [已隐藏]')
         .replace(/\bsk-[A-Za-z0-9_-]{8,}/gi, '[已隐藏的密钥]')
+        .replace(/(https?:\/\/)[^\s/@]+@/gi, '$1[已隐藏]@')
+        .replace(/(["'](?:api[-_]?key|x-api-key|token|secret|password|authorization)["']\s*:\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')/gi, '$1[已隐藏的凭证]')
         .replace(/([?&](?:api[_-]?key|token|secret|password|authorization)=)[^&\s]+/gi, '$1[已隐藏]')
         .replace(/\b(?:api[_-]?key|token|secret|password|authorization)\s*[:=]\s*\S+/gi, '[已隐藏的凭证]')
         .slice(0, 600);
@@ -3671,9 +3673,13 @@ function recordActivity(stage, detail, kind = 'info', code = '') {
 
 function recordError(stage, error) {
     const message = String(error?.message || error);
-    const statusMatch = message.match(/(?:response\s+status|HTTP\s*|status[:\s]+)([45]\d\d)/i);
-    const code = error?.status ?? error?.statusCode ?? error?.code ?? error?.cause?.status ?? statusMatch?.[1] ?? '';
-    const detail = redactDiagnostic(message);
+    const cause = error?.cause;
+    const reason = typeof cause?.message === 'string' && cause.message !== message
+        ? cause.message.split(/\r?\n/, 1)[0].replace(/(["'](?:messages|prompt|content)["']\s*:).*$/i, '$1 [已隐藏的请求内容]')
+        : '';
+    const statusMatch = (message + ' ' + reason).match(/(?:response\s+status|HTTP\s*|status[:\s]+)([45]\d\d)/i);
+    const code = error?.status ?? error?.statusCode ?? error?.code ?? cause?.status ?? cause?.statusCode ?? cause?.code ?? statusMatch?.[1] ?? '';
+    const detail = redactDiagnostic(reason ? message + ' · ' + reason : message);
     const category = error?.name && error.name !== 'Error' ? ' [' + redactDiagnostic(error.name) + ']' : '';
     const stack = error?.stack ? '\n' + redactDiagnostic(String(error.stack).split('\n').slice(1, 3).join('\n')) : '';
     const entry = recordActivity(stage, detail + category + stack, 'error', code);
@@ -7642,8 +7648,10 @@ async function runReply(ctx, char, data, session, existingJob = null) {
         const rolePhotos=photosForActor(activeContactId,'chat',ctx);
         const systemPrompt = [await composePhonePrompt(ctx, char, data), messageStylePrompt(data), stickerPrompt(selectedStickers),albumCatalogPrompt(activeContactId),
             paymentReplyInstructions(data,activeContactId)].filter(Boolean).join('\n\n');
-        recordActivity('生成配置','使用当前酒馆连接'+(ctx?.mainApi?' · '+ctx.mainApi:'')+'；手机历史 '+buildPrompt(data).length+' 条；当前手机预设 '+(configuredPhonePreset(data)||'未选择')+'；启用世界书 '+selectedWorldBookNames(data).length+' 本。实际注入数请看「注入预览」，包含自动继承的原版启用条目。');
         const phoneHistory=buildPrompt(data,ctx,char);
+        const api=readApiOptions(data,'chat');
+        const connection=api.mode==='profile'?'使用酒馆已保存的 API 站点':api.mode==='custom'?'使用独立 API':'使用酒馆当前连接'+(ctx?.mainApi?' · '+ctx.mainApi:'');
+        recordActivity('生成配置',connection+'（'+(api.override?'咕叽聊单独配置':'小手机默认配置')+'）；手机历史 '+phoneHistory.length+' 条；当前手机预设 '+(configuredPhonePreset(data)||'未选择')+'；启用世界书 '+selectedWorldBookNames(data).length+' 本。实际注入数请看「注入预览」，包含自动继承的原版启用条目。');
         const count=phoneRequestImageCount(phoneHistory);
         const imageRecords=(data.messages||[]).reduce((sum,msg)=>sum+(!msg?.sticker?(Array.isArray(msg?.images)?msg.images.length:(msg?.image?1:0))+(msg?.sharePost?.image?1:0):0),0);
         recordActivity('图片上下文',`当前手机记录有 ${imageRecords} 张普通照片；最近 ${CONTEXT_MESSAGE_LIMIT} 条消息内已纳入 ${count} 张；${count?'将使用多模态图片通道':'本轮仅文本，未向模型传图片'}。`);
