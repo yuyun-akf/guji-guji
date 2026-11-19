@@ -3373,10 +3373,15 @@ function worldEntryTriggered(entry, scanText) {
     return !(entry.useProbability && Number(entry.probability) < 100 && Math.random()*100 >= Math.max(0,Number(entry.probability)||0));
 }
 
-function phoneScanText(char, data, ctx=null) {
+function phoneWorldbookScan(char, data, ctx, prioritizeLatestUserTurn) {
     const recent=cleanPhoneHistory(data?.messages||[]).filter(m=>['user','character'].includes(m.from)).slice(-12);
     const names=[getCharacterName(char),ctx?.name1||''].filter(Boolean).join('\n');
-    return (names+'\n'+recent.map(m=>`${m.from==='user'?personaName(ctx):getCharacterName(char)}: ${m.text||''}`).join('\n')).slice(-16000);
+    const scan=(names+'\n'+recent.map(m=>`${m.from==='user'?personaName(ctx):getCharacterName(char)}: ${m.text||''}`).join('\n')).slice(-16000);
+    const latestTurn=prioritizeLatestUserTurn
+        ?recent.slice(recent.findLastIndex(m=>m.from==='character')+1)
+            .filter(m=>!m.sticker).map(m=>m.text||'').join('\n').slice(-16000)
+        :'';
+    return {scan,latestTurn};
 }
 
 function clipContext(text, budget) {
@@ -3430,10 +3435,10 @@ function readExternalMemory(ctx,data) {
     return {source:'未找到',text:'',status:'没有发现可读取的已注入正文记忆'};
 }
 
-async function composePhonePrompt(ctx, char, data) {
+async function composePhonePrompt(ctx, char, data, {prioritizeLatestUserTurn=false}={}) {
     const persona=currentPersona(ctx);
     const parts = [createSystemPrompt(char, data, persona),phoneRelationshipPrompt(ctx,data?.__contactId||activeContactId),albumIdentityPrompt(data?.__contactId||activeContactId,ctx)].filter(Boolean);
-    const summary={preset:0,selected:0,world:0,skipped:0,characters:0};
+    const summary={preset:0,selected:0};
     const config=data?.config||{};
     // The chosen preset implicitly enables its originally enabled prompts.
     // Manual choices, including an empty checked set, take priority.
@@ -3442,16 +3447,15 @@ async function composePhonePrompt(ctx, char, data) {
     for(const item of selectedPresets){
         const preset=ctx?.getPresetManager?.('openai')?.getCompletionPresetByName?.(item.preset);
         const entry=preset?.prompts?.find(p=>String(p.identifier||p.name)===item.id);
-        if(!entry?.content){summary.skipped++;continue;}
+        if(!entry?.content)continue;
         const section='[手机预设 · '+(entry.name||item.id)+']\n'+entry.content;
         const remaining=PHONE_PRESET_BUDGET-presetUsed;
-        if(remaining<400){summary.skipped++;continue;}
+        if(remaining<400)continue;
         const toAdd=section.length>remaining?section.slice(0,remaining-40)+'\n[后续预设内容因手机预算截断]':section;
         parts.push(toAdd);presetUsed+=toAdd.length;summary.preset++;
-        if(toAdd.length<section.length)summary.skipped++;
     }
     const activeBooks=selectedWorldBookNames(data);
-    const scan=phoneScanText(char,data,ctx);
+    const {scan,latestTurn}=phoneWorldbookScan(char,data,ctx,prioritizeLatestUserTurn);
     const triggered=[];
     for(const bookName of activeBooks){
         if(typeof ctx?.loadWorldInfo!=='function')throw new Error('酒馆世界书接口不可用');
@@ -3461,25 +3465,35 @@ async function composePhonePrompt(ctx, char, data) {
         const selected=initializedChoice(config,'world',bookName)||explicit.length?explicit:worldEntryDefaults(book,bookName);
         for(const item of selected){
             const entry=entries[item.id]??Object.values(entries).find(e=>String(e.uid)===item.id);
-            if(!entry?.content){summary.skipped++;continue;}
+            if(!entry?.content)continue;
             summary.selected++;
-            if(worldEntryTriggered(entry,scan))triggered.push({bookName,id:item.id,entry});
-            else summary.skipped++;
+            if(!worldEntryTriggered(entry,scan))continue;
+            const direct=Boolean(latestTurn&&entry.constant!==true&&Array.isArray(entry.key)&&
+                entry.key.some(key=>worldKeyMatches(key,latestTurn,entry.caseSensitive===true,entry.matchWholeWords===true)));
+            const title=entry.comment||item.id;
+            const content='[手机世界书 · '+bookName+' / '+title+']\n'+entry.content;
+            triggered.push({entry,title,content,direct});
         }
     }
+    triggered.sort((a,b)=>(Number(a.entry.order)||0)-(Number(b.entry.order)||0));
+    const directMatches=triggered.filter(item=>item.direct);
+    const included=new Set();
     let loreUsed=0;
-    for(const {bookName,id,entry} of triggered.sort((a,b)=>(Number(a.entry.order)||0)-(Number(b.entry.order)||0))) {
-        const content='[手机世界书 · '+bookName+' / '+(entry.comment || id)+']\n'+entry.content;
-        if(loreUsed+content.length>PHONE_LORE_BUDGET){summary.skipped++;continue;}
-        parts.push(content);loreUsed+=content.length;summary.world++;
+    // Spend the budget on the current turn first, then emit in worldbook order.
+    for(const item of [...directMatches,...triggered.filter(item=>!item.direct)]) {
+        if(loreUsed+item.content.length>PHONE_LORE_BUDGET)continue;
+        included.add(item);
+        loreUsed+=item.content.length;
     }
+    for(const item of triggered)if(included.has(item))parts.push(item.content);
     const memory=readExternalMemory(ctx,data);
     if(memory.text)parts.push('[从已安装插件只读获取的正文既有记忆；不代表手机聊天已发生]\n'+memory.text);
     const storedPhoneMemory=phoneMemoryText(data,data?.__contactId||activeContactId,2200);
     if(storedPhoneMemory)parts.push(storedPhoneMemory);
     const prompt=parts.join('\n\n');
-    summary.characters=prompt.length;
-    recordActivity('注入预览',`人设：${getCharacterName(char)} / ${persona.name}；预设 ${summary.preset} 条；世界书选中 ${summary.selected} 条、触发 ${summary.world} 条、未注入 ${summary.skipped} 条；正文记忆：${memory.source}${memory.status?'（'+memory.status+'）':''}；约 ${Math.ceil(prompt.length/2.5)} tokens（粗估）。`);
+    recordActivity('注入预览',`人设：${getCharacterName(char)} / ${persona.name}；预设 ${summary.preset} 条；世界书选中 ${summary.selected} 条、命中 ${triggered.length} 条、注入 ${included.size} 条、预算跳过 ${triggered.length-included.size} 条；正文记忆：${memory.source}${memory.status?'（'+memory.status+'）':''}；约 ${Math.ceil(prompt.length/2.5)} tokens（粗估）。`);
+    if(directMatches.length)recordActivity('世界书本轮关键词',directMatches
+        .map(item=>item.title+'（'+(included.has(item)?'已注入':'超过预算')+'）').join('；'));
     return resolvePhonePlaceholders(prompt,ctx,char);
 }
 
@@ -7646,7 +7660,7 @@ async function runReply(ctx, char, data, session, existingJob = null) {
         const catalog=stickerLibrary(ctx);
         const selectedStickers=chooseStickerCandidates(catalog,data);
         const rolePhotos=photosForActor(activeContactId,'chat',ctx);
-        const systemPrompt = [await composePhonePrompt(ctx, char, data), messageStylePrompt(data), stickerPrompt(selectedStickers),albumCatalogPrompt(activeContactId),
+        const systemPrompt = [await composePhonePrompt(ctx, char, data, {prioritizeLatestUserTurn:true}), messageStylePrompt(data), stickerPrompt(selectedStickers),albumCatalogPrompt(activeContactId),
             paymentReplyInstructions(data,activeContactId)].filter(Boolean).join('\n\n');
         const phoneHistory=buildPrompt(data,ctx,char);
         const api=readApiOptions(data,'chat');

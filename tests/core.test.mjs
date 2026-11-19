@@ -514,6 +514,32 @@ test('multi-book UI requires selecting books first, keeps old entry choices, and
     assert.ok(html.includes('data-lp="worldSelectionSummary"'));
     assert.ok(!html.includes('data-lp="worldSource"'),'no misleading single-book dropdown');
 });
+test('a keyword in the pending private-chat turn keeps its worldbook entry within a crowded budget', async () => {
+    const entries = {
+        1: {uid:1, constant:true, order:10, content:'旧设定'.repeat(3950)},
+        2: {uid:2, key:['沈遥'], order:265, comment:'同学资料', content:'沈遥是角色早就认识的同学。'.repeat(30)},
+        3: {uid:3, constant:true, order:5, content:'语境说明'},
+        4: {uid:4, key:['沈遥'], disable:true, order:1, content:'禁用词条'}
+    };
+    const data = newData();
+    data.config = {worldBooks:['测试世界书']};
+    data.messages = [
+        {from:'character', text:'你说的是谁？'},
+        {from:'user', text:'我说的是沈遥。'},
+        {from:'user', text:'[表情包：笑脸]', sticker:true}
+    ];
+    const ctx = {loadWorldInfo:async()=>({entries})};
+    const priority = {prioritizeLatestUserTurn:true};
+    const prompt = await composePhonePrompt(ctx,{name:'测试角色'},data,priority);
+    assert.match(prompt,/沈遥是角色早就认识的同学/);
+    assert.doesNotMatch(prompt,/旧设定|禁用词条/);
+    assert.ok(prompt.indexOf('语境说明') < prompt.indexOf('沈遥是角色早就认识的同学'));
+    assert.match(vm.runInContext('diagnostics[0].detail',sandbox),/同学资料（已注入）/);
+    assert.match(vm.runInContext('diagnostics[1].detail',sandbox),/预算跳过 1 条/);
+    const backgroundPrompt = await composePhonePrompt(ctx,{name:'测试角色'},data);
+    assert.match(backgroundPrompt,/旧设定/);
+    assert.doesNotMatch(backgroundPrompt,/沈遥是角色早就认识的同学/);
+});
 test('worldbook checkboxes render multiple choices and persist selections together',async()=>{
     const previousDocument=sandbox.document,previousWindow=sandbox.window;
     const element=tag=>({tag,children:[],dataset:{},textContent:'',checked:false,
