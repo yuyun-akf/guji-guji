@@ -1,3 +1,7 @@
+const ENTRY_LIMIT = 2800;
+const BATCH_CHARS = 11500;
+const BATCH_PARTS = 48;
+const LIST_PAGE = 40;
 
 export function createPhoneMemoryModule(api){
  const ctx=()=>api.context(), read=()=>api.readRootData(ctx()), ui=()=>api.getNodes();
@@ -6,165 +10,298 @@ export function createPhoneMemoryModule(api){
  const settings=d=>({enabled:d?.config?.phoneMemory?.enabled===true,
   intervalDays:[1,3,7].includes(+d?.config?.phoneMemory?.intervalDays)?+d.config.phoneMemory.intervalDays:3,
   injectMainline:d?.config?.phoneMemory?.injectMainline===true});
- const state=d=>({entries:Array.isArray(d?.phoneMemory?.entries)?d.phoneMemory.entries.slice(-60):[],
+ const state=d=>({...(d?.phoneMemory||{}),
+  entries:Array.isArray(d?.phoneMemory?.entries)?d.phoneMemory.entries:[],
   lastDay:day(d?.phoneMemory?.lastDay),cursors:d?.phoneMemory?.cursors||{}});
- let working=false;
- function feedback(s,type='info'){
-  const node=ui()?.phoneMemoryStatus;
-  if(node)node.textContent='';
-  if(s&&type!=='pending')api.notifyInteraction?.(s,type);
+ const session=()=>{const c=ctx();return {metadata:c?.chatMetadata,chatId:c?.chatId,characterId:c?.characterId,lifecycle:api.lifecycle?.()};};
+ const same=s=>{const c=ctx();return c?.chatMetadata===s.metadata&&c?.chatId===s.chatId&&c?.characterId===s.characterId&&api.lifecycle?.()===s.lifecycle;};
+ let job=null, scope=null, editingId='', limit=LIST_PAGE, lastAutomatic=null;
+
+ function feedback(message,type='info'){api.notifyInteraction?.(message,type);}
+ function contacts(d){
+  return [{id:'main',name:api.primaryName?.()||'主角色'},
+   ...(d.contacts||[]).map(c=>({id:c.id,name:c.remark||c.name||'联系人'}))];
  }
- function gather(d,cursors){
-  const persona=api.personaName?.(ctx())||'我';
-  const threads=[{id:'main',name:api.primaryName?.()||'主角色',msgs:d.messages||[]},
-   ...(d.contacts||[]).map(c=>({id:c.id,name:c.remark||c.name||'联系人',
-    msgs:d.conversations?.[c.id]?.messages||[]}))];
-  const lines=[],next={};
-  for(const thread of threads){
-   const msgs=Array.isArray(thread.msgs)?thread.msgs:[];
-   const from=Math.max(0,Math.min(msgs.length,+cursors[thread.id]||0));
-   next[thread.id]=msgs.length;
-   for(const m of msgs.slice(from)){
-    if(!['user','character'].includes(m?.from)||!String(m.text||'').trim())continue;
-    lines.push({contactId:thread.id,contactName:thread.name,time:String(m.storyTime||d.storyTime||'').slice(0,19),
-     who:thread.name+'/'+(m.from==='user'?persona:'角色'),text:String(m.text).slice(0,650)});
+ function threads(d){
+  return contacts(d).map(contact=>{
+   const messages=(contact.id==='main'?d.messages:d.conversations?.[contact.id]?.messages)||[];
+   return {...contact,messages:api.cleanPhoneHistory?.(messages)||messages.slice()};
+  });
+ }
+ function* unreadParts(thread,cursor,defaultTime){
+  const {messages}=thread;
+  let index=0,offset=0;
+  if(cursor&&typeof cursor==='object'){
+   const at=Number(cursor.index)||0;
+   const found=cursor.id?(messages[at]?.id===cursor.id?at:messages.findIndex(m=>m?.id===cursor.id)):at;
+   if(found>=0&&found<messages.length){index=found;offset=Math.max(0,+cursor.offset||0);}
+  }else if(Number.isInteger(cursor)&&cursor>=0&&cursor<=messages.length)index=cursor;
+  for(;index<messages.length;index++,offset=0){
+   const m=messages[index],text=String(m?.text||'').trim();
+   if(!['user','character'].includes(m?.from)||m.sticker||!text)continue;
+   const time=String(m.storyTime||defaultTime||'').slice(0,16);
+   while(offset<text.length){
+    let end=Math.min(text.length,offset+1500);
+    if(/[\uD800-\uDBFF]/.test(text[end-1])&&/[\uDC00-\uDFFF]/.test(text[end]||''))end--;
+    yield {index,time,text:text.slice(offset,end),from:m.from,cursor:{id:m.id||'',index,offset:end}};
+    offset=end;
    }
   }
-  lines.sort((a,b)=>a.time.localeCompare(b.time));
-  return {lines:lines.slice(-90),next};
  }
- async function patch(fn){
-  const c=ctx(),d=structuredClone(api.readRootData(c));
-  d.phoneMemory={...state(d)};fn(d);await api.writeData(c,{...d,__contactId:'primary'});
+ function gather(source,cursors,defaultTime,persona){
+  const pending=source.map(thread=>{
+   const stream=unreadParts(thread,cursors[thread.id],defaultTime);
+   return {thread,stream,part:stream.next().value};
+  }).filter(item=>item.part);
+  const lines=[],next={},byThread=new Map();
+  let size=0;
+  while(pending.length&&lines.length<BATCH_PARTS){
+   pending.sort((a,b)=>a.part.time.localeCompare(b.part.time));
+   const item=pending.shift(),{thread,part}=item;
+   if(byThread.size===5&&!byThread.has(thread.id))continue;
+   const line=JSON.stringify({thread:thread.id,time:part.time,role:part.from,speaker:part.from==='user'?persona:thread.name,text:part.text});
+   if(size+line.length+1>BATCH_CHARS)break;
+   lines.push(line);size+=line.length+1;
+   next[thread.id]=part.cursor;
+   const covered=byThread.get(thread.id)||{name:thread.name,dates:[],indices:new Set()};
+   covered.dates.push(part.time);covered.indices.add(part.index);byThread.set(thread.id,covered);
+   item.part=item.stream.next().value;
+   if(item.part)pending.push(item);
+  }
+  return {lines,next,byThread};
  }
- function render(){
+ async function patch(c,fn){
+  const d=structuredClone(api.readRootData(c));
+  d.phoneMemory=state(d);
+  fn(d);
+  await api.writeData(c,{...d,__contactId:'primary'});
+ }
+ function renderStatus(){
   const n=ui();if(!n?.phoneMemoryEnabled)return;
   const d=read(),cfg=settings(d),mem=state(d);
-  n.phoneMemoryEnabled.checked=cfg.enabled;
-  n.phoneMemoryInterval.value=String(cfg.intervalDays);
-  n.phoneMemoryInjectMainline.checked=cfg.injectMainline;
-  n.phoneMemoryRun.disabled=working;n.phoneMemorySave.disabled=working;
+  const active=job&&same(job.session),available=api.hasChat?.()!==false;
+  n.phoneMemoryRun.disabled=!available||Boolean(job);
+  n.phoneMemorySave.disabled=!available;
+  if(n.phoneMemoryStop){n.phoneMemoryStop.hidden=!active;n.phoneMemoryStop.disabled=Boolean(job?.stop);}
+  if(n.phoneMemoryRebuild)n.phoneMemoryRebuild.disabled=!available||Boolean(job);
+  if(n.phoneMemoryAdd)n.phoneMemoryAdd.disabled=!available;
   const remaining=mem.lastDay?Math.max(0,cfg.intervalDays-diff(mem.lastDay,day(d.storyTime))):cfg.intervalDays;
   n.phoneMemorySchedule.textContent=cfg.enabled
-   ?'上次处理：'+(mem.lastDay||'尚未开始')+'；距下次自动总结约 '+remaining+' 个剧情日'
-   :'自动总结已关闭；已保存记忆仍会保留';
-  n.phoneMemoryStatus.textContent='';
-  const list=n.phoneMemoryList;if(!list)return;
+   ?'上次总结 '+(mem.lastDay||'尚未开始')+' · 距下次约 '+remaining+' 个剧情日'
+   :'自动总结已关闭';
+  n.phoneMemoryStatus.textContent=active
+   ?(job.stop?'完成这一批后停止':'正在总结'+(job.count?' · 已处理 '+job.count+' 段':'')):'';
+ }
+ function setOptions(select,items,fallback){
+  if(!select)return;
+  const picked=select.value;
+  select.replaceChildren(...items.map(({id,name})=>{
+   const option=document.createElement('option');option.value=id;option.textContent=name;return option;
+  }));
+  select.value=items.some(item=>item.id===picked)?picked:fallback;
+ }
+ function renderList(){
+  const n=ui(),list=n?.phoneMemoryList;if(!list)return;
+  const d=read(),entries=state(d).entries;
+  const names=new Map(contacts(d).map(c=>[c.id,c.name]));
+  for(const e of entries)if(!names.has(e.contactId))names.set(e.contactId,e.contactName||'旧联系人');
+  setOptions(n.phoneMemoryFilter,[{id:'',name:'全部会话'},...[...names].map(([id,name])=>({id,name}))],'');
+  const filter=n.phoneMemoryFilter?.value||'',query=(n.phoneMemorySearch?.value||'').trim().toLocaleLowerCase();
+  const matched=entries.filter(e=>(!filter||filter===e.contactId)&&
+   (!query||[e.text,e.from,e.to,names.get(e.contactId)].some(value=>String(value||'').toLocaleLowerCase().includes(query))));
+  const visible=matched.slice().reverse().sort((a,b)=>Number(b.pinned===true)-Number(a.pinned===true)).slice(0,limit);
+  const opened=new Set(Array.from(list.querySelectorAll?.('details[open]')||[],el=>el.dataset.memoryId));
   list.replaceChildren();
-  if(!mem.entries.length){const p=document.createElement('p');p.textContent='暂无手机记忆，可设置周期或手动总结。';list.append(p);return;}
-  for(const e of mem.entries.slice().reverse()){
-   const d=document.createElement('details');d.className='lp-memory-entry';
-   const summary=document.createElement('summary');summary.textContent=(e.contactName||'小手机')+' · '+e.from+' — '+e.to+' · '+e.count+' 条';
-   const p=document.createElement('p');p.textContent=e.text;p.className='lp-memory-text';
-   const input=document.createElement('textarea');input.hidden=true;input.value=e.text;input.maxLength=2800;
+  if(n.phoneMemoryMore)n.phoneMemoryMore.hidden=matched.length<=limit;
+  if(!visible.length){const p=document.createElement('p');p.textContent=entries.length?'没有匹配的记忆':'暂无记忆';list.append(p);return;}
+  for(const e of visible){
+   const card=document.createElement('details');card.className='lp-memory-entry';card.dataset.memoryId=e.id;card.open=opened.has(e.id);
+   const summary=document.createElement('summary');
+   const dates=e.from&&e.from!==e.to?e.from+' 至 '+e.to:e.to||'';
+   summary.textContent=[names.get(e.contactId),dates,e.pinned?'置顶':'',e.count?e.count+' 条聊天':''].filter(Boolean).join(' · ');
+   const text=document.createElement('p');text.textContent=e.text;text.className='lp-memory-text';
    const actions=document.createElement('div');actions.className='lp-memory-actions';
-   for(const [label,act] of [['编辑','edit'],['保存修改','save'],['删除','delete']]){
-    const b=document.createElement('button');b.type='button';b.textContent=label;
-    b.dataset.memoryAction=act;b.dataset.memoryId=e.id;if(act==='save')b.hidden=true;actions.append(b);
+   const controls=[['编辑','edit'],['删除','delete']];
+   if(e.contactId!=='private-review')controls.splice(1,0,[e.pinned?'取消置顶':'置顶','pin']);
+   for(const [label,action] of controls){
+    const button=document.createElement('button');button.type='button';button.textContent=label;
+    button.dataset.memoryAction=action;button.dataset.memoryId=e.id;actions.append(button);
    }
-   d.append(summary,p,input,actions);list.append(d);
+   card.append(summary,text,actions);list.append(card);
   }
+ }
+ function closeEditor(){
+  const n=ui();if(!n?.phoneMemoryEditor)return;
+  n.phoneMemoryEditor.hidden=true;n.phoneMemoryText.value='';editingId='';
+ }
+ function open(){
+  const n=ui();if(!n?.phoneMemoryEnabled)return;
+  if(!scope||!same(scope)){
+   scope=session();limit=LIST_PAGE;closeEditor();
+   if(n.phoneMemorySearch)n.phoneMemorySearch.value='';
+   if(n.phoneMemoryFilter)n.phoneMemoryFilter.value='';
+   if(n.phoneMemoryPrefs)n.phoneMemoryPrefs.open=false;
+   const cfg=settings(read());
+   n.phoneMemoryEnabled.checked=cfg.enabled;
+   n.phoneMemoryInterval.value=String(cfg.intervalDays);
+   n.phoneMemoryInjectMainline.checked=cfg.injectMainline;
+  }
+  renderStatus();renderList();
  }
  async function saveSettings(){
-  if(working)return feedback('记忆总结进行中，请完成后再设置','error');
-  const n=ui(),enabled=n.phoneMemoryEnabled.checked,intervalDays=+n.phoneMemoryInterval.value;
+  const c=ctx(),origin=session(),n=ui();
+  if(!origin.metadata||api.hasChat?.()===false)return;
+  const enabled=n.phoneMemoryEnabled.checked,intervalDays=+n.phoneMemoryInterval.value;
+  const injectMainline=n.phoneMemoryInjectMainline.checked;
   if(![1,3,7].includes(intervalDays))return feedback('请选择 1、3 或 7 天','error');
   try{
-   await patch(d=>{
-    const old=settings(d);
-    d.config={...(d.config||{}),phoneMemory:{enabled,intervalDays,
-     injectMainline:n.phoneMemoryInjectMainline.checked}};
-    if(enabled&&!old.enabled&&!d.phoneMemory.lastDay)d.phoneMemory.lastDay=day(d.storyTime);
+   await patch(c,d=>{
+    d.config={...(d.config||{}),phoneMemory:{...d.config?.phoneMemory,enabled,intervalDays,injectMainline}};
+    if(enabled&&!d.phoneMemory.lastDay)d.phoneMemory.lastDay=day(d.storyTime);
    });
-   feedback('记忆设置已保存','success');render();
+   if(same(origin)){feedback('已保存总结设置','success');renderStatus();}
   }catch(e){feedback('保存失败：'+String(e.message||e),'error');}
  }
- async function summarize(manual=false){
-  if(working)return false;
-  const c=ctx(),origin=c?.chatMetadata,chatId=c?.chatId,characterId=c?.characterId;
-  const d=read(),cfg=settings(d),mem=state(d),now=day(d.storyTime);
-  if(!now||(!manual&&!cfg.enabled))return false;
-  const start=mem.lastDay||now;
-  if(!manual&&diff(start,now)<cfg.intervalDays)return false;
-  const {lines,next}=gather(d,mem.cursors);
-  if(!lines.length){
-   if(manual)feedback('没有新的聊天内容需要总结');
-   else try{await patch(d=>{d.phoneMemory.lastDay=now;d.phoneMemory.cursors=next;});}
-    catch(e){api.recordError?.('手机记忆时间锚点',e);}
+ function parseSummaries(raw,batch){
+  const output=api.stripModelReasoning?.(raw)||raw;
+  const value=String(typeof output==='string'?output:output?.content||'').trim()
+   .replace(/^\s*```(?:json)?\s*/i,'').replace(/\s*```\s*$/,'');
+  let parsed;
+  try{parsed=JSON.parse(value);}catch{throw new Error('模型返回的总结格式有误，可以重试');}
+  const groups=new Map();
+  for(const item of Array.isArray(parsed?.threads)?parsed.threads:[]){
+   if(!batch.byThread.has(item?.id)||typeof item.summary!=='string')continue;
+   if(groups.has(item.id))throw new Error('模型重复总结了同一会话，可以重试');
+   groups.set(item.id,item.summary.trim().slice(0,ENTRY_LIMIT));
+  }
+  if(groups.size!==batch.byThread.size)throw new Error('模型遗漏了部分会话，可以重试');
+  return [...groups].flatMap(([id,text])=>{
+   if(!text)return [];
+   const {name,dates,indices}=batch.byThread.get(id);
+   dates.sort();
+   return [{id:'pm'+Date.now()+Math.random().toString(36).slice(2,9),contactId:id,contactName:name,
+    text,from:day(dates[0]),to:day(dates.at(-1)),through:dates.at(-1),count:indices.size}];
+  });
+ }
+ async function summarize(manual=false,rebuild=false){
+  if(job||api.hasChat?.()===false)return false;
+  if(api.canSummarize?.()===false){
+   if(manual)feedback('聊天正在生成，请稍后总结');
    return false;
   }
-  working=true;feedback('正在独立总结手机记忆…','pending');render();
+  const c=ctx(),origin=session(),d=read(),cfg=settings(d),mem=state(d),now=day(d.storyTime);
+  if(!origin.metadata||!now||(!manual&&(!cfg.enabled||diff(mem.lastDay||now,now)<cfg.intervalDays)))return false;
+  if(!manual){
+   if(lastAutomatic?.day===now&&same(lastAutomatic.session))return false;
+   lastAutomatic={day:now,session:origin};
+  }
+  const source=threads(d),persona=api.personaName?.(c)||'我';
+  let cursors=rebuild?{}:mem.cursors,reset=rebuild;
+  const current={session:origin,stop:false,count:0};job=current;
+  renderStatus();
   try{
-   const prompt=[
-    '总结以下已发生的手机聊天事实，不要扮演角色，不要推进剧情。',
-    '禁止替玩家补写心理、动机、言行；未经证实的猜测必须写明未证实。',
-    '只保留确认过的事件、关系阶段、约定和待解决问题，不能添加没有发生的事。',
-    '故事时间：'+start+' 至 '+now+'。请用简洁中文分别总结各个聊天对象，每个摘要最多500字。',
-    '不同聊天对象的私聊绝不能混入其他聊天对象的记忆。每个 thread id 保持原样。',
-    '只输出 JSON：{"threads":[{"id":"main或npc:id","summary":"总结"}]}。每个出现的对话对象各一条，没有事实可不总结。',
-    ...lines.map(x=>'thread='+x.contactId+'｜'+x.time+'｜'+x.who+'：'+x.text)
-   ].join('\n').slice(0,13500);
-   const raw=await api.phoneGenerate(c,{task:'memory',maxTokens:2200,responseLength:2200,
-    systemPrompt:'只总结已明确写出的剧情事实。',prompt:[{role:'user',content:prompt}]},d);
-   if(ctx()?.chatMetadata!==origin||ctx()?.chatId!==chatId||ctx()?.characterId!==characterId)return false;
-   const output=api.stripModelReasoning?.(raw)||raw;
-   const text=String(typeof output==='string'?output:output?.content||'')
-    .replace(/<think>[\s\S]*?<\/think>/gi,'').trim();
-   if(text.length<10)throw new Error('API 未返回可用的记忆摘要');
-   const byId=new Map();
-   for(const line of lines)byId.set(line.contactId,line.contactName);
-   let parsed;
-   try{
-    const json=text.replace(/^\s*```(?:json)?\s*/i,'').replace(/\s*```\s*$/,'');
-    parsed=JSON.parse(json);
-   }catch{parsed=null;}
-   let entries=(Array.isArray(parsed?.threads)?parsed.threads:[])
-    .filter(item=>byId.has(item?.id)&&typeof item.summary==='string'&&item.summary.trim().length>8)
-    .map(item=>({contactId:item.id,contactName:byId.get(item.id),text:item.summary.trim().slice(0,2200)}));
-   if(!entries.length&&byId.size===1){
-    const [contactId,contactName]=byId.entries().next().value;
-    entries=[{contactId,contactName,text:text.slice(0,2200)}];
-   }
-   // When a model fails to separate multiple private chats, keep the summary
-   // only for manual review; NEVER inject it into a character's context.
-   if(!entries.length&&byId.size>1)
-    entries=[{contactId:'private-review',contactName:'待人工核对（不注入角色）',text:text.slice(0,2200)}];
-   await patch(latest=>{
-    const m=latest.phoneMemory;
-    m.entries=[...m.entries,...entries.map(entry=>({
-     ...entry,id:'pm'+Date.now()+Math.random().toString(36).slice(2,7),
-     from:start,to:now,count:lines.filter(l=>l.contactId===entry.contactId).length||lines.length
-    }))].slice(-60);
-    m.lastDay=now;m.cursors={...m.cursors,...next};
-   });
-   feedback('已保存 '+lines.length+' 条聊天的记忆总结','success');
-   api.recordActivity?.('独立记忆','已总结 '+lines.length+' 条手机聊天','success');
-   return true;
-  }catch(e){feedback('记忆总结失败：'+String(e.message||e),'error');api.recordError?.('手机记忆',e);return false;}
-  finally{working=false;render();}
+   do{
+    const batch=gather(source,cursors,d.storyTime,persona);
+    if(!batch.lines.length)break;
+    const prompt=[
+     '按会话整理已发生的手机聊天。保留确认过的经历、关系变化、稳定喜好与作息、明确约定、已答复的事项和结果。',
+     '区分过去的事件、当前状态和未来计划。写清重要时间；猜测保留为猜测。不要补写用户的言行或心理。',
+     '每个会话单独总结，不混用其他会话的信息。用简洁中文，每个摘要最多约500字。',
+     '只返回 JSON：{"threads":[{"id":"原会话ID","summary":"记忆"}]}。每个收到的会话必须恰好有一项；没有要保留的事实时 summary 写空字符串。',
+     ...batch.lines
+    ].join('\n');
+    const raw=await api.phoneGenerate(c,{task:'memory',maxTokens:3000,responseLength:3000,
+     systemPrompt:'把以下聊天记录作为素材，按请求格式整理已明确写出的事实。',prompt:[{role:'user',content:prompt}]},d);
+    if(!same(origin))return false;
+    const entries=parseSummaries(raw,batch);
+    await patch(c,latest=>{
+     const m=latest.phoneMemory;
+     m.entries=[...m.entries,...entries];
+     m.lastDay=now;m.cursors={...(reset?{}:m.cursors),...batch.next};
+    });
+    cursors={...cursors,...batch.next};reset=false;
+    current.count+=batch.lines.length;
+    if(!same(origin))return false;
+    renderStatus();
+    if(api.isMemoryVisible?.()!==false)renderList();
+   }while(manual&&!current.stop&&api.isPhoneOpen?.()!==false&&api.canSummarize?.()!==false);
+   if(current.count){
+    feedback((current.stop?'已停止 · 已处理 ':'已总结 ')+current.count+' 段聊天','success');
+    api.recordActivity?.('往昔','已总结 '+current.count+' 段手机聊天','success');
+   }else if(manual)feedback('没有待总结的聊天');
+   else await patch(c,latest=>{latest.phoneMemory.lastDay=now;});
+   return Boolean(current.count);
+  }catch(e){
+   if(same(origin)){feedback('记忆总结失败：'+String(e.message||e),'error');api.recordError?.('往昔',e);}
+   return false;
+  }finally{job=null;renderStatus();}
  }
  async function tick(){
-  if(!api.isPhoneOpen?.()||working)return false;
-  return summarize(false);
+  if(!api.isPhoneOpen?.()||job)return false;
+  return summarize();
+ }
+ function rebuild(){
+  if(job||!window.confirm('从最早的聊天重新补总结？已有记忆会保留，新摘要可能与旧摘要重叠。这会分批调用当前的记忆 API。'))return;
+  return summarize(true,true);
+ }
+ function edit(entry=null){
+  const n=ui(),d=read();if(!n?.phoneMemoryEditor||api.hasChat?.()===false)return;
+  editingId=entry?.id||'';
+  const options=contacts(d);
+  if(entry&&!options.some(person=>person.id===entry.contactId))
+   options.push({id:entry.contactId,name:entry.contactName||'旧联系人'});
+  setOptions(n.phoneMemoryOwner,options,'main');
+  const filter=n.phoneMemoryFilter.value;
+  n.phoneMemoryOwner.value=entry?.contactId||(options.some(person=>person.id===filter)?filter:'main');
+  n.phoneMemoryOwner.disabled=Boolean(entry);
+  n.phoneMemoryText.value=entry?.text||'';
+  n.phoneMemoryEditor.hidden=false;n.phoneMemoryText.focus();
+ }
+ async function saveEditor(){
+  const c=ctx(),origin=session(),n=ui();
+  const text=n.phoneMemoryText.value.trim().slice(0,ENTRY_LIMIT),id=editingId,owner=n.phoneMemoryOwner.value;
+  if(!origin.metadata||!scope||!same(scope))return;
+  if(!text)return feedback('请填写记忆内容','error');
+  try{
+   await patch(c,d=>{
+    if(id){
+     const e=d.phoneMemory.entries.find(item=>item.id===id);
+     if(!e)throw new Error('这条记忆已删除');
+     e.text=text;
+    }else{
+     const contact=contacts(d).find(person=>person.id===owner);
+     if(!contact)throw new Error('请选择会话');
+     d.phoneMemory.entries.push({id:'pm'+Date.now()+Math.random().toString(36).slice(2,9),
+      contactId:owner,contactName:contact.name,text,to:day(d.storyTime),through:d.storyTime,count:0,pinned:true});
+    }
+   });
+   if(same(origin)){closeEditor();renderList();feedback('记忆已保存','success');}
+  }catch(err){feedback('保存记忆失败：'+String(err.message||err),'error');}
  }
  async function handleClick(e){
   const b=e.target?.closest?.('[data-memory-action]');if(!b)return;
-  const action=b.dataset.memoryAction,id=b.dataset.memoryId,card=b.closest('.lp-memory-entry');
-  if(action==='edit'){
-   card.querySelector('textarea').hidden=false;
-   card.querySelector('.lp-memory-text').hidden=true;
-   card.querySelector('[data-memory-action="save"]').hidden=false;return;
-  }
-  if(action==='delete'&&!window.confirm('确定删除这条手机记忆？'))return;
-  if(action==='save'&&!card.querySelector('textarea').value.trim())return feedback('记忆不能为空','error');
+  const {memoryAction:action,memoryId:id}=b.dataset,c=ctx(),origin=session();
+  const entry=state(read()).entries.find(item=>item.id===id);
+  if(!entry||!origin.metadata)return;
+  if(action==='edit')return edit(entry);
+  if(action==='delete'&&!window.confirm('删除这条记忆？'))return;
+  if(action!=='delete'&&action!=='pin')return;
   try{
-   await patch(d=>{
-    if(action==='delete')d.phoneMemory.entries=d.phoneMemory.entries.filter(x=>x.id!==id);
-    else d.phoneMemory.entries=d.phoneMemory.entries.map(x=>x.id===id
-     ?{...x,text:card.querySelector('textarea').value.trim().slice(0,2800)}:x);
+   await patch(c,d=>{
+    if(action==='delete')d.phoneMemory.entries=d.phoneMemory.entries.filter(item=>item.id!==id);
+    else{
+     const current=d.phoneMemory.entries.find(item=>item.id===id);
+     if(current)current.pinned=!current.pinned;
+    }
    });
-   feedback(action==='delete'?'已删除记忆':'记忆修改已保存','success');render();
+   if(same(origin)){
+    if(action==='delete'&&editingId===id)closeEditor();
+    feedback(action==='delete'?'已删除记忆':entry.pinned?'已取消置顶':'已置顶','success');renderList();
+   }
   }catch(err){feedback('记忆修改失败：'+String(err.message||err),'error');}
  }
- return {settings,state,render,saveSettings,summarize,tick,handleClick};
+ const search=()=>{limit=LIST_PAGE;renderList();};
+ const showMore=()=>{limit+=LIST_PAGE;renderList();};
+ const stop=()=>{if(job&&same(job.session)){job.stop=true;renderStatus();}};
+ return {settings,state,open,renderStatus,saveSettings,summarize,tick,rebuild,stop,edit,closeEditor,saveEditor,search,showMore,handleClick};
 }

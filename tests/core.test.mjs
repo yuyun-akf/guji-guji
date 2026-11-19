@@ -85,6 +85,21 @@ test('diagnostic text hides obvious credentials', () => {
     assert.equal(cleaned.includes('已隐藏'), true);
 });
 
+test('a reply started before a memory edit cannot restore the older archive', async () => {
+    const previous={...newData(),phoneMemory:{entries:[{id:'note',text:'旧记忆'}]},
+        config:{phoneMemory:{enabled:false}}};
+    const ctx={chatMetadata:{st_little_phone_v1:previous},saveMetadata:async()=>{}};
+    const pending=structuredClone(readData(ctx));
+    await writeData(ctx,{...previous,phoneMemory:{entries:[{id:'note',text:'修订后的记忆'}]},
+        config:{phoneMemory:{enabled:true}}},{savePhoneMemory:true});
+    pending.messages.push({from:'character',text:'稍后见'});
+    await writeData(ctx,pending);
+    const saved=ctx.chatMetadata.st_little_phone_v1;
+    assert.equal(saved.phoneMemory.entries[0].text,'修订后的记忆');
+    assert.equal(saved.config.phoneMemory.enabled,true);
+    assert.equal(saved.messages.at(-1).text,'稍后见');
+});
+
 test('phone opens into a launcher with one send-and-generate action', () => {
     sandbox.document = { createElement: () => ({ innerHTML: '', id: '' }) };
     const html = makeUI().innerHTML;
@@ -800,12 +815,12 @@ test('NPC generations use only the selected contact persona', () => {
     `,runtime);
     const ctx={characterId:0,characters:[{name:'角色甲',description:'演员'}],chatMetadata:{
         st_little_phone_v1:{version:1,storyTime:'2026-01-01T12:00',messages:[],friendship:{state:'friends'},
-        contacts:[{id:'npc:mom',name:'人物乙',description:'社区志愿者'}],
+        contacts:[{id:'npc:mom',name:'人物乙',description:'画家'}],
         conversations:{'npc:mom':{messages:[],friendship:{state:'friends'}}}}}};
     runtime.storage.select('npc:mom');
     const prompt=runtime.storage.createSystemPrompt(runtime.storage.contactCharacter(ctx),runtime.storage.readData(ctx));
     assert.ok(prompt.includes('角色「人物乙」'));
-    assert.ok(prompt.includes('社区志愿者'));
+    assert.ok(prompt.includes('画家'));
     assert.equal(prompt.includes('角色「角色甲」'),false);
 });
 test('NPC data is scoped to current roleplay chat metadata, not an imported character directory', () => {
@@ -829,7 +844,7 @@ test('NPC extraction finds explicit names and preserves who the relationship bel
     const runtime = {console,Date,structuredClone,window:{}};
     vm.createContext(runtime);
     vm.runInContext(source+'\nglobalThis.extract=extractNpcCandidatesFromText;',runtime);
-    const text = '角色甲的母亲人物乙，社区志愿者。\n父亲：人物丙\nuser的老师李春华，是大学教授。';
+    const text = '角色甲的母亲人物乙，画家。\n父亲：人物丙\nuser的老师李春华，是大学教授。';
     const results=runtime.extract(text,'当前角色卡','角色甲');
     const get=name=>results.find(x=>x.name===name);
     assert.equal(get('人物乙')?.relation,'角色甲的母亲');
@@ -841,9 +856,9 @@ test('NPC scanner does not mistake an occupation phrase for a name', () => {
     const runtime={console,Date,structuredClone,window:{}};
     vm.createContext(runtime);
     vm.runInContext(source+'\nglobalThis.extract=extractNpcCandidatesFromText;',runtime);
-    const results=runtime.extract('人物丙：修理技师，角色甲的父亲。','人物档案','角色甲');
+    const results=runtime.extract('人物丙：著名导演，角色甲的父亲。','人物档案','角色甲');
     assert.ok(results.some(x=>x.name==='人物丙'));
-    assert.equal(results.some(x=>x.name==='修理技师'),false);
+    assert.equal(results.some(x=>x.name==='著名导演'),false);
 });
 test('NPC scanner reads only the current character and its configured lorebooks, without API use', async () => {
     const runtime={console,Date,structuredClone,window:{}};
@@ -852,12 +867,12 @@ test('NPC scanner reads only the current character and its configured lorebooks,
     let worldCalls=0;
     const ctx={characterId:0,chatId:'story-A',
         characters:[
-            {name:'角色甲',data:{description:'角色甲的母亲人物乙，社区志愿者。',extensions:{world:'角色资料'}}},
+            {name:'角色甲',data:{description:'角色甲的母亲人物乙，画家。',extensions:{world:'角色资料'}}},
             {name:'其他角色',data:{description:'姓名：不相干的人物'}}
         ],
         chatMetadata:{st_little_phone_v1:{version:1,storyTime:'2026-10-25T09:00',messages:[],friendship:{state:'friends'}}},
         loadWorldInfo:async name=>{worldCalls++;assert.equal(name,'角色资料');return {entries:{
-            1:{comment:'人物丙',content:'人物丙\n身份：修理技师，角色甲的父亲。'}
+            1:{comment:'人物丙',content:'人物丙\n身份：电影导演，角色甲的父亲。'}
         }};}
     };
     const results=await runtime.scan(ctx);
@@ -866,7 +881,7 @@ test('NPC scanner reads only the current character and its configured lorebooks,
     assert.ok(names.includes('人物丙'));
     assert.equal(names.includes('不相干的人物'),false);
     assert.equal(worldCalls,1);
-    assert.equal(results.candidates.find(x=>x.name==='人物丙')?.description.includes('修理技师'),true);
+    assert.equal(results.candidates.find(x=>x.name==='人物丙')?.description.includes('电影导演'),true);
     assert.equal(ctx.chatMetadata.st_little_phone_v1.contacts,undefined);
 });
 test('NPC scanner excludes people already saved and has review-only UI', () => {
@@ -874,8 +889,8 @@ test('NPC scanner excludes people already saved and has review-only UI', () => {
     vm.createContext(runtime);
     vm.runInContext(source+'\nglobalThis.filter=mergeNpcCandidates;',runtime);
     const found=runtime.filter([
-        {name:'人物乙',description:'社区志愿者',source:'一'},
-        {name:'人物乙',description:'社区志愿者',source:'二'},
+        {name:'人物乙',description:'画家',source:'一'},
+        {name:'人物乙',description:'学院画家',source:'二'},
         {name:'角色甲',description:'当前 char',source:'三'},
         {name:'人物丙',description:'父亲',source:'四'}
     ],{contacts:[{id:'npc:s',name:'人物乙'}]},'角色甲');

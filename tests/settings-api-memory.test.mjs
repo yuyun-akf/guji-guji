@@ -23,7 +23,8 @@ const dom=()=>({dataset:{},children:[],textContent:'',value:'3',checked:false,hi
  querySelector(){return dom();},focus(){}});
 function memoryHarness(intervalDays=1,contacts=false){
  const nodes=Object.fromEntries(['phoneMemoryEnabled','phoneMemoryInterval','phoneMemoryInjectMainline',
-  'phoneMemoryStatus','phoneMemorySchedule','phoneMemoryRun','phoneMemorySave','phoneMemoryList']
+  'phoneMemoryStatus','phoneMemorySchedule','phoneMemoryRun','phoneMemorySave','phoneMemoryList',
+  'phoneMemoryFilter','phoneMemorySearch','phoneMemoryEditor','phoneMemoryOwner','phoneMemoryText','phoneMemoryMore']
   .map(name=>[name,dom()]));
  nodes.phoneMemoryEnabled.checked=true;
  nodes.phoneMemoryInterval.value=String(intervalDays);
@@ -34,14 +35,17 @@ function memoryHarness(intervalDays=1,contacts=false){
  }:{},config:{}};
  const ctx={chatId:'chat-a',characterId:1,chatMetadata:{storage:1}};
  let modelCalls=0,response=null;
+ const payloads=[];
  const make=new Function('document','window','structuredClone',
   memory.replace(/^export /gm,'')+'\nreturn createPhoneMemoryModule;');
  const controller=make({createElement:dom},{confirm:()=>true},clone)({
   context:()=>ctx,readRootData:()=>data,getNodes:()=>nodes,
   writeData:async(_c,next)=>{data=next;},
   stripModelReasoning:raw=>raw,isPhoneOpen:()=>true,recordError:()=>{},
-  phoneGenerate:async()=>{
+  phoneGenerate:async(_ctx,options)=>{
    modelCalls++;
+   payloads.push(options.prompt[0].content);
+   if(typeof response==='function')return response(options);
    return response||JSON.stringify({threads:contacts?[
     {id:'main',summary:'主角色与用户确认了看展计划，没有其他承诺。'},
     {id:'npc:alice',summary:'艾丽丝和用户提到周六保密的事项。'}
@@ -49,11 +53,15 @@ function memoryHarness(intervalDays=1,contacts=false){
   }
  });
  return {controller,ctx,nodes,read:()=>data,set:(fn)=>fn(data),
-  calls:()=>modelCalls,respond:value=>{response=value;}};
+  calls:()=>modelCalls,payloads,respond:value=>{response=value;}};
 }
-test('settings navigation has six isolated groups, one-level back and unchanged original controls',()=>{
- const groups=[...html.matchAll(/data-settings-category="([^"]+)"/g)].map(x=>x[1]);
- assert.deepEqual(groups,['system','api','chat','presets','memory','data']);
+test('the desktop and Settings open the same independent memory app',()=>{
+ const settings=html.split('data-lp-screen="memory"')[0];
+ const groups=[...settings.matchAll(/data-settings-category="([^"]+)"/g)].map(x=>x[1]);
+ assert.deepEqual(groups,['system','api','chat','presets','data']);
+ assert.match(settings,/data-lp-open="memory"/);
+ assert.match(index,/key:'memory',screen:'memory',name:'往昔'/);
+ assert.match(index,/memory:memoryReturnScreen/);
  for(const name of ['lockEnabled','clockMode','floatingLauncher','apiTask','apiMode','apiProfile','apiTest',
   'presetSource','worldBookList','messageStyle','phoneMemoryInterval','phoneMemoryList','readMainlineMemory'])
   assert.ok(html.includes('data-lp="'+name+'"'),name);
@@ -171,9 +179,96 @@ test('async summary re-reads the current data to preserve messages added while g
  h.set(d=>{d.storyTime='2026-11-16T12:00';});
  let release;
  const deferred=new Promise(resolve=>{release=resolve;});
- // Controller reads its callback at creation; verify the live-merge property in source.
- assert.match(memory,/await patch\(latest=>/);
- assert.match(memory,/structuredClone\(api\.readRootData\(c\)\)/);
- assert.match(memory,/ctx\(\)\?\.chatMetadata!==origin/);
- assert.ok(release);
+ h.respond(()=>deferred);
+ const pending=h.controller.summarize(true);
+ h.set(d=>d.messages.push({id:'new',from:'user',storyTime:'2026-11-16T12:00',text:'稍后再聊'}));
+ release(JSON.stringify({threads:[{id:'main',summary:'已经确认看展。'}]}));
+ assert.equal(await pending,true);
+ assert.equal(h.read().messages.length,2);
+ assert.equal(h.read().phoneMemory.cursors.main.index,0);
+ await h.controller.summarize(true);
+ assert.match(h.payloads[1],/稍后再聊/);
+ assert.doesNotMatch(h.payloads[1],/我今天确定去看展览/);
+});
+test('manual batches cover old and new history, including the end of long messages',async()=>{
+ const h=memoryHarness();
+ const notes=Array.from({length:65},(_,i)=>({id:'old'+i,contactId:'main',text:'旧记忆'+i}));
+ h.set(d=>{
+  d.phoneMemory={entries:notes,cursors:{}};
+  d.messages=Array.from({length:100},(_,i)=>({id:'m'+i,from:'user',storyTime:d.storyTime,
+   text:'记录-'+String(i).padStart(3,'0')+'。'+(i===0?'甲'.repeat(16000)+'长消息结尾':'日常消息')}));
+ });
+ assert.equal(await h.controller.summarize(true),true);
+ const merged=h.payloads.join('\n');
+ for(let i=0;i<100;i++)assert.equal(merged.split('记录-'+String(i).padStart(3,'0')+'。').length,2);
+ assert.match(merged,/长消息结尾/);
+ assert.match(h.payloads[0],/记录-000/);
+ assert.equal(h.read().phoneMemory.cursors.main.id,'m99');
+ assert.deepEqual(h.read().phoneMemory.entries.slice(0,65),notes);
+ assert.equal(await h.controller.summarize(true),false);
+});
+test('rebuilding legacy progress keeps the archive and stopping leaves the next batch available',async()=>{
+ const h=memoryHarness();
+ const edited={id:'edited',contactId:'main',text:'手动修订的旧摘要',pinned:true};
+ h.set(d=>{
+  d.messages=Array.from({length:60},(_,i)=>({id:'m'+i,from:'user',text:'旧聊天-'+String(i).padStart(2,'0')}));
+  d.phoneMemory={cursors:{main:60},entries:[edited]};
+ });
+ const response=JSON.stringify({threads:[{id:'main',summary:'重新整理了旧事。'}]});
+ h.respond(()=>{h.controller.stop();return response;});
+ assert.equal(await h.controller.rebuild(),true);
+ assert.equal(h.calls(),1);
+ assert.equal(h.read().phoneMemory.cursors.main.id,'m47');
+ assert.deepEqual(h.read().phoneMemory.entries[0],edited);
+ h.respond(response);
+ assert.equal(await h.controller.summarize(true),true);
+ assert.match(h.payloads[1],/旧聊天-48/);
+ assert.doesNotMatch(h.payloads[1],/旧聊天-47/);
+ assert.equal(h.read().phoneMemory.cursors.main.id,'m59');
+});
+test('omitted summary conversations stay queued and switching chats discards in-flight results',async()=>{
+ const h=memoryHarness(1,true);
+ h.respond(JSON.stringify({threads:[{id:'main',summary:'约好看展。'}]}));
+ assert.equal(await h.controller.summarize(true),false);
+ assert.equal(h.read().phoneMemory,undefined);
+ let release;
+ h.respond(()=>new Promise(resolve=>{release=resolve;}));
+ const pending=h.controller.summarize(true);
+ h.ctx.chatMetadata={storage:2};h.ctx.chatId='chat-b';
+ release(JSON.stringify({threads:[{id:'main',summary:'约好看展。'},{id:'npc:alice',summary:'事项保密。'}]}));
+ assert.equal(await pending,false);
+ assert.equal(h.read().phoneMemory,undefined);
+});
+test('memory recall keeps pinned and relevant old notes within budget and excludes other chats and future events',()=>{
+ const begin=index.indexOf('function phoneMemoryText('),end=index.indexOf('function syncMainlinePrompt(',begin);
+ const output=new Function('PRIMARY_CONTACT_ID',index.slice(begin,end)+'return phoneMemoryText;')('primary');
+ const recent=Array.from({length:12},(_,i)=>({contactId:'main',text:'最近对话'+i+'。'.repeat(600),to:'2026-11-02'}));
+ const data={storyTime:'2026-11-16T12:00',phoneMemory:{entries:[
+  {contactId:'main',pinned:true,to:'2026-11-01',text:'重点约定'},
+  {contactId:'main',to:'2026-10-01',text:'夜班后才睡觉，已解释过原因。'},
+  ...recent,{contactId:'npc:alice',text:'另一位联系人的私事'},
+  {contactId:'private-review',text:'不可注入的旧混合摘要'},
+  {contactId:'main',to:'2026-11-16',through:'2026-11-16T18:00',text:'今晚之后的事'}]}};
+ const prompt=output(data,'primary',1600,'说到夜班后的作息');
+ assert.match(prompt,/重点约定/);assert.match(prompt,/夜班后才睡觉/);assert.match(prompt,/最近对话11/);
+ assert.doesNotMatch(prompt,/另一位|混合摘要|今晚之后/);
+ assert.doesNotMatch(output(data),/混合摘要/);
+});
+test('manual entries are scoped to the chosen contact and can be edited and unpinned',async()=>{
+ const h=memoryHarness(1,true);
+ h.controller.open();
+ h.nodes.phoneMemoryFilter.value='npc:alice';h.controller.search();h.controller.edit();
+ h.nodes.phoneMemoryText.value='周五见面';
+ await h.controller.saveEditor();
+ const first=h.read().phoneMemory.entries[0];
+ assert.equal(first.contactId,'npc:alice');assert.equal(first.pinned,true);
+ const click=action=>h.controller.handleClick({target:{closest:()=>({dataset:{memoryAction:action,memoryId:first.id}})}});
+ await click('edit');
+ h.nodes.phoneMemoryText.value='改到周六见面';
+ await h.controller.saveEditor();
+ await click('pin');
+ const updated=h.read().phoneMemory.entries[0];
+ assert.equal(updated.text,'改到周六见面');assert.equal(updated.pinned,false);
+ await click('delete');
+ assert.equal(h.read().phoneMemory.entries.length,0);
 });

@@ -86,6 +86,7 @@ const APP_CATALOG=[
  {key:'wallet',screen:'wallet',name:'吱付宝',ready:true},
  {key:'weibo',screen:'weibo',name:'群星',ready:true},
  {key:'calendar',screen:'calendar',name:'日历',ready:true},
+ {key:'memory',screen:'memory',name:'往昔',ready:true},
  {key:'album',screen:'album',name:'相册',ready:true},
  {key:'settings',screen:'settings',name:'设置',ready:true},
  {key:'diagnostics',screen:'diagnostics',name:'运行日志',ready:true},
@@ -102,6 +103,7 @@ const APP_SHAPES={
  settings:'<circle cx="12" cy="12" r="7.3"/><circle cx="12" cy="12" r="3.15"/><path d="M12 1.9v2.3M12 19.8v2.3M1.9 12h2.3M19.8 12h2.3M4.86 4.86l1.63 1.63M17.51 17.51l1.63 1.63M4.86 19.14l1.63-1.63M17.51 6.49l1.63-1.63"/>',
  album:'<rect x="2.5" y="3" width="19" height="18" rx="2"/><circle cx="8" cy="9" r="2"/><path d="m4 18 6-6 4 3 3-4 4 5"/>',
  calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18M8 14h2M13 14h2M8 18h2"/>',
+ memory:'<path d="M3 5.5h5a4 4 0 0 1 4 4v10a5 5 0 0 0-4-2H3zM21 5.5h-5a4 4 0 0 0-4 4v10a5 5 0 0 1 4-2h5zM6 9h2M16 9h2M6 12h2M16 12h2"/>',
  theme:'<path d="M12 3a9 9 0 1 0 0 18h2a2 2 0 0 0 1-3.7c-.5-.2-.8-.6-.8-1.1 0-.8.6-1.4 1.4-1.4H18A4 4 0 0 0 22 11c0-4.4-4.3-8-10-8Z"/><circle cx="7.5" cy="10" r=".8" fill="currentColor"/><circle cx="11" cy="7.5" r=".8" fill="currentColor"/><circle cx="16" cy="8.5" r=".8" fill="currentColor"/>',
  shopping:'<path d="M4 8h16l-1 13H5L4 8Z"/><path d="M8 9V6a4 4 0 0 1 8 0v3"/>',
  takeout:'<path d="M4 3v8c0 2 4 2 4 0V3M6 3v18M15 3c4 0 5 4 5 7 0 3-2 4-5 4V3ZM18 14v7"/>',
@@ -140,7 +142,7 @@ let chatPhotoDrafts=[];
 let clockTicker=null;
 let clockTickBusy=false;
 const weiboState={scope:'',posts:[],trending:[],tab:'feed',loading:false,selectedId:'',generationId:0};
-const SCREENS = new Set(['profileRole','lock', 'home', 'weibo', 'wallet', 'shopping', 'takeout', 'album', 'groups', 'sharePicker', 'shareViewer', 'chat', 'chatList', 'contacts', 'requests', 'profile', 'addNpc', 'discoverNpc', 'discover', 'me', 'chatOptions', 'chatRecords', 'contactManage', 'meProfile', 'meSettings', 'momentHistory', 'roleFriends', 'momentCompose', 'settings', 'diagnostics', 'calendar', 'theme', 'presetPicker', 'worldPicker']);
+const SCREENS = new Set(['profileRole','lock', 'home', 'weibo', 'wallet', 'shopping', 'takeout', 'album', 'groups', 'sharePicker', 'shareViewer', 'chat', 'chatList', 'contacts', 'requests', 'profile', 'addNpc', 'discoverNpc', 'discover', 'me', 'chatOptions', 'chatRecords', 'contactManage', 'meProfile', 'meSettings', 'momentHistory', 'roleFriends', 'momentCompose', 'settings', 'diagnostics', 'calendar', 'theme', 'memory', 'presetPicker', 'worldPicker']);
 
 function context() {
     try {
@@ -1347,7 +1349,7 @@ function apiSessionId(ctx) {
 }
 const PHONE_API_TARGETS=[
  ['default','全部应用 · 默认连接'],['chat','咕叽聊（含群聊）'],['weibo','群星'],
- ['takeout','外卖 · 商户生成'],['autonomy','角色自主活动'],['memory','手机记忆']
+ ['takeout','外卖 · 商户生成'],['autonomy','角色自主活动'],['memory','往昔 · 记忆总结']
 ];
 const API_TARGET_IDS=new Set(PHONE_API_TARGETS.map(x=>x[0]));
 function apiKeySlot(ctx,task='default'){
@@ -2823,7 +2825,7 @@ function preserveLatestQunxingFeeds(previous,payload){
  payload.qunxing.generated=result;
 }
 
-async function writeData(ctx,data) {
+async function writeData(ctx,data,{savePhoneMemory=false}={}) {
     if (!ctx?.chatMetadata||typeof ctx.saveMetadata!=='function')
         throw new Error('当前酒馆未提供可用的聊天存档接口。');
     const previous=ctx.chatMetadata[DATA_KEY];
@@ -2858,6 +2860,10 @@ async function writeData(ctx,data) {
         else delete payload.avatars.user;
     }
     preserveLatestQunxingFeeds(previous,payload);
+    if(!savePhoneMemory){
+        if(previous?.phoneMemory)payload.phoneMemory=previous.phoneMemory;
+        if(previous?.config?.phoneMemory)payload.config={...payload.config,phoneMemory:previous.config.phoneMemory};
+    }
     ctx.chatMetadata[DATA_KEY]=payload;
     try {await ctx.saveMetadata();}
     catch(error){
@@ -3271,14 +3277,33 @@ function mainlineHistory(rootData,ctx=context()) {
 }
 
 
-function phoneMemoryText(data,contactId='',maxChars=2200){
+function phoneMemoryText(data,contactId='',maxChars=4800,query=''){
  const entries=Array.isArray(data?.phoneMemory?.entries)?data.phoneMemory.entries:[];
  const target=contactId===PRIMARY_CONTACT_ID?'main':contactId;
- const relevant=target?entries.filter(e=>e.contactId===target):entries;
- const lines=relevant.slice(-8).map(e=>
-  String(e.to||'')+' · '+String(e.text||'').slice(0,800)).filter(Boolean);
- return lines.length?'【咕叽咕机已保存的独立记忆；仅为确实发生过的事件，不得当作对方知晓其他私聊】\n'+
-  clipContext(lines.join('\n\n'),maxChars):'';
+ const now=String(data?.storyTime||'').replace(' ','T');
+ const relevant=entries.filter(e=>e?.contactId&&e.contactId!=='private-review'&&(!target||e.contactId===target)
+  &&typeof e.text==='string'&&e.text.trim()&&(!now||String(e.through||e.to||'').replace(' ','T')<=now)).reverse();
+ const pinned=relevant.filter(e=>e.pinned===true),ordinary=relevant.filter(e=>e.pinned!==true);
+ const terms=new Set();
+ for(const word of String(query||'').slice(-650).toLowerCase().match(/\p{Script=Han}{2,}|[a-z0-9]{3,}/gu)||[]){
+  if(/^[a-z0-9]+$/.test(word))terms.add(word);
+  else for(let i=0;i<word.length-1;i++)terms.add(word.slice(i,i+2));
+ }
+ const later=ordinary.slice(2),keywords=[...terms];
+ const related=keywords.length?later.map(entry=>{
+  const text=entry.text.toLowerCase();
+  const score=keywords.reduce((sum,term)=>sum+Number(text.includes(term)),0);
+  return {entry,score};
+ }).filter(item=>item.score>0).sort((a,b)=>b.score-a.score).map(item=>item.entry):[];
+ const chosen=[];let remaining=maxChars;
+ for(const entry of new Set([...pinned,...ordinary.slice(0,2),...related,...later])){
+  if(remaining<100)break;
+  const label=[entry.to,!target&&(entry.contactName||entry.contactId)].filter(Boolean).join(' · ');
+  const text=(label?label+'：':'')+entry.text;
+  const line=text.slice(0,Math.min(remaining-2,entry.pinned?1600:1000));
+  chosen.push(line);remaining-=line.length+2;
+ }
+ return chosen.length?'【往昔 · 已保存的手机记忆】\n按记录日期理解旧事，结合当前手机时间判断其是否仍适用。已回答的问题继续往下聊。角色只知道自己参与或获告知的事。\n'+chosen.join('\n\n'):'';
 }
 function syncMainlinePrompt(ctx) {
     if(typeof ctx?.setExtensionPrompt!=='function')return false;
@@ -3488,7 +3513,7 @@ async function composePhonePrompt(ctx, char, data, {prioritizeLatestUserTurn=fal
     for(const item of triggered)if(included.has(item))parts.push(item.content);
     const memory=readExternalMemory(ctx,data);
     if(memory.text)parts.push('[从已安装插件只读获取的正文既有记忆；不代表手机聊天已发生]\n'+memory.text);
-    const storedPhoneMemory=phoneMemoryText(data,data?.__contactId||activeContactId,2200);
+    const storedPhoneMemory=phoneMemoryText(data,data?.__contactId||activeContactId,PHONE_MEMORY_BUDGET,latestTurn);
     if(storedPhoneMemory)parts.push(storedPhoneMemory);
     const prompt=parts.join('\n\n');
     recordActivity('注入预览',`人设：${getCharacterName(char)} / ${persona.name}；预设 ${summary.preset} 条；世界书选中 ${summary.selected} 条、命中 ${triggered.length} 条、注入 ${included.size} 条、预算跳过 ${triggered.length-included.size} 条；正文记忆：${memory.source}${memory.status?'（'+memory.status+'）':''}；约 ${Math.ceil(prompt.length/2.5)} tokens（粗估）。`);
@@ -3863,12 +3888,16 @@ async function loadTakeoutController(){
 async function loadPhoneMemoryController(){
  if(memoryController)return memoryController;
  if(memoryLoadPromise)return memoryLoadPromise;
- memoryLoadPromise=import('./memory.js?v=0.36.4&persona=1').then(module=>{
+ memoryLoadPromise=import('./memory.js?v=0.37.0').then(module=>{
   memoryController=module.createPhoneMemoryModule({
-   context,getNodes:()=>nodes,readRootData,writeData,recordError,recordActivity,
-   stripModelReasoning,notifyInteraction,
-   phoneGenerate:(ctx,options,data)=>phoneGenerate(ctx,{...options,task:'memory'},data),
+   context,getNodes:()=>nodes,readRootData,recordError,recordActivity,
+   writeData:(ctx,data)=>writeData(ctx,data,{savePhoneMemory:true}),
+   stripModelReasoning,cleanPhoneHistory,notifyInteraction,
+   phoneGenerate:(ctx,options,data)=>generateWithTimeout(ctx,{...options,task:'memory'},data),
    isPhoneOpen:()=>!!root?.classList.contains('lp-open')&&document.visibilityState!=='hidden',
+   isMemoryVisible:()=>activeScreen==='memory'&&!!root?.classList.contains('lp-open'),
+   lifecycle:()=>lifecycleToken,
+   hasChat:()=>Boolean(selectedCharacter(context())),canSummarize:()=>!busy,
    primaryName:()=>getCharacterName(selectedCharacter(context())),
    personaName
   });
@@ -3879,7 +3908,7 @@ async function loadPhoneMemoryController(){
  return memoryLoadPromise;
 }
 const SETTINGS_SECTIONS={system:'系统设置',api:'API 连接',presets:'预设与世界书',
- chat:'聊天方式',memory:'记忆管理',data:'数据与诊断'};
+ chat:'聊天方式',data:'数据与诊断'};
 function showSettingsCategory(category=''){
  settingsCategory=Object.prototype.hasOwnProperty.call(SETTINGS_SECTIONS,category)?category:'';
  const menu=nodes?.settingsMenu;
@@ -3892,7 +3921,6 @@ function showSettingsCategory(category=''){
  if(activeScreen==='settings')nodes.title.textContent=SETTINGS_SECTIONS[settingsCategory]||'设置';
  if(container)container.scrollTop=0;
  if(settingsCategory==='api')loadPhoneApiUI();
- if(settingsCategory==='memory')void loadPhoneMemoryController().then(m=>m?.render());
 }
 function goSettingsBack(){
  if(activeScreen!=='settings'||!settingsCategory)return false;
@@ -4103,6 +4131,7 @@ function saveInteractionMotion(){
  notifyInteraction('交互动画已保存','success');
 }
 let groupsReturnScreen='chatList';
+let memoryReturnScreen='home';
 let roleFriendsReturnScreen='me';
 const phoneScrollPositions=new Map();
 let phoneScrollChatMetadata=null;
@@ -4192,7 +4221,7 @@ function setScreen(screen, options={}) {
     }
     nodes.back.hidden = screen === 'home'||screen==='lock';
     if(nodes.close)nodes.close.hidden=true;
-    const titles = {album:'相册',groups:'群聊',sharePicker:'分享动态',shareViewer:'动态详情',lock:'锁屏',home:'咕叽咕机',weibo:'群星',wallet:'吱付宝',shopping:'购物',takeout:'外卖',chat:'',chatList:'咕叽聊',contacts:'咕叽聊',discover:'咕叽聊',me:'咕叽聊',meProfile:'我的资料',meSettings:'咕叽聊设置',roleFriends:'角色好友列表',momentHistory:'历史朋友圈',momentCompose:'发布朋友圈',chatRecords:'管理聊天记录',contactManage:'管理联系人资料',requests:'新的朋友',profile:'联系人资料',profileRole:'角色设定',addNpc:'添加 NPC',discoverNpc:'发现故事人物',chatOptions:'聊天设置',settings:'设置',diagnostics:'运行日志',calendar:'日历',theme:'主题',presetPicker:'选择预设条目',worldPicker:'选择世界书条目' };
+    const titles = {album:'相册',groups:'群聊',sharePicker:'分享动态',shareViewer:'动态详情',lock:'锁屏',home:'咕叽咕机',weibo:'群星',wallet:'吱付宝',shopping:'购物',takeout:'外卖',chat:'',chatList:'咕叽聊',contacts:'咕叽聊',discover:'咕叽聊',me:'咕叽聊',meProfile:'我的资料',meSettings:'咕叽聊设置',roleFriends:'角色好友列表',momentHistory:'历史朋友圈',momentCompose:'发布朋友圈',chatRecords:'管理聊天记录',contactManage:'管理联系人资料',requests:'新的朋友',profile:'联系人资料',profileRole:'角色设定',addNpc:'添加 NPC',discoverNpc:'发现故事人物',chatOptions:'聊天设置',settings:'设置',diagnostics:'运行日志',calendar:'日历',theme:'主题',memory:'往昔',presetPicker:'选择预设条目',worldPicker:'选择世界书条目' };
     nodes.title.textContent = screen === 'chat' ? contactDisplayName(context()) : titles[screen];
     nodes.chatMenu.hidden = screen !== 'chat';
     if(nodes.albumOptions)nodes.albumOptions.hidden=screen!=='album';
@@ -4207,6 +4236,14 @@ function setScreen(screen, options={}) {
         else void loadWeiboController().then(w=>{if(w&&activeScreen==='weibo')w.open(options);});
     }
     if (screen === 'diagnostics') renderDiagnostics();
+    if(screen==='memory'&&previous!==screen){
+        memoryReturnScreen=previous==='settings'?'settings':'home';
+        const metadata=context()?.chatMetadata;
+        loadContextSettings();
+        void loadPhoneMemoryController().then(module=>{
+            if(activeScreen==='memory'&&context()?.chatMetadata===metadata)module?.open();
+        });
+    }
     if (screen === 'chatList' && previous !== 'chatList') renderChatLists(context(),selectedCharacter(context()),readData(context()));
     if (screen === 'chat' && previous !== 'chat') renderMessages(readData(context()));
     if (screen === 'album'){
@@ -8628,7 +8665,7 @@ function makeUI() {
               <button type="button" class="lp-settings-nav" data-settings-nav="api"><span>API 连接<small>全局默认、各应用独立配置、已存连接</small></span><b>›</b></button>
               <button type="button" class="lp-settings-nav" data-settings-nav="presets"><span>预设与世界书<small>预设选择、世界书条目与触发</small></span><b>›</b></button>
               <button type="button" class="lp-settings-nav" data-settings-nav="chat"><span>聊天方式<small>消息显示与分条行为</small></span><b>›</b></button>
-              <button type="button" class="lp-settings-nav" data-settings-nav="memory"><span>记忆管理<small>剧情日自动总结、独立 API、正文互通</small></span><b>›</b></button>
+              <button type="button" class="lp-settings-nav" data-lp-open="memory"><span>往昔<small>手机记忆与正文互通</small></span><b>›</b></button>
               <button type="button" class="lp-settings-nav lp-settings-nav-disabled" disabled aria-disabled="true" title="世界观切换"><span>世界观<small>世界观切换</small></span><b>›</b></button>
               <button type="button" class="lp-settings-nav" data-settings-nav="data"><span>数据说明<small>存档与资料保存范围</small></span><b>›</b></button>
             </div>
@@ -8671,7 +8708,7 @@ function makeUI() {
               <option value="weibo">群星</option>
               <option value="takeout">外卖</option>
               <option value="autonomy">角色自主活动</option>
-              <option value="memory">手机记忆</option>
+              <option value="memory">往昔 · 记忆总结</option>
             </select>
           </label>
           <p class="lp-settings-hint">仅显示需要调用模型的应用；其他本地功能不需要单独 API。</p>
@@ -8715,38 +8752,6 @@ function makeUI() {
           <button type="button" class="lp-settings-link" data-lp="saveSelections">保存预设与世界书配置</button><button type="button" class="lp-settings-link" data-lp="restoreAutoSelections">恢复自动同步</button>
           <div class="lp-settings-status" data-lp="selectionSaveStatus" role="status" aria-live="polite"></div>
           </div>
-          <div class="lp-settings-category" data-settings-category="memory" hidden>
-          <h2>小手机独立记忆</h2>
-          <label class="lp-entry-option"><input data-lp="phoneMemoryEnabled" type="checkbox" /> 根据故事时间自动总结手机经历</label>
-          <label class="lp-field">总结间隔
-            <select data-lp="phoneMemoryInterval">
-              <option value="1">每经过 1 个剧情日</option>
-              <option value="3">每经过 3 个剧情日</option>
-              <option value="7">每经过 7 个剧情日</option>
-            </select>
-          </label>
-          <label class="lp-entry-option"><input data-lp="phoneMemoryInjectMainline" type="checkbox" /> 将保存的手机记忆注入正文（默认关闭）</label>
-          <p class="lp-settings-hint">独立记忆总结使用「API 连接 → 手机记忆」指定的模型，可与聊天使用不同 API。按剧情日期计算，无新消息不产生模型请求；不会修改嘎嘎小狗等插件的记录。</p>
-          <p class="lp-settings-hint" data-lp="phoneMemorySchedule"></p>
-          <button type="button" class="lp-settings-link" data-lp="phoneMemorySave">保存自动总结与互通设置</button>
-          <button type="button" class="lp-settings-link" data-lp="phoneMemoryRun">立即总结新增手机消息</button>
-          <div class="lp-settings-status" data-lp="phoneMemoryStatus" role="status" aria-live="polite"></div>
-          <h3>已保存的手机记忆</h3>
-          <div data-lp="phoneMemoryList" class="lp-memory-list"></div>
-          <h2>正文记忆与互通</h2>
-          <label class="lp-entry-option"><input type="checkbox" data-lp="readMainlineMemory" checked /> 只读获取已安装插件的正文记忆</label>
-          <label class="lp-field">记忆来源<select data-lp="memorySource">
-            <option value="auto">自动识别（嘎嘎小狗 → 柏宝书 → 留痕记忆）</option>
-            <option value="gaga">仅嘎嘎小狗已注入记忆</option>
-            <option value="baibai">仅柏宝书公开接口</option>
-            <option value="trace">仅留痕记忆已知字段</option>
-            <option value="off">不读取</option>
-          </select></label>
-          <label class="lp-entry-option"><input type="checkbox" data-lp="phoneToMainline" /> 将手机聊天记录作为独立经历注入正文（默认关闭）</label>
-          <label class="lp-entry-option"><input type="checkbox" data-lp="eventBridge" checked /> 正文与小手机同步已确认事件（交易、好友状态等）</label>
-          <p class="lp-settings-hint">正文记忆不会写回其他插件；主线过去模式会屏蔽记忆。手机记录影响正文可随时关闭，不会修改正文消息。实际每次注入数量见首页「运行日志」。</p>
-          <button type="button" class="lp-settings-link" data-lp="saveContextSettings">保存记忆与互通设置</button>
-          </div>
           <div class="lp-settings-category" data-settings-category="data" hidden>
           <h2>数据说明</h2>
           <p class="lp-settings-hint">群星账号与相册按角色卡共享，聊天、群聊及互动记录按当前故事存档保存。</p>
@@ -8754,6 +8759,57 @@ function makeUI() {
           </div>
           <div class="lp-settings-status" data-lp="settingsStatus" role="status" aria-live="polite"></div>
           <p class="lp-settings-hint">咕叽咕机 · v0.32.0</p>
+        </section>
+        <section class="lp-screen lp-settings lp-memory-screen" data-lp-screen="memory" aria-label="往昔" hidden>
+          <div class="lp-memory-toolbar">
+            <button type="button" class="lp-settings-link lp-memory-primary" data-lp="phoneMemoryRun">总结未整理的聊天</button>
+            <button type="button" class="lp-settings-link" data-lp="phoneMemoryAdd">写记忆</button>
+          </div>
+          <div class="lp-memory-progress" role="status" aria-live="polite" data-lp="phoneMemoryStatus"></div>
+          <button type="button" class="lp-settings-link" data-lp="phoneMemoryStop" hidden>完成这批后停止</button>
+          <details class="lp-memory-preferences" data-lp="phoneMemoryPrefs">
+            <summary>总结设置与正文互通</summary>
+            <div class="lp-memory-preference-fields">
+              <label class="lp-entry-option"><input data-lp="phoneMemoryEnabled" type="checkbox" /> 自动总结</label>
+              <label class="lp-field">总结间隔
+                <select data-lp="phoneMemoryInterval">
+                  <option value="1">每 1 个剧情日</option>
+                  <option value="3">每 3 个剧情日</option>
+                  <option value="7">每 7 个剧情日</option>
+                </select>
+              </label>
+              <p class="lp-settings-hint" data-lp="phoneMemorySchedule"></p>
+              <label class="lp-entry-option"><input data-lp="phoneMemoryInjectMainline" type="checkbox" /> 将往昔记忆注入正文</label>
+              <button type="button" class="lp-settings-link" data-lp="phoneMemorySave">保存总结设置</button>
+              <button type="button" class="lp-settings-link" data-lp="phoneMemoryRebuild">从头补总结</button>
+              <h3>正文互通</h3>
+              <label class="lp-entry-option"><input type="checkbox" data-lp="readMainlineMemory" checked /> 读取正文记忆</label>
+              <label class="lp-field">记忆来源<select data-lp="memorySource">
+                <option value="auto">自动识别（嘎嘎小狗 → 柏宝书 → 留痕记忆）</option>
+                <option value="gaga">嘎嘎小狗</option>
+                <option value="baibai">柏宝书</option>
+                <option value="trace">留痕记忆</option>
+                <option value="off">不读取</option>
+              </select></label>
+              <label class="lp-entry-option"><input type="checkbox" data-lp="phoneToMainline" /> 将近期手机聊天记录注入正文</label>
+              <label class="lp-entry-option"><input type="checkbox" data-lp="eventBridge" checked /> 同步已确认的交易、好友状态等事件</label>
+              <button type="button" class="lp-settings-link" data-lp="saveContextSettings">保存正文互通设置</button>
+            </div>
+          </details>
+          <div class="lp-memory-filters">
+            <select data-lp="phoneMemoryFilter" aria-label="按会话筛选"><option value="">全部会话</option></select>
+            <input type="search" data-lp="phoneMemorySearch" placeholder="搜索记忆" aria-label="搜索记忆" />
+          </div>
+          <section class="lp-memory-entry" data-lp="phoneMemoryEditor" aria-label="编辑记忆" hidden>
+            <label class="lp-field">会话<select data-lp="phoneMemoryOwner"></select></label>
+            <textarea data-lp="phoneMemoryText" maxlength="2800" placeholder="写下要记住的事" aria-label="记忆内容"></textarea>
+            <div class="lp-memory-actions">
+              <button type="button" data-lp="phoneMemoryEditSave">保存记忆</button>
+              <button type="button" data-lp="phoneMemoryEditClose">取消</button>
+            </div>
+          </section>
+          <div data-lp="phoneMemoryList" class="lp-memory-list"></div>
+          <button type="button" class="lp-settings-link" data-lp="phoneMemoryMore" hidden>查看更多</button>
         </section>
         <section class="lp-screen lp-picker" data-lp-screen="presetPicker" hidden>
           <div class="lp-picker-head" data-lp="presetPickerTitle">预设</div>
@@ -8861,7 +8917,7 @@ function makeUI() {
           <h2>自定义应用图标</h2>
           <select data-lp="themeIconTarget" aria-label="选择要修改的应用">
             <option value="chat">咕叽聊</option><option value="wallet">吱付宝</option>
-            <option value="weibo">群星</option><option value="calendar">日历</option>
+            <option value="weibo">群星</option><option value="calendar">日历</option><option value="memory">往昔</option>
             <option value="settings">设置</option><option value="diagnostics">运行日志</option>
             <option value="shopping">购物</option><option value="takeout">外卖</option><option value="theme">主题</option>
           </select>
@@ -9014,7 +9070,7 @@ function mount() {
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','resetCharAvatar',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
         'settingsMenu','apiTask','apiProfile','apiProfileModel','apiProfileModelManual','apiReloadModels','apiProfileFields','apiProfileHint','apiTest',
-        'phoneMemoryEnabled','phoneMemoryInterval','phoneMemoryInjectMainline','phoneMemorySchedule','phoneMemoryStatus','phoneMemorySave','phoneMemoryRun','phoneMemoryList',
+        'phoneMemoryEnabled','phoneMemoryInterval','phoneMemoryInjectMainline','phoneMemorySchedule','phoneMemoryStatus','phoneMemorySave','phoneMemoryRun','phoneMemoryList','phoneMemoryAdd','phoneMemoryStop','phoneMemoryRebuild','phoneMemoryPrefs','phoneMemoryFilter','phoneMemorySearch','phoneMemoryEditor','phoneMemoryOwner','phoneMemoryText','phoneMemoryEditSave','phoneMemoryEditClose','phoneMemoryMore',
         'shoppingContent','shoppingTabs','takeoutContent','takeoutTabs','walletBalance','walletPending','walletBills','walletAdjustInput','walletSaveBalance','walletToChat','walletStatus',
         'presetSource','presetInfo','presetEntries','worldBookList','worldSelectionSummary','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','saveSelections','restoreAutoSelections','savePresetPicker','saveWorldPicker','selectionSaveStatus','readMainlineMemory','memorySource','phoneToMainline','eventBridge','saveContextSettings','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themePreset','themeCustomColors','themeSaveColors','themeWallpaperPreview','themeDesktopEffect','interactionMotion','interactionFeedback','themeBindWallpaper','themeName','themeSaveNamed','themeRename','themeDelete','themeExport','themeImport','themeFeedback','themeCssFile','themeCssReset','themeCssStatus','themeFontFile','themeDesktopIconSize','themeDesktopGap','themeBubbleRadius','themeIconTarget','themeIconFile','themeIconReset','themeFloatingIconFile','themeFloatingIconReset','themeCopySelectors',
         'diagnostics', 'diagnosticState', 'copyDiagnostics', 'clearDiagnostics',
@@ -9192,7 +9248,7 @@ function mount() {
         if(activeScreen==='groups'&&groupsController?.back())return;
         if(activeScreen==='shareViewer'){setScreen(sharedPostOrigin||'chat');return;}
         setScreen({
-          wallet:'home',shopping:'home',takeout:'home',weibo:'home',album:'home',groups:groupsReturnScreen,sharePicker:'weibo',chat:'chatList',
+          wallet:'home',shopping:'home',takeout:'home',weibo:'home',album:'home',memory:memoryReturnScreen,groups:groupsReturnScreen,sharePicker:'weibo',chat:'chatList',
           contacts:'chatList',discover:'chatList',me:'chatList',
           profile:profileReturnScreen,profileRole:'profile',contactManage:'chatOptions',chatRecords:'chatOptions',meProfile:'me',meSettings:'me',roleFriends:roleFriendsReturnScreen,momentHistory:'me',momentCompose:'discover',
           requests:'contacts',addNpc:'contacts',
@@ -9254,6 +9310,14 @@ function mount() {
     nodes.phoneMemorySave.addEventListener('click',()=>void loadPhoneMemoryController().then(m=>m?.saveSettings()));
     nodes.phoneMemoryRun.addEventListener('click',()=>void loadPhoneMemoryController().then(m=>m?.summarize(true)));
     nodes.phoneMemoryList.addEventListener('click',e=>void memoryController?.handleClick(e));
+    nodes.phoneMemorySearch.addEventListener('input',()=>memoryController?.search());
+    nodes.phoneMemoryFilter.addEventListener('change',()=>memoryController?.search());
+    nodes.phoneMemoryMore.addEventListener('click',()=>memoryController?.showMore());
+    nodes.phoneMemoryAdd.addEventListener('click',()=>memoryController?.edit());
+    nodes.phoneMemoryEditSave.addEventListener('click',()=>void memoryController?.saveEditor());
+    nodes.phoneMemoryEditClose.addEventListener('click',()=>memoryController?.closeEditor());
+    nodes.phoneMemoryRebuild.addEventListener('click',()=>void memoryController?.rebuild());
+    nodes.phoneMemoryStop.addEventListener('click',()=>memoryController?.stop());
     nodes.presetEntries.addEventListener('change', event => { if (event.target?.dataset?.configKind) onConfigChange(event.target); });
     nodes.worldEntries.addEventListener('change', event => { if (event.target?.dataset?.configKind) onConfigChange(event.target); });
     nodes.themeFont.addEventListener('change',()=>editableThemePatch({font:nodes.themeFont.value}));
@@ -9495,6 +9559,10 @@ function mount() {
             momentImageDraft='';nodes?.momentsPreview?.replaceChildren();
             statusText = '';
             statusKind = 'info';
+            if(activeScreen==='memory'){
+                loadContextSettings();
+                void loadPhoneMemoryController().then(m=>{if(activeScreen==='memory')m?.open();});
+            }
             syncMainlinePrompt(context());
             render();
             void (async()=>{await syncMainlinePayments(context());await syncStoryRelationships(context());})();

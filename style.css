@@ -3210,6 +3210,31 @@
  font-size:12px;
 }
 #st-little-phone-root .lp-memory-entry .lp-memory-actions button:last-child{color:var(--lp-rose);}
+#st-little-phone-root .lp-memory-screen{gap:12px;}
+#st-little-phone-root .lp-memory-toolbar,
+#st-little-phone-root .lp-memory-filters{
+ display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;
+}
+#st-little-phone-root .lp-memory-toolbar{grid-template-columns:minmax(0,2fr) minmax(0,1fr);}
+#st-little-phone-root .lp-memory-toolbar .lp-memory-primary{
+ background:var(--lp-navy);color:var(--lp-white);border-color:var(--lp-navy);
+}
+#st-little-phone-root .lp-memory-filters :is(select,input),
+#st-little-phone-root .lp-memory-entry textarea{
+ min-width:0;width:100%;border:1px solid var(--lp-slate);border-radius:10px;
+ background:var(--lp-white);color:var(--lp-ink);font:inherit;
+}
+#st-little-phone-root .lp-memory-filters :is(select,input){min-height:42px;padding:8px 10px;}
+#st-little-phone-root .lp-memory-preferences{
+ border-radius:14px;border:1px solid var(--lp-slate);background:var(--lp-white);
+ padding:12px;color:var(--lp-ink);
+}
+#st-little-phone-root .lp-memory-preferences summary{cursor:pointer;font-weight:600;}
+#st-little-phone-root .lp-memory-preference-fields{display:grid;gap:8px;padding-top:12px;}
+#st-little-phone-root .lp-memory-preference-fields h3{margin:10px 0 0;}
+#st-little-phone-root .lp-memory-progress{color:var(--lp-soft-ink);font-size:13px;}
+#st-little-phone-root .lp-memory-progress:empty{display:none;}
+#st-little-phone-root .lp-memory-screen [hidden]{display:none!important;}
 
 
 /* v0.21.0 — gallery, multi-photo composer, shared post cards, group conversations */

@@ -11,16 +11,20 @@ test('module syntax and bootstrap version agree with the manifest',()=>{
  const manifest=JSON.parse(read('manifest.json'));
  assert.ok(bootstrap.includes("const VERSION = '"+manifest.version+"'"));
  assert.ok(bootstrap.includes("index.js?v="+manifest.version+"'"));
+ assert.ok(index.includes('memory.js?v='+manifest.version));
  assert.ok(index.includes('weibo.js?v=0.36.6&'));
  for(const part of ['album','groups'])
   assert.ok(index.includes(part+'.js?v=0.36.4'));
- for(const source of [index,album,groups,read('weibo.js'),bootstrap])
+ for(const source of [index,album,groups,read('weibo.js'),read('memory.js'),bootstrap])
   assert.doesNotThrow(()=>new Function(source.replace(/^export /gm,'')));
 });
 
 test('update notice checks for a newer version and announces it once per session',async()=>{
  const notices=[],storage=new Map();
- let version='0.36.10',requests=0;
+ const installed=JSON.parse(read('manifest.json')).version;
+ const [major,minor,patch]=installed.split('.').map(Number);
+ const newer=[major,minor,patch+10].join('.');
+ let version=newer,requests=0;
  const check=()=>{
   const sandbox={
    AbortController,document:{addEventListener(){}},toastr:{info:text=>notices.push(text)},
@@ -38,8 +42,8 @@ test('update notice checks for a newer version and announces it once per session
  await Promise.all([active(),active()]);
  assert.equal(requests,1);
  await check()();
- assert.deepEqual(notices,['咕叽咕机 v0.36.10 已发布，请到「管理扩展」更新。']);
- version='0.36.4';
+ assert.deepEqual(notices,['咕叽咕机 v'+newer+' 已发布，请到「管理扩展」更新。']);
+ version=installed;
  await check()();
  assert.equal(notices.length,1);
 });
