@@ -1444,10 +1444,23 @@
 #st-little-phone-root .lp-npc-discover-button{width:100%;min-height:44px;background:var(--lp-slate);color:white;border:0;border-radius:10px;font:inherit;}
 #st-little-phone-root .lp-message-actions{flex:0 0 auto;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;padding:8px;background:#fff;border-top:1px solid var(--lp-ice);}
 #st-little-phone-root .lp-message-actions[hidden],#st-little-phone-root .lp-emoji-panel[hidden],#st-little-phone-root .lp-more-panel[hidden],#st-little-phone-root .lp-quoted-preview[hidden]{display:none!important;}
+#st-little-phone-root .lp-message-actions button[hidden]{display:none!important;}
 #st-little-phone-root .lp-message-actions button{padding:10px 4px;border:0;border-radius:8px;font:inherit;background:var(--lp-ice);color:var(--lp-navy);}
 #st-little-phone-root .lp-quoted-preview{font-size:12px;padding:6px 13px;background:var(--lp-ice);color:var(--lp-navy);max-height:53px;display:flex;align-items:center;justify-content:space-between;gap:8px;}
 #st-little-phone-root .lp-quoted-preview span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 #st-little-phone-root .lp-quoted-preview button{border:0;background:transparent;color:var(--lp-navy);font-size:17px;padding:3px 7px;min-width:30px;cursor:pointer;}
+#st-little-phone-root .lp-recall-notice{
+ width:100%;text-align:center;color:var(--lp-slate);font-size:11px;line-height:1.45;
+ padding:5px 8px;box-sizing:border-box;overflow-wrap:anywhere;
+}
+#st-little-phone-root .lp-voice-message summary{cursor:pointer;padding:2px 4px;white-space:nowrap;}
+#st-little-phone-root .lp-voice-transcript{margin-top:6px;padding-top:6px;border-top:1px solid var(--lp-border);white-space:pre-wrap;}
+#st-little-phone-root .lp-call-card{display:grid;gap:8px;min-width:105px;}
+#st-little-phone-root .lp-call-actions,#st-little-phone-root .lp-group-message-actions{display:flex;flex-wrap:wrap;gap:6px;}
+#st-little-phone-root .lp-call-actions button{
+ border:1px solid var(--lp-border);border-radius:7px;background:var(--lp-white);
+ color:var(--lp-navy);padding:5px 8px;cursor:pointer;
+}
 #st-little-phone-root .lp-inline-quote{background:var(--lp-ice);border-left:3px solid var(--lp-slate);padding:6px;margin-bottom:5px;font-size:11px;color:var(--lp-navy);}
 #st-little-phone-root .lp-chat-image{display:block;max-width:100%;max-height:240px;object-fit:contain;border-radius:7px;margin-top:6px;}
 #st-little-phone-root .lp-emoji-panel,#st-little-phone-root .lp-more-panel{flex:0 0 auto;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));padding:9px;gap:8px;background:var(--lp-ice);border-top:1px solid var(--lp-ice);}
@@ -3570,9 +3583,9 @@
  animation:lpCheckFill 220ms cubic-bezier(.24,.8,.25,1);
 }
 #st-little-phone-root .lp-panel input[type="checkbox"]:checked::after {
- content:"";position:absolute;width:8px;height:4px;left:4px;top:4px;
+ content:"";position:absolute;width:8px;height:4px;left:50%;top:50%;box-sizing:content-box;
  border:solid var(--lp-white);border-width:0 0 2px 2px;
- transform:rotate(-45deg);transform-origin:center center;
+ transform:translate(-50%,-58%) rotate(-45deg);transform-origin:center;
  animation:lpCheckDraw 300ms cubic-bezier(.25,.65,.3,1) both;
 }
 @keyframes lpCheckFill {
@@ -5017,7 +5030,7 @@
 #st-little-phone-root .lp-group-chat-row .lp-group-message-text{
  margin:0;white-space:pre-wrap;word-break:break-word;line-height:1.55;
 }
-#st-little-phone-root .lp-group-chat-row .lp-group-quote-action{
+#st-little-phone-root .lp-group-chat-row .lp-group-message-actions button{
  border:0;background:transparent;color:var(--lp-slate);font-size:11px;
  padding:2px 3px;min-height:20px;line-height:1.4;
 }

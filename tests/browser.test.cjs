@@ -77,9 +77,9 @@ test('browser startup, delayed menu, lifecycle, old data and v0.7 UI', async () 
         assert.equal(await page.locator('#st-little-phone-root').getAttribute('data-screen'),'chat');
         await page.locator('[data-chat-tool="emoji"]').click();
         await page.locator('[data-lp="emojiPanel"] [data-sticker-action="send"]').click();
-        await page.waitForFunction(()=>ctx.chatMetadata.st_little_phone_v1.messages.filter(m=>m.sticker).length===1);
+        await page.waitForFunction(()=>ctx.chatMetadata.st_little_phone_v1.messages.some(m=>m.from==='user'&&m.stickerImages?.length));
         await page.locator('[data-lp="generate"]').click();
-        await page.waitForFunction(()=>ctx.chatMetadata.st_little_phone_v1.messages.filter(m=>m.sticker).length===2);
+        await page.waitForFunction(()=>ctx.chatMetadata.st_little_phone_v1.messages.some(m=>m.from==='character'&&m.stickerImages?.length));
         assert.equal(await page.evaluate(() => ctx.chatMetadata.st_little_phone_v1.messages[0].text), '保留旧聊天');
         await page.evaluate(() => boot.onDisable());
         assert.equal(await page.locator('#st-little-phone-root, #gujiguji-wand-entry, #gujiguji-floating-launcher').count(), 0);

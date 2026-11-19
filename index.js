@@ -1274,10 +1274,11 @@ async function loadAlbumController(){
 async function loadGroupsController(){
  if(groupsController)return groupsController;
  if(groupsLoadPromise)return groupsLoadPromise;
- groupsLoadPromise=import('./groups.js?v=0.36.4&persona=1').then(mod=>{
+ groupsLoadPromise=import('./groups.js?v=0.38.0').then(mod=>{
   groupsController=mod.createGroupsModule({context,getNodes:()=>nodes,readRootData,writeData,galleryPeople,
    isPhoneFriend,contactCharacter,phoneGenerate,stripModelReasoning,notifyInteraction,openSharedPost,encodeAvatarPhoto,
-   stickerLibrary:()=>stickerLibrary(context()),
+   stickerLibrary:()=>stickerLibrary(context()),stickerPrompt,chooseStickerCandidates,parseMessageStickers,renderLegacyPhoneSticker,
+   messageQuoteText,canRecallMessage,recallPhoneMessage,renderVoiceMessage,
    refreshChatList:()=>{if(mounted&&nodes&&selectedCharacter(context()))renderChatLists(context(),contactCharacter(context()),readData(context()));},
    userPhoneName:()=>phoneUserDisplayName(context()),
    memberRelationship:id=>phoneRelationshipPrompt(context(),id),
@@ -3266,7 +3267,7 @@ function mainlineHistory(rootData,ctx=context()) {
         ...(rootData.contacts || []).map(contact=>({name:contact.remark || contact.name || 'NPC',
             messages:rootData.conversations?.[contact.id]?.messages || []}))];
     const messages=threads.flatMap(thread=>thread.messages
-        .filter(message=>['user','character'].includes(message.from) && typeof message.text==='string')
+        .filter(message=>['user','character'].includes(message.from) && typeof message.text==='string' && !message.recalledAt)
         .map(message=>({name:thread.name,...message})))
         .sort((a,b)=>String(a.createdAt || '').localeCompare(String(b.createdAt || '')))
         .slice(-18);
@@ -3634,27 +3635,103 @@ function splitPhoneReply(text, data) {
     if (buffer) result.push(buffer.trim());
     return result.filter(Boolean).slice(0,5);
 }
-function buildPrompt(data,ctx=null,char=null) {
-    // Official generateRaw accepts Chat Completion messages and converts them
-    // for the selected generation mode. Preserve user/assistant roles.
-    return cleanPhoneHistory(data.messages).slice(-CONTEXT_MESSAGE_LIMIT)
-        .filter(message => typeof message.text === 'string' && ['user', 'character'].includes(message.from)
-            && (message.from==='user'||message.text.trim()||message.image))
-        .map(message => {
+function messageQuoteText(message) {
+    if(message.recalledAt)return '原消息已撤回';
+    if(message.callState)return '[语音通话]';
+    if(message.voice)return '[语音] '+message.text;
+    return String(message.text||(message.sticker||message.stickerImages?.length?'[表情包]':'[图片]'));
+}
+function phoneQuotePreview(message,byId) {
+    const parent=message.replyTo&&byId.get(message.replyTo);
+    return parent?messageQuoteText(parent):message.replyQuote||'';
+}
+function canRecallMessage(message,sender) {
+    return Boolean(message&&!message.recalledAt&&message.from===sender&&!message.paymentId&&!message.paymentReceiptId&&!message.callState);
+}
+function recallPhoneMessage(messages,id,sender) {
+    const i=messages.findIndex(message=>message.id===id),message=messages[i];
+    if(!canRecallMessage(message,sender))return false;
+    messages[i]={id:message.id,from:message.from,text:'',createdAt:message.createdAt,storyTime:message.storyTime,
+        recalledAt:new Date().toISOString()};
+    for(const reply of messages)if(reply.replyTo===id)delete reply.replyQuote;
+    return true;
+}
+function activePhoneCall(messages) {
+    return messages.findLast(message=>['ringing','connected'].includes(message.callState));
+}
+const PHONE_CALL_STATES=new Set(['ringing','connected','declined','cancelled','ended']);
+function applyPhoneCallAction(call,action,sender) {
+    if(!call)return false;
+    const outgoing=call.from===sender;
+    if(call.callState==='ringing'){
+        if(!outgoing&&action==='accept'){
+            call.callState='connected';
+            call.connectedAt=new Date().toISOString();
+        }else if(!outgoing&&action==='decline')call.callState='declined';
+        else if(outgoing&&action==='cancel')call.callState='cancelled';
+        else return false;
+    }else if(call.callState==='connected'&&action==='end'){
+        call.callState='ended';
+        call.endedAt=new Date().toISOString();
+    }else return false;
+    return true;
+}
+function phoneCallLabel(message) {
+    const labels={ringing:message.from==='user'?'正在拨号':'语音来电',connected:'通话中',
+        declined:'已拒接',cancelled:'已取消',ended:'通话已结束'};
+    const label=labels[message.callState]||'语音通话';
+    const elapsed=Date.parse(message.endedAt)-Date.parse(message.connectedAt);
+    if(message.callState!=='ended'||!Number.isFinite(elapsed)||elapsed<0)return label;
+    const seconds=Math.floor(elapsed/1000);
+    return label+' · '+Math.floor(seconds/60)+':'+String(seconds%60).padStart(2,'0');
+}
+function renderVoiceMessage(text) {
+    const details=document.createElement('details');details.className='lp-voice-message';
+    const tab=document.createElement('summary');
+    const duration=Math.max(1,Math.min(60,Math.ceil(Array.from(text.replace(/\s/g,'')).length/5)));
+    tab.textContent='语音消息 '+duration+'″';
+    const line=document.createElement('div');line.className='lp-voice-transcript';line.textContent=text;
+    details.append(tab,line);
+    return details;
+}
+function renderPhoneCall(message) {
+    const card=document.createElement('div');card.className='lp-call-card';
+    const label=document.createElement('strong');label.textContent='☎ '+phoneCallLabel(message);card.append(label);
+    const controls=document.createElement('div');controls.className='lp-call-actions';
+    const actions=message.callState==='ringing'
+        ?(message.from==='user'?[['cancel','取消呼叫']]:[['accept','接听'],['decline','拒接']])
+        :message.callState==='connected'?[['end','挂断']]:[];
+    for(const [action,title] of actions){
+        const node=document.createElement('button');node.type='button';node.dataset.callAction=action;
+        node.dataset.callMessage=message.id;node.disabled=busy;node.textContent=title;controls.append(node);
+    }
+    if(actions.length)card.append(controls);
+    return card;
+}
+function buildPrompt(data,ctx=null,char=null,{includeIds=false,limit=CONTEXT_MESSAGE_LIMIT}={}) {
+    const history=cleanPhoneHistory(data.messages),byId=new Map(history.map(message=>[message.id,message]));
+    return history.slice(-limit)
+        .filter(message=>typeof message.text==='string'&&['user','character'].includes(message.from)&&
+            (message.from==='user'||message.text.trim()||message.image||message.images?.length||message.recalledAt||message.callState))
+        .map(message=>{
             const payment=message.paymentId?walletState(data).transfers.find(tx=>tx.id===message.paymentId):null;
-            const paymentText=payment?'['+walletTransferLabel(payment)+' ¥'+walletMoney(payment.amountCents)+
-                ' · '+walletStatusLabel(payment.status)+(payment.note?' · '+payment.note:'')+']':
-                message.sharePost?'[群星分享 · '+message.sharePost.author+'] '+message.sharePost.text:message.text;
-            return ({
-            role: message.from === 'character' ? 'assistant' : 'user',
-            content: !message.sticker && (Array.isArray(message.images)&&message.images.length||message.image||message.sharePost?.image)
-              ? [{type:'text',text:resolvePhonePlaceholders((message.replyQuote?'[引用：'+message.replyQuote+']\n':'')+paymentText+'（请根据图片中实际可见内容回复，不要虚构看不到的细节）',ctx,char)},
-                 ...(Array.isArray(message.images)&&message.images.length?message.images:[message.image])
-                   .concat(message.sharePost?.image?[message.sharePost.image]:[])
-                   .filter(src=>typeof src==='string'&&/^data:image\/(?:jpeg|png|webp);base64,/.test(src))
-                   .map(src=>({type:'image_url',image_url:{url:src,detail:'auto'}}))]
-              : resolvePhonePlaceholders((message.replyQuote?'[引用：'+message.replyQuote+']\n':'')+paymentText,ctx,char),
-        });});
+            const body=message.recalledAt?'[撤回了一条消息]'
+                :message.callState?'[语音通话 · '+phoneCallLabel(message)+']'
+                :payment?'['+walletTransferLabel(payment)+' ¥'+walletMoney(payment.amountCents)+
+                    ' · '+walletStatusLabel(payment.status)+(payment.note?' · '+payment.note:'')+']'
+                :message.sharePost?'[群星分享 · '+message.sharePost.author+'] '+message.sharePost.text
+                :(message.callSpeech?'[通话中说] ':message.voice?'[语音] ':'')+message.text+
+                    (message.stickerImages?.length&&!message.sticker?' [表情包：'+(message.stickerName||'表情包')+']':'');
+            const prefix=includeIds&&message.id&&!message.recalledAt?'[消息ID：'+message.id+']\n':'';
+            const quote=message.recalledAt?'':phoneQuotePreview(message,byId);
+            const text=resolvePhonePlaceholders(prefix+(quote?'[引用：'+quote+']\n':'')+body,ctx,char);
+            const images=message.sticker||message.recalledAt?[]:(message.images?.length?message.images:[message.image])
+                .concat(message.sharePost?.image?[message.sharePost.image]:[])
+                .filter(src=>typeof src==='string'&&/^data:image\/(?:jpeg|png|webp);base64,/.test(src));
+            return {role:message.from==='character'?'assistant':'user',
+                content:images.length?[{type:'text',text:text+'（请根据图片中实际可见内容回复，不要虚构看不到的细节）'},
+                    ...images.map(url=>({type:'image_url',image_url:{url,detail:'auto'}}))]:text};
+        });
 }
 
 let phoneStatusClearTimer=null;
@@ -4322,8 +4399,7 @@ function updateBusy() {
     nodes.diagnosticState.textContent = busy
         ? `${busyKind === 'friend' ? '好友申请处理中' : busyKind === 'send' ? '正在保存玩家消息' : busyKind === 'time' ? '正在保存剧情时间' : '正在请求模型回复'} · ${Math.floor((Date.now() - busyStartedAt) / 1000)} 秒`
         : statusText || '空闲：当前没有正在运行的请求。';
-    const lastMessage = data?.messages?.at(-1);
-    const canGenerate = Boolean(isFriend && !busy && lastMessage?.from === 'user');
+    const canGenerate = Boolean(isFriend && !busy && canGenerateChatReply(data));
     nodes.generate.disabled = !canGenerate;
     nodes.generate.textContent = '生成';
     nodes.generate.title = canGenerate ? '生成回复：将连续发送的玩家消息一起交给模型（1 次 API 请求）' : '先发送玩家消息，再生成角色回复';
@@ -4733,27 +4809,95 @@ function stickerPrompt(catalog) {
         '用 [[sticker:ID]] 表示角色选择发送图片。仅可使用下列 ID，玩家发过的图片归玩家。\n'+
         JSON.stringify(catalog.map(({id,label,usage})=>({id,label,...(usage?{usage}:{})})));
 }
+function parseMessageStickers(source,catalog,{keepUnknown=false}={}) {
+    const stickers=[];
+    const key=value=>String(value||'').normalize('NFKC').trim().toLowerCase();
+    const text=String(source||'').replace(/\[\[sticker\s*[:：]\s*([^\]\r\n]+)\]\]|\[表情包\s*[:：]\s*([^\]\r\n]+)\]/gi,
+        (token,id,label)=>{
+            const query=key(id??label);
+            const named=catalog.filter(item=>key(item.label)===query);
+            const match=catalog.find(item=>key(item.id)===query)||(named.length===1?named[0]:null);
+            if(!match)return keepUnknown?token:'';
+            if(stickers.length<5)stickers.push(match);
+            return '';
+        }).trim();
+    if(!stickers.length)return {text};
+    const stickerName=stickers.map(item=>item.label).join('、').slice(0,180);
+    if(!text&&stickers.length===1)return {text:'[表情包：'+stickerName+']',image:stickers[0].image,sticker:true,stickerName};
+    return {text:text||'[表情包：'+stickerName+']',stickerImages:stickers.map(item=>item.image),stickerName,...(!text?{sticker:true}:{})};
+}
+function renderLegacyPhoneSticker(message,catalog) {
+    if(!catalog.length||message.recalledAt||message.sticker||message.stickerImages?.length||
+        !/\[\[sticker\s*[:：]|\[表情包\s*[:：]/i.test(message.text))return message;
+    return {...message,...parseMessageStickers(message.text,catalog,{keepUnknown:true})};
+}
 function parseStickerReply(reply,data,catalog,photos=[]) {
-    const messages=[];
-    const pattern=/\[\[(sticker|photo):([^\]\r\n]*)\]\]/g;
-    let cursor=0;
-    const addText=text=>{for(const part of splitPhoneReply(text,data))messages.push({text:part});};
-    for(const match of reply.matchAll(pattern)) {
-        addText(reply.slice(cursor,match.index));
-        if(match[1]==='sticker'){
-            const sticker=catalog.find(item=>item.id===match[2]);
-            if(sticker)messages.push({text:'[表情包：'+sticker.label+']',image:sticker.image,sticker:true,stickerName:sticker.label});
-        }else{
-            const photo=photos.find(item=>item.id===match[2]);
-            if(photo)messages.push({text:'[图片] '+(photo.description||photo.title||''),images:[photo.image]});
+    const source=reply.replace(/(\[\[(?:reply:[^\]\r\n]+|voice)\]\])[ \t]*\r?\n(?!\s*\[PHONE_NEXT\])/gi,'$1 ');
+    const parts=data?.config?.messageStyle==='unrestricted'
+        ?source.split(/\s*\[PHONE_NEXT\]\s*/).map(part=>part.trim()).filter(Boolean).slice(0,5)
+        :splitPhoneReply(source,data);
+    return parts.flatMap(part=>{
+        const action=/^\[\[(?:recall:([^\]\r\n]+)|(call|accept-call|decline-call|cancel-call|end-call))\]\]$/i.exec(part);
+        if(action)return [{text:'',...(action[1]?{recallId:action[1].trim()}:{callAction:action[2].toLowerCase()})}];
+        let replyTo='',voice=false;
+        const body=part.replace(/^(?:\s*\[\[(?:reply:[^\]\r\n]+|voice)\]\])+/i,tags=>{
+            for(const tag of tags.matchAll(/\[\[(?:reply:([^\]\r\n]+)|(voice))\]\]/gi)){
+                if(tag[1])replyTo=tag[1].trim();
+                if(tag[2])voice=true;
+            }
+            return '';
+        });
+        const images=[];let description='';
+        const message=parseMessageStickers(body.replace(/\[\[photo:([^\]\r\n]+)\]\]/g,(token,id)=>{
+            const photo=photos.find(item=>item.id===id.trim());
+            if(photo&&images.length<9){images.push(photo.image);description||=photo.description||photo.title||'';}
+            return '';
+        }),catalog);
+        if(!message.text&&!images.length)return [];
+        if(images.length&&message.sticker){
+            message.stickerImages=message.stickerImages||[message.image];
+            delete message.image;delete message.sticker;message.text='';
         }
-        cursor=match.index+match[0].length;
+        return [{...message,text:message.text||('[图片] '+description).trim(),...(images.length?{images}:{}),
+            ...(replyTo?{replyTo}:{}),...(voice&&message.text&&!message.sticker?{voice:true}:{})}];
+    });
+}
+function phoneMessageActionPrompt(data) {
+    const call=activePhoneCall(data.messages);
+    const instructions=call?.callState==='connected'
+        ?'通话已接通。通话中说的话用 [[voice]]，可单独输出 [[end-call]] 挂断。'
+        :call?.from==='user'?'用户正在拨号，可单独输出 [[accept-call]] 接听或 [[decline-call]] 拒接。'
+        :call?'你正在呼叫用户，可单独输出 [[cancel-call]] 取消。'
+        :'适合打电话时可单独输出 [[call]] 发起来电。';
+    return '【聊天动作】引用实际消息时用 [[reply:消息ID]] 放在回复开头，只有需要时才引用。'+
+        '语音以 [[voice]] 开头，后接说话原文，可以与引用搭配。撤回自己发出的消息用 [[recall:消息ID]] 单独发送。'+
+        instructions+' 连续消息或动作之间用 [PHONE_NEXT] 分开。';
+}
+function phoneReplyTargets(data,limit=CONTEXT_MESSAGE_LIMIT) {
+    return new Set(data.messages.slice(-limit).filter(m=>m.id&&!m.recalledAt&&['user','character'].includes(m.from)).map(m=>m.id));
+}
+function applyCharacterChatMessages(data,parts,ctx,char,targets) {
+    let sent=0,changed=false;
+    for(const {recallId,callAction,replyTo,...part} of parts){
+        if(recallId){
+            if(targets.has(recallId)&&recallPhoneMessage(data.messages,recallId,'character'))changed=true;
+        }else if(callAction){
+            const call=activePhoneCall(data.messages);
+            if(callAction==='call'){
+                if(!call){appendPhoneMessage(data,'character','[语音通话]',{callState:'ringing'});sent++;}
+            }else if(applyPhoneCallAction(call,callAction.replace('-call',''),'character'))changed=true;
+        }else{
+            const target=targets.has(replyTo)&&data.messages.find(m=>m.id===replyTo&&!m.recalledAt);
+            const callSpeech=part.voice&&activePhoneCall(data.messages)?.callState==='connected';
+            appendPhoneMessage(data,'character',resolvePhonePlaceholders(part.text,ctx,char),
+                {...part,...(target?{replyTo:target.id}:{}),...(callSpeech?{callSpeech:true}:{})});
+            sent++;
+        }
     }
-    addText(reply.slice(cursor));
-    return messages;
+    return {sent,changed};
 }
 function visibleStickerText(message,ctx,char) {
-    return message?.sticker&&message.image?'':resolvePhonePlaceholders(message?.text||'',ctx,char);
+    return message?.sticker?'':resolvePhonePlaceholders(message?.text||'',ctx,char);
 }
 function renderStickerLibrary() {
     if(!nodes?.stickerLibrary||!nodes?.emojiPanel)return;
@@ -4788,6 +4932,8 @@ async function useSticker(id,action) {
     if(!item)return;
     if(action==='send'){
         recordActivity('表情包发送','已保存表情包消息');
+        const draft=nodes.input.value.trim();
+        if(draft)return sendUserMessage(draft,'',null,{stickerImages:[item.image],stickerName:item.label});
         return sendUserMessage('[表情包：'+item.label+']',item.image,item);
     }
     try{
@@ -5301,7 +5447,8 @@ async function tickAutonomousActivity(manualChannel='') {
         await writeData(ctx,{...work,__contactId:PRIMARY_CONTACT_ID});
         const same=()=>ctx.chatMetadata===origMetadata&&ctx.characterId===origChar&&ctx.chatId===origChat;
         if(!same())return;
-        const contact=contactCharacter(ctx,id),data=structuredClone(readData(ctx,id));
+        const contact=contactCharacter(ctx,id);
+        let data=structuredClone(readData(ctx,id));
         const system=await composePhonePrompt(ctx,contact,data);
         const stickerCatalog=stickerLibrary(ctx),suggestedStickers=chooseStickerCandidates(stickerCatalog,data);
         const rolePhotos=photosForActor(id,'chat',ctx),publicPhotos=photosForActor(id,'group',ctx);
@@ -5314,9 +5461,9 @@ async function tickAutonomousActivity(manualChannel='') {
         let answer;
         if(channel==='messages'){
             answer=await generateWithTimeout(ctx,{
-                task:'autonomy',systemPrompt:[system,messageStylePrompt(data),stickerPrompt(suggestedStickers),albumCatalogPrompt(id),paymentReplyInstructions(data,id),
+                task:'autonomy',systemPrompt:[system,messageStylePrompt(data),stickerPrompt(suggestedStickers),albumCatalogPrompt(id),paymentReplyInstructions(data,id),phoneMessageActionPrompt(data),
                     '【主动发消息】请你作为当前联系人，结合关系、角色性格、现有私聊和最近生活，自然地给玩家发一条主动消息。不是回复正在等待的提问。可以决定不打扰，此时只输出 [SKIP]。不得替玩家说话，也不要虚构已经发生的事件。'].join('\n\n'),
-                prompt:[...buildPrompt(data,ctx,contact).slice(-10),{role:'user',content:'【系统触发：主动发消息时机】可以自主决定是否联系 user。'}]
+                prompt:[...buildPrompt(data,ctx,contact,{includeIds:true,limit:10}),{role:'user',content:'【系统触发：主动发消息时机】可以自主决定是否联系 user。'}]
             },data);
         }else{
             answer=await generateWithTimeout(ctx,{
@@ -5333,17 +5480,19 @@ async function tickAutonomousActivity(manualChannel='') {
             return;
         }
         if(channel==='messages'){
+            const targets=phoneReplyTargets(data,10);
+            data=structuredClone(readData(ctx,id));
             const afterReceipt=applyPaymentModelTags(data,String(answer),id);
             const paymentResult=applyCharacterPaymentSendTag(data,afterReceipt,id);
             const messages=paymentResult.text?parseStickerReply(paymentResult.text,data,stickerCatalog,rolePhotos).slice(0,4):[];
-            for(const message of messages)appendPhoneMessage(data,'character',resolvePhonePlaceholders(message.text,ctx,contact),message);
+            const delivery=applyCharacterChatMessages(data,messages,ctx,contact,targets);
             if(paymentResult.created){
                 const card=appendPhoneMessage(data,'character',
                     paymentResult.created.kind==='redpacket'?'[红包]':'[转账]');
                 card.paymentId=paymentResult.created.id;
             }
-            const total=messages.length+(paymentResult.created?1:0);
-            if(!total&&!/\[\[PAYMENT_(?:ACCEPT|DECLINE):/i.test(String(answer)))return;
+            const total=delivery.sent+(paymentResult.created?1:0);
+            if(!total&&!delivery.changed&&!/\[\[PAYMENT_(?:ACCEPT|DECLINE):/i.test(String(answer)))return;
             const currentlyReading=root?.classList.contains('lp-open')&&activeScreen==='chat'&&activeContactId===id;
             if(!currentlyReading&&total){
                 data.unreadCounts={...(data.unreadCounts||{}),[id]:Math.min(99,unreadCount(data,id)+total)};
@@ -6284,6 +6433,9 @@ async function openGroupFromChatList(id){
 }
 function chatListMessagePreview(message){
  if(!message)return '';
+ if(message.recalledAt)return '撤回了一条消息';
+ if(message.callState)return phoneCallLabel(message);
+ if(message.voice)return '[语音消息]';
  if(message.sticker||message.image||(Array.isArray(message.images)&&message.images.length))return '[图片]';
  const value=String(message.text||'').trim();
  if(/^\[(?:表情包|图片)[^\]]*\]/.test(value))return '[图片]';
@@ -6345,7 +6497,7 @@ function renderChatLists(ctx,char,data) {
   const last=Array.isArray(group.messages)?group.messages.at(-1):null;
   const preview=document.createElement('small');
   const speaker=last?.from==='user'?'我':last?.from&&validContactId(story,last.from)?getContactInfo(ctx,last.from).name:'成员';
-  preview.textContent=last?(speaker+'：'+(chatListMessagePreview(last)||'[分享]')):(group.members?.length||0)+'位群成员 · 暂无消息';
+  preview.textContent=last?(speaker+(last.recalledAt?'':'：')+(chatListMessagePreview(last)||'[分享]')):(group.members?.length||0)+'位群成员 · 暂无消息';
   const chevron=document.createElement('span');chevron.textContent='›';chevron.className='lp-chevron';
   info.append(name,preview);row.append(avatar,info,chevron);
   row.addEventListener('click',()=>void openGroupFromChatList(group.id));
@@ -6860,29 +7012,39 @@ async function resetAvatar(side) {
 }
 function exportChatPayload(ctx,data) {
     return {format:'gujiguji-chat',version:1,character:getCharacterName(selectedCharacter(ctx)),exportedAt:new Date().toISOString(),
-        messages:data.messages.map(({id,from,text,storyTime,createdAt,image,images,sharePost,sticker,stickerName,replyTo,replyQuote})=>({
-            id,from,text,storyTime,createdAt,...(image?{image}:{}),...(Array.isArray(images)?{images}:{}),...(sharePost?{sharePost}:{}),...(sticker?{sticker:true,stickerName}:{}),
-            ...(replyTo?{replyTo}:{}),...(replyQuote?{replyQuote}:{})
+        messages:data.messages.map(({id,from,text,storyTime,createdAt,image,images,sharePost,sticker,stickerName,stickerImages,
+            replyTo,replyQuote,voice,callSpeech,callState,connectedAt,endedAt,recalledAt})=>({
+            id,from,text,storyTime,createdAt,image,images,sharePost,sticker,stickerName,stickerImages,
+            replyTo,replyQuote,voice,callSpeech,callState,connectedAt,endedAt,recalledAt,
         }))};
 }
 function parseChatImport(raw) {
     const obj=JSON.parse(raw);
-    if (!obj || obj.format!=='gujiguji-chat'||obj.version!==1||!Array.isArray(obj.messages)||obj.messages.length>10000)
+    if(!obj||obj.format!=='gujiguji-chat'||obj.version!==1||!Array.isArray(obj.messages)||obj.messages.length>10000)
         throw new Error('不是受支持的咕叽咕机聊天记录');
-    return obj.messages.map((m,i)=>{
-        if (!m || !['user','character','system'].includes(m.from) || typeof m.text!=='string'||m.text.length>50000)
+    const imported=obj.messages.map((m,i)=>{
+        if(!m||!['user','character','system'].includes(m.from)||typeof m.text!=='string'||m.text.length>50000)
             throw new Error('第'+(i+1)+'条消息格式不合法');
-        const image=typeof m.image==='string' && /^data:image\/(?:jpeg|png|webp|gif);base64,/.test(m.image) && m.image.length<950000?m.image:'';
-        const images=Array.isArray(m.images)?m.images.filter(src=>typeof src==='string'&&/^data:image\/(?:jpeg|png|webp);base64,/.test(src)&&src.length<1600000).slice(0,9):[];
+        const stamp=value=>typeof value==='string'?value.slice(0,40):'';
+        const row={id:typeof m.id==='string'&&m.id.length<100?m.id:'import-'+i+'-'+Date.now(),from:m.from,
+            text:m.text,storyTime:stamp(m.storyTime).slice(0,30),createdAt:stamp(m.createdAt)||new Date().toISOString()};
+        if(stamp(m.recalledAt))return {...row,text:'',recalledAt:stamp(m.recalledAt)};
+        const dataImage=/^data:image\/(?:jpeg|png|webp|gif);base64,/;
+        const image=typeof m.image==='string'&&dataImage.test(m.image)&&m.image.length<950000?m.image:'';
+        const images=Array.isArray(m.images)?m.images.filter(src=>typeof src==='string'&&dataImage.test(src)&&src.length<1600000).slice(0,9):[];
+        const stickerImages=Array.isArray(m.stickerImages)?m.stickerImages.filter(validStickerImage).slice(0,5):[];
         const sharePost=m.sharePost&&typeof m.sharePost==='object'?makeShareSnapshot(m.sharePost):null;
-        return {id: typeof m.id==='string'&&m.id.length<100?m.id:'import-'+i+'-'+Date.now(),
-            from:m.from,text:m.text,storyTime:typeof m.storyTime==='string'?m.storyTime.slice(0,30):'',
-            createdAt:typeof m.createdAt==='string'?m.createdAt.slice(0,40):new Date().toISOString(),
-            ...(image?{image}:{}),...(images.length?{images}:{}),...(sharePost?.text?{sharePost}:{}),...(image&&m.sticker===true?{sticker:true,stickerName:String(m.stickerName||'').slice(0,60)}:{}),
+        return {...row,...(image?{image}:{}),...(images.length?{images}:{}),...(sharePost?.text?{sharePost}:{}),
+            ...((image||stickerImages.length)&&m.sticker===true?{sticker:true}:{}),
+            ...((m.sticker===true||stickerImages.length)?{stickerName:String(m.stickerName||'').slice(0,180)}:{}),
+            ...(stickerImages.length?{stickerImages}:{}),...(m.voice===true?{voice:true}:{}),...(m.callSpeech===true?{callSpeech:true}:{}),
+            ...(PHONE_CALL_STATES.has(m.callState)?{callState:m.callState,connectedAt:stamp(m.connectedAt),endedAt:stamp(m.endedAt)}:{}),
             ...(typeof m.replyQuote==='string'?{replyQuote:m.replyQuote.slice(0,180)}:{}),
-            ...(typeof m.replyTo==='string'?{replyTo:m.replyTo.slice(0,100)}:{})
-        };
+            ...(typeof m.replyTo==='string'?{replyTo:m.replyTo.slice(0,100)}:{})};
     });
+    const recalledIds=new Set(imported.filter(message=>message.recalledAt).map(message=>message.id));
+    for(const message of imported)if(recalledIds.has(message.replyTo))delete message.replyQuote;
+    return imported;
 }
 function getChatExport() {
     const ctx=context();
@@ -6944,6 +7106,9 @@ async function clearOrDeleteChat(deleteConversation=false) {
 let messageHoldTimer=null;
 function openMessageActions(id,anchor=null){
  if(busy||!nodes?.messageActions)return;
+ const item=readData(context()).messages.find(message=>message.id===id);
+ if(!item||item.recalledAt)return;
+ nodes.messageActions.querySelector('[data-message-action=recall]').hidden=!canRecallMessage(item,'user');
  selectedMessageId=id;
  nodes.messageActions.hidden=false;
  const target=anchor||[...nodes.messages.querySelectorAll('[data-message-id]')]
@@ -6985,15 +7150,16 @@ async function handleMessageOperation(action) {
     const ctx=context();
     const current=readData(ctx);
     const msg=current.messages.find(x=>x.id===selectedMessageId);
-    if(!msg)return closeMessageActions();
+    if(!msg||msg.recalledAt||busy)return closeMessageActions();
     if(action==='saveSticker'){
-        if(!msg.image)return setStatus('这条消息没有图片','error');
+        const image=msg.image||msg.stickerImages?.[0];
+        if(!image)return setStatus('这条消息没有图片','error');
         const label=window.prompt('表情包名称／关键词',msg.stickerName||'');
         if(label===null)return;
-        try{saveSticker(msg.image,label);renderStickerLibrary();setStatus('已收藏表情包');}catch(e){setStatus(e.message,'error');}
+        try{saveSticker(image,label);renderStickerLibrary();setStatus('已收藏表情包');}catch(e){setStatus(e.message,'error');}
     } else if(action==='quote'){
         quotedMessageId=msg.id;
-        nodes.quotedText.textContent='引用：'+resolvePhonePlaceholders(msg.text.slice(0,100),ctx,contactCharacter(ctx));
+        nodes.quotedText.textContent='引用：'+resolvePhonePlaceholders(messageQuoteText(msg).slice(0,100),ctx,contactCharacter(ctx));
         nodes.quotedPreview.hidden=false;
         nodes.input.focus();
     } else if(action==='edit'){
@@ -7018,6 +7184,17 @@ async function handleMessageOperation(action) {
         appendPhoneMessage(data,'user','[转发] '+msg.text,{forwardFrom:contactDisplayName(ctx)});
         try{await writeData(ctx,data);setStatus('已转发到 '+contactDisplayName(ctx,chosen));}
         catch(e){setStatus(recordError('转发消息',e),'error');}
+    } else if(action==='recall'){
+        closeMessageActions();
+        const data=structuredClone(current),session=captureSession(ctx);
+        if(!recallPhoneMessage(data.messages,msg.id,'user'))return;
+        const job=startBusy('recall');
+        try{
+            await writeData(ctx,data);
+            if(sameSession(session)&&quotedMessageId===msg.id)clearQuote();
+        }catch(error){if(sameSession(session))setStatus(recordError('撤回消息',error),'error');}
+        finally{finishBusy(job);if(mounted&&sameSession(session))render();}
+        return;
     } else if(action==='delete'){
         closeMessageActions();await deleteIndividualMessage(msg.id);return;
     } else if(action==='copy'){
@@ -7433,7 +7610,7 @@ function startChatTool(action) {
     } else if(action==='transfer'||action==='redpacket'){
         openPaymentForm(action);
     } else if(action==='call'){
-        nodes.input.value='[剧情语音通话邀请] 方便接电话吗？';nodes.input.focus();
+        void updatePhoneCall('dial');
     } else if(action==='time'){
         nodes.morePanel.hidden=true;
         nodes.emojiPanel.hidden=true;
@@ -7445,6 +7622,22 @@ function startChatTool(action) {
     } else if(action==='more')toggleChatTools('more');
 }
 
+async function updatePhoneCall(action,id='') {
+    if(!mounted||busy||activeScreen!=='chat')return;
+    const ctx=context(),session=captureSession(ctx),data=structuredClone(readData(ctx));
+    if(friendshipState(data)!=='friends')return;
+    const call=activePhoneCall(data.messages);
+    if(action==='dial'){
+        if(call)return setStatus('已有一通电话','error');
+        appendPhoneMessage(data,'user','[语音通话]',{callState:'ringing'});
+    }else if(call?.id!==id||!applyPhoneCallAction(call,action,'user'))return;
+    const job=startBusy('call');
+    try{
+        await writeData(ctx,data);
+        if(sameSession(session))nodes.morePanel.hidden=true;
+    }catch(error){if(sameSession(session))setStatus(recordError('保存语音通话',error),'error');}
+    finally{finishBusy(job);if(mounted&&sameSession(session))render();}
+}
 async function deleteIndividualMessage(id) {
     if (busy) return;
     const ctx=context();
@@ -7498,7 +7691,8 @@ function renderMessages(data){
  if(!root?.classList.contains('lp-open')||activeScreen!=='chat')return;
  nodes.messages.replaceChildren();
  closeMessageActions();
- const list=cleanPhoneHistory(data.messages);
+ const list=cleanPhoneHistory(data.messages),byId=new Map(list.map(message=>[message.id,message]));
+ const catalog=list.some(m=>m.from==='character'&&/表情包|\[\[sticker/i.test(m.text))?stickerLibrary():[];
  if(!list.length){
   const empty=document.createElement('p');empty.className='lp-empty';empty.textContent='暂无消息';
   nodes.messages.append(empty);
@@ -7508,8 +7702,9 @@ function renderMessages(data){
  const payments=new Map(walletState(data).transfers.map(transfer=>[transfer.id,transfer]));
  let lastSeparator='';
  const currentStoryDate=String(data.storyTime||localDateTime());
- for(const [index,message] of list.entries()){
-  if(typeof message?.text!=='string'||(message.from==='character'&&!message.text.trim()&&!message.image&&!message.images?.length))continue;
+ for(const [index,saved] of list.entries()){
+  const message=saved.from==='character'?renderLegacyPhoneSticker(saved,catalog):saved;
+  if(typeof message?.text!=='string'||(message.from==='character'&&!message.text.trim()&&!message.image&&!message.images?.length&&!message.recalledAt))continue;
   // Older replies could append this system notice immediately after a receipt.
   if(message.from==='system'&&message.text==='对方已处理交易'&&
    payments.get(list[index-1]?.paymentReceiptId)?.from==='user')continue;
@@ -7518,6 +7713,11 @@ function renderMessages(data){
    const separator=document.createElement('div');separator.className='lp-chat-time-divider';
    separator.textContent=chatTimeLabel(stamp,currentStoryDate);
    fragment.append(separator);lastSeparator=stamp;
+  }
+  if(message.recalledAt){
+   const notice=document.createElement('div');notice.className='lp-recall-notice';
+   notice.textContent=(message.from==='user'?'你':contactDisplayName(ctx))+'撤回了一条消息';fragment.append(notice);
+   continue;
   }
   const settled=payments.get(message.paymentReceiptId);
   const receipt=Boolean(settled);
@@ -7528,9 +7728,11 @@ function renderMessages(data){
   row.dataset.messageId=message.id;
   const body=document.createElement('div');body.className='lp-message-body';
   const bubble=document.createElement('div');bubble.className='lp-bubble'+(payment?' lp-payment-shell':'');
-  if(message.sticker&&(message.image||message.images?.length))bubble.classList.add('lp-sticker-only');
+  if(message.sticker&&!message.replyTo&&!message.replyQuote)bubble.classList.add('lp-sticker-only');
   const located=!payment?locationCard(message.text):null;
-  if(located){bubble.classList.add('lp-location-shell');bubble.append(located);}
+  if(message.callState)bubble.append(renderPhoneCall(message));
+  else if(message.voice)bubble.append(renderVoiceMessage(visibleStickerText(message,ctx,character)));
+  else if(located){bubble.classList.add('lp-location-shell');bubble.append(located);}
   else bubble.textContent=visibleStickerText(message,ctx,character);
   if(message.sharePost){
    const p=message.sharePost;bubble.textContent='';
@@ -7544,13 +7746,14 @@ function renderMessages(data){
   if(payment){
    bubble.replaceChildren(walletRenderCard(payment,receipt));
   }
-  if(message.replyQuote){
+  const quoted=phoneQuotePreview(message,byId);
+  if(quoted){
    const quote=document.createElement('div');quote.className='lp-inline-quote';
-   quote.textContent=resolvePhonePlaceholders(message.replyQuote,ctx,character);bubble.prepend(quote);
+   quote.textContent=resolvePhonePlaceholders(quoted.slice(0,180),ctx,character);bubble.prepend(quote);
   }
-  for(const src of (Array.isArray(message.images)&&message.images.length?message.images:message.image?[message.image]:[])){
+  for(const src of [...(message.images?.length?message.images:message.image?[message.image]:[]),...(message.stickerImages||[])]){
     const picture=document.createElement('img');picture.className='lp-chat-image';picture.src=src;
-    picture.alt=message.sticker?'表情包图片':'聊天图片';bubble.append(picture);
+    picture.alt=message.sticker||message.stickerImages?.includes(src)?'表情包图片':'聊天图片';bubble.append(picture);
    }
   body.append(bubble);
   if(from!=='system'){
@@ -7698,8 +7901,8 @@ async function runReply(ctx, char, data, session, existingJob = null) {
         const selectedStickers=chooseStickerCandidates(catalog,data);
         const rolePhotos=photosForActor(activeContactId,'chat',ctx);
         const systemPrompt = [await composePhonePrompt(ctx, char, data, {prioritizeLatestUserTurn:true}), messageStylePrompt(data), stickerPrompt(selectedStickers),albumCatalogPrompt(activeContactId),
-            paymentReplyInstructions(data,activeContactId)].filter(Boolean).join('\n\n');
-        const phoneHistory=buildPrompt(data,ctx,char);
+            paymentReplyInstructions(data,activeContactId),phoneMessageActionPrompt(data)].filter(Boolean).join('\n\n');
+        const phoneHistory=buildPrompt(data,ctx,char,{includeIds:true});
         const api=readApiOptions(data,'chat');
         const connection=api.mode==='profile'?'使用酒馆已保存的 API 站点':api.mode==='custom'?'使用独立 API':'使用酒馆当前连接'+(ctx?.mainApi?' · '+ctx.mainApi:'');
         recordActivity('生成配置',connection+'（'+(api.override?'咕叽聊单独配置':'小手机默认配置')+'）；手机历史 '+phoneHistory.length+' 条；当前手机预设 '+(configuredPhonePreset(data)||'未选择')+'；启用世界书 '+selectedWorldBookNames(data).length+' 本。实际注入数请看「注入预览」，包含自动继承的原版启用条目。');
@@ -7714,23 +7917,25 @@ async function runReply(ctx, char, data, session, existingJob = null) {
         const rawReply = typeof result === 'string' ? result.trim() : '';
         const reply=stripModelReasoning(rawReply);
         if(!reply)throw new Error(rawReply?'模型仅返回思考内容，未生成可发送的角色消息，请重试。':'模型返回了空消息或不支持的回复类型。');
+        const targets=phoneReplyTargets(data);
+        data=structuredClone(readData(ctx,session.contactId));
         const beforeStatuses=walletState(data).transfers.map(tx=>tx.id+':'+tx.status);
         const beforeMessages=data.messages.length;
         const afterReceipt=applyPaymentModelTags(data,reply,activeContactId);
         const receiptChanged=walletState(data).transfers.some((tx,i)=>beforeStatuses[i]!==tx.id+':'+tx.status);
         const paymentResult=applyCharacterPaymentSendTag(data,afterReceipt,activeContactId);
         const phoneMessages=paymentResult.text?parseStickerReply(paymentResult.text,data,catalog,rolePhotos):[];
-        if(!phoneMessages.length&&!paymentResult.created&&!receiptChanged)
+        const delivery=applyCharacterChatMessages(data,phoneMessages,ctx,char,targets);
+        if(!delivery.sent&&!delivery.changed&&!paymentResult.created&&!receiptChanged)
             throw new Error('模型没有返回可发送的角色消息');
-        for (const message of phoneMessages) appendPhoneMessage(data,'character',resolvePhonePlaceholders(message.text,ctx,char),message);
-        if(receiptChanged&&!phoneMessages.length&&!paymentResult.created&&data.messages.length===beforeMessages)
+        if(receiptChanged&&!delivery.sent&&!paymentResult.created&&data.messages.length===beforeMessages)
             data.messages.push(makeMessage('system','对方已处理交易',data.storyTime));
         if(paymentResult.created){
             const bubble=appendPhoneMessage(data,'character',paymentResult.created.kind==='redpacket'?'[红包]':'[转账]');
             bubble.paymentId=paymentResult.created.id;
         }
         await writeData(ctx, data);
-        recordActivity('生成成功', '已保存 ' + phoneMessages.length + ' 条角色消息', 'success');
+        recordActivity('生成成功', '已保存 ' + delivery.sent + ' 条角色消息', 'success');
         if (sameSession(session)) setStatus('');
     } catch (error) {
         const message = recordError('生成角色回复', error);
@@ -7741,6 +7946,12 @@ async function runReply(ctx, char, data, session, existingJob = null) {
     }
 }
 
+function canGenerateChatReply(data) {
+    const last=data.messages.findLast(message=>!message.recalledAt);
+    const call=activePhoneCall(data.messages);
+    return Boolean(call?.callState==='connected'||(call?.callState==='ringing'&&call.from==='user')||
+        (last?.from==='user'&&!last.callState));
+}
 async function generateReply() {
     if (!mounted || busy) return;
     const ctx = context();
@@ -7750,7 +7961,7 @@ async function generateReply() {
     await configWriteQueue;
     if(!mounted||busy||context()?.chatMetadata!==ctx.chatMetadata)return;
     const data = structuredClone(readData(ctx));
-    if (friendshipState(data) !== 'friends' || data.messages.at(-1)?.from !== 'user') return;
+    if (friendshipState(data) !== 'friends' || !canGenerateChatReply(data)) return;
     if (typeof ctx.generateRaw !== 'function' && !ctx.ChatCompletionService?.sendRequest) {
         setStatus(recordError('重试生成', new Error('当前酒馆未提供生成接口。')), 'error');
         return;
@@ -7768,9 +7979,10 @@ async function sendUserMessage(text,image='',sticker=null,extra={}) {
     // The model/provider must support images; do not require a separate API.
     const session=captureSession(ctx);
     const data=structuredClone(readData(ctx));
-    const quoted=data.messages.find(x=>x.id===quotedMessageId);
-    const message=appendPhoneMessage(data,'user',content,extra);
-    if(quoted){message.replyTo=quoted.id;message.replyQuote=quoted.text.slice(0,180);}
+    const quoted=data.messages.find(x=>x.id===quotedMessageId&&!x.recalledAt);
+    const speaking=!image&&!sticker&&!extra.stickerImages?.length&&!extra.images?.length&&activePhoneCall(data.messages)?.callState==='connected';
+    const message=appendPhoneMessage(data,'user',content,{...extra,...(speaking?{callSpeech:true}:{})});
+    if(quoted){message.replyTo=quoted.id;message.replyQuote=messageQuoteText(quoted).slice(0,180);}
     if(image)message.image=image;
     if(sticker){message.sticker=true;message.stickerName=sticker.label;}
     data.chatDeleted=false;
@@ -8576,6 +8788,7 @@ function makeUI() {
             <button type="button" data-message-action="edit">编辑</button>
             <button type="button" data-message-action="copy">复制</button>
             <button type="button" data-message-action="saveSticker">收藏为表情包</button>
+            <button type="button" data-message-action="recall">撤回</button>
             <button type="button" data-message-action="delete">删除</button>
             <button type="button" data-message-action="cancel">关闭</button>
           </div>
@@ -9386,6 +9599,8 @@ function mount() {
         if(tool&&root.contains(tool)){startChatTool(tool.dataset.chatTool);return;}
         const sticker=event.target.closest('button[data-sticker-id]');
         if(sticker&&root.contains(sticker)){void useSticker(sticker.dataset.stickerId,sticker.dataset.stickerAction);return;}
+        const callControl=event.target.closest('button[data-call-action]');
+        if(callControl&&root.contains(callControl)){void updatePhoneCall(callControl.dataset.callAction,callControl.dataset.callMessage);return;}
         const paymentCard=event.target.closest('[data-payment-open]');
         if(paymentCard&&root.contains(paymentCard)){
             void confirmPaymentReceipt(paymentCard.dataset.paymentOpen);

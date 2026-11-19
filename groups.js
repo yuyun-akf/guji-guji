@@ -13,7 +13,10 @@ export function createGroupsModule(api){
  const button=(label,action,id='')=>{const b=el('button','lp-group-button',label);b.type='button';b.dataset.groupAction=action;if(id)b.dataset.groupId=id;return b;};
  const who=id=>id==='user'?(api.userPhoneName?.()||'我'):api.galleryPeople().find(x=>x.id===id)?.name||'已退出成员';
  const groupTitle=g=>g.remark||g.name||'群聊';
- function groupRecords(g){return (g.messages||[]).map(m=>who(m.from)+'：'+String(m.text||'[图片]')).join('\n');}
+ const quoteText=message=>api.messageQuoteText?.(message)||String(message.text||'[图片]');
+ const recallText=message=>(message.from==='user'?'你':who(message.from))+'撤回了一条消息';
+ const quoteLabel=message=>message.recalledAt?quoteText(message):who(message.from)+'：'+quoteText(message);
+ function groupRecords(g){return (g.messages||[]).map(m=>m.recalledAt?recallText(m):quoteLabel(m)).join('\n');}
  function groupHeader(t){api.setGroupTitle?.(t||'群聊');}
  function status(text,error=false){state.status='';api.notifyInteraction?.(text,error?'error':'success');render();}
  function render(){
@@ -85,32 +88,43 @@ export function createGroupsModule(api){
    }
    // Use the same row/body/bubble vocabulary and geometry as private chats.
    const feed=el('div','lp-group-messages lp-group-chat-feed'),messageMap=new Map((group.messages||[]).map(m=>[m.id,m]));
-   for(const msg of group.messages||[]){
+   const stickerCatalog=(group.messages||[]).some(message=>message.from!=='user'&&/表情包|\[\[sticker/i.test(message.text))
+    ?api.stickerLibrary?.()||[]:[];
+   for(const saved of group.messages||[]){
+    if(saved.recalledAt){feed.append(el('div','lp-recall-notice',recallText(saved)));continue;}
+    const msg=saved.from!=='user'?(api.renderLegacyPhoneSticker?.(saved,stickerCatalog)||saved):saved;
     const mine=msg.from==='user';
     const row=el('div','lp-message lp-group-chat-row '+(mine?'lp-mine':'lp-theirs'));
     const src=api.memberAvatar?.(msg.from);
     const face=el('img','lp-group-sender-avatar');face.src=src||'/img/ai4.png';face.alt=who(msg.from);
     const body=el('div','lp-message-body');
     if(!mine)body.append(el('small','lp-group-sender-name',who(msg.from)));
-    const bubble=el('div','lp-bubble lp-group-bubble'+(msg.sticker?' lp-sticker-only':''));
-    const parent=messageMap.get(msg.replyTo);
-    if(parent)bubble.append(el('div','lp-inline-quote',who(parent.from)+'：'+String(parent.text||'[图片]').slice(0,100)));
-    if(msg.text&&!msg.sticker)bubble.append(el('span','lp-group-message-text',msg.text));
+    const parent=msg.replyTo&&messageMap.get(msg.replyTo),quote=parent?quoteLabel(parent):msg.replyQuote;
+    const bubble=el('div','lp-bubble lp-group-bubble'+(msg.sticker&&!quote?' lp-sticker-only':''));
+    if(quote)bubble.append(el('div','lp-inline-quote',quote.slice(0,180)));
+    if(msg.voice)bubble.append(api.renderVoiceMessage(msg.text));
+    else if(msg.text&&!msg.sticker)bubble.append(el('span','lp-group-message-text',msg.text));
     if(msg.sharePost){
      const quote=el('div','lp-group-share');quote.append(el('strong','',msg.sharePost.author||'群星'),el('p','',msg.sharePost.text||''));
      if(msg.sharePost.image){const image=el('img');image.src=msg.sharePost.image;image.alt='群星分享图片';quote.append(image);}
      bubble.append(quote,button('查看分享内容','view-share',msg.id));
     }
-    if(msg.images?.length)for(const image of msg.images){const img=el('img','lp-chat-image lp-group-photo');img.src=image;img.alt='群聊照片';bubble.append(img);}
+    for(const image of [...(msg.images||[]),...(msg.image?[msg.image]:[]),...(msg.stickerImages||[])]){
+     const img=el('img','lp-chat-image lp-group-photo');img.src=image;
+     img.alt=msg.sticker||msg.stickerImages?.includes(image)?'表情包图片':'群聊照片';bubble.append(img);
+    }
     body.append(bubble);
-    const quoteButton=button('引用','quote',msg.id);quoteButton.classList.add('lp-group-quote-action');body.append(quoteButton);
+    const actions=el('div','lp-group-message-actions');
+    const quoteButton=button('引用','quote',msg.id);quoteButton.classList.add('lp-group-quote-action');actions.append(quoteButton);
+    if(api.canRecallMessage?.(msg,'user'))actions.append(button('撤回','recall',msg.id));
+    body.append(actions);
     row.append(face,body);feed.append(row);
    }
    if(!feed.children.length)feed.append(el('p','lp-album-empty','群聊刚刚建立。'));
    target.append(feed);
    const compose=el('div','lp-group-composer lp-group-chat-compose');
    const targetMsg=messageMap.get(state.quoteId);
-   if(targetMsg){const quote=el('div','lp-group-compose-quote','引用 '+who(targetMsg.from)+'：'+String(targetMsg.text||'[图片]').slice(0,95));
+   if(targetMsg&&!targetMsg.recalledAt){const quote=el('div','lp-group-compose-quote','引用 '+quoteLabel(targetMsg).slice(0,95));
     quote.append(button('×','cancel-quote'));compose.append(quote);}
    const controls=el('div','lp-group-composer-controls');
    const emoji=button('☺','emoji');emoji.classList.add('lp-tool-btn','lp-group-tool-btn');
@@ -176,15 +190,22 @@ export function createGroupsModule(api){
   });
   state.active=groupId;state.manage=false;render();
  }
- async function send(){
-  const group=groups().find(g=>g.id===state.active),input=host()?.querySelector('[data-group-input="message"],[data-group-input="message"]');
-  const text=input?.value?.trim();if(!group||!text)return;
-  const replyTo=(group.messages||[]).some(m=>m.id===state.quoteId)?state.quoteId:'';
+ async function sendGroupMessage(groupId,text,extra={}){
+  if(!groupId||!text)return;
   await mutate(all=>{
-   const g=all.find(x=>x.id===group.id);g.messages.push({id:uid(),from:'user',text:text.slice(0,1000),...(replyTo?{replyTo}:{}),storyTime:root().storyTime||'',createdAt:new Date().toISOString()});
+   const g=all.find(item=>item.id===groupId);if(!g)throw Error('群聊不存在');
+   g.messages||=[];
+   const target=g.messages.find(m=>m.id===state.quoteId&&!m.recalledAt);
+   g.messages.push({id:uid(),from:'user',text:text.slice(0,1000),...extra,
+    ...(target?{replyTo:target.id,replyQuote:quoteLabel(target).slice(0,180)}:{}),
+    storyTime:root().storyTime||'',createdAt:new Date().toISOString()});
    g.messages=g.messages.slice(-180);
   });
-  state.status='';state.quoteId='';state.draft='';state.tool='';render();
+  if(state.active===groupId){state.quoteId='';state.draft='';state.tool='';render();}
+ }
+ async function send(){
+  const input=host()?.querySelector('[data-group-input="message"]');
+  await sendGroupMessage(state.active,input?.value?.trim());
  }
  async function generate(){
   const group=groups().find(g=>g.id===state.active);if(!group||state.busy)return;
@@ -197,33 +218,59 @@ export function createGroupsModule(api){
      photos:(api.galleryPhotosForMember?.(id)||[]).slice(0,8).map(p=>({id:p.id,description:p.description||p.title||'照片'}))};
    });
    if(!roster.length)throw Error('群聊中没有可回复的好友');
-   const history=(group.messages||[]).slice(-30).map(m=>({id:m.id,speaker:m.from,text:String(m.text||'').slice(0,800),replyTo:m.replyTo||'',sharePost:m.sharePost?{author:m.sharePost.author,text:m.sharePost.text}:undefined}));
-   const sys='你正在生成完全虚构的多人聊天。用户是独立参与者；禁止新增用户的言行、心理，禁止读心，禁止知道不在群里的私聊内容。每位成员都有独立人设与知识，发言必须是成员本人合理决定；不要求所有成员轮流回复，也允许本轮无人回复。群成员与他们的设定并非该角色能够看到的其他人的私密资料。如成员有已允许私聊使用的本人相册照片，可在其消息中使用 [[photo:照片ID]]，且仅使用该成员名下照片；不强制发送。允许群成员交错发言、互相回应与引用群内已发生的消息，不能强制轮流。一条回复可通过 replyTo 引用给出的历史消息ID，也可以引用本轮前面消息的索引（从0开始）。仅返回JSON：{"messages":[{"speaker":"成员ID","text":"回复","replyTo":"可选引用ID或本轮索引"}]}。只能使用给出的成员ID，最多8条，不能输出玩家的话。';
+   const history=(group.messages||[]).slice(-30).map(m=>m.recalledAt?{speaker:m.from,text:'[撤回了一条消息]'}
+    :{id:m.id,speaker:m.from,text:quoteText(m).slice(0,800),replyTo:m.replyTo||'',
+      sharePost:m.sharePost?{author:m.sharePost.author,text:m.sharePost.text}:undefined});
+   const catalog=api.stickerLibrary?.()||[];
+   const sys=[
+    '你正在生成虚构群聊。群成员只知道群消息，各有独立人设和知识，可以交错发言或选择暂不发言。不能代替用户说话、行动或描写用户的心理。',
+    '仅返回 JSON 对象，messages 数组最多8条。普通消息格式为 {"speaker":"成员ID","text":"消息"}。语音在同一格式增加 "type":"voice"，text 写语音原文。',
+    '仅在贴合语境时添加 "replyTo"，可引用用户、其他成员或自己已发的消息。值为给出的群历史消息 ID，或本轮 messages 数组中较早项的从零开始的整数索引。',
+    '撤回自己的普通消息用 {"speaker":"成员ID","type":"recall","messageId":"历史消息ID或本轮较早项的索引"}。',
+    '照片用 [[photo:照片ID]]，只能使用发言者获准用于本群的照片。speaker 必须为已提供的角色成员 ID。',
+    api.stickerPrompt?.(api.chooseStickerCandidates?.(catalog,{messages:history})||[]),
+   ].filter(Boolean).join('\n');
    const raw=await api.phoneGenerate(ctx(),{task:'chat',systemPrompt:sys,prompt:[{role:'user',content:JSON.stringify({storyTime:root().storyTime,members:roster,history})}]},api.readRootData(ctx()));
-   if(scope()!==meta)return;
-   const text=api.stripModelReasoning?.(raw)||raw;
-   const match=String(text).match(/\{[\s\S]*\}/);if(!match)throw Error('群聊回复不是合法 JSON');
-   const parsed=JSON.parse(match[0]);
-   const messages=(Array.isArray(parsed.messages)?parsed.messages:[]).filter(m=>roster.some(p=>p.id===m.speaker)&&typeof m.text==='string'&&m.text.trim()).slice(0,8);
-   if(messages.length)await mutate(all=>{
+   if(scope()!==meta||!groups().some(g=>g.id===group.id))return;
+   const rawJson=String(api.stripModelReasoning?.(raw)||raw).match(/\{[\s\S]*\}/);
+   if(!rawJson)throw Error('群聊回复不是合法 JSON');
+   const parsed=JSON.parse(rawJson[0]);
+   const candidates=Array.isArray(parsed.messages)?parsed.messages.slice(0,8):[];
+   const historyIds=new Set(history.filter(item=>item.id).map(item=>item.id));
+   if(candidates.length)await mutate(all=>{
     const g=all.find(x=>x.id===group.id),newBatch=[];
-    for(const message of messages){
-     const memberPhotos=api.galleryPhotosForMember?.(message.speaker)||[];
-     const match=message.text.match(/\[\[photo:([^\]\r\n]+)\]\]/);
-     const photo=match?memberPhotos.find(p=>p.id===match[1]):null;
-     const text=message.text.replace(/\[\[photo:[^\]\r\n]+\]\]/g,'').trim();
-     if(text||photo){
-      const ref=String(message.replyTo||'');
-      const original=(g.messages||[]).find(m=>m.id===ref)||
-       (/^\d+$/.test(ref)?newBatch[Number(ref)]:null);
-      const saved={id:uid(),from:message.speaker,text:text.slice(0,1000),
-        ...(original?{replyTo:original.id}:{}),
-       ...(photo?{images:[photo.image]}:{}),storyTime:root().storyTime||'',createdAt:new Date().toISOString()};g.messages.push(saved);newBatch.push(saved);}
+    g.messages||=[];
+    const resolve=ref=>{
+     const key=String(ref??'').trim();
+     const id=historyIds.has(key)?key:/^\d+$/.test(key)?newBatch[Number(key)]:null;
+     return id?g.messages.find(m=>m.id===id&&!m.recalledAt):null;
+    };
+    for(const [position,message] of candidates.entries()){
+     if(!message||!roster.some(p=>p.id===message.speaker)||!g.members.includes(message.speaker))continue;
+     if(message.type==='recall'){
+      const target=resolve(message.messageId);
+      if(target)api.recallPhoneMessage(g.messages,target.id,message.speaker);
+      continue;
+     }
+     if(typeof message.text!=='string')continue;
+     const available=api.galleryPhotosForMember?.(message.speaker)||[],images=[];
+     const text=message.text.replace(/\[\[photo:([^\]\r\n]+)\]\]/g,(token,id)=>{
+      const photo=available.find(item=>item.id===id.trim());
+      if(photo&&images.length<9)images.push(photo.image);
+      return '';
+     }).trim();
+     const content=api.parseMessageStickers?.(text,catalog)||{text};
+     if(!content.text&&!images.length)continue;
+     const parent=resolve(message.replyTo);
+     const saved={id:uid(),from:message.speaker,...content,text:(content.text||'[图片]').slice(0,1000),
+      ...(parent?{replyTo:parent.id,replyQuote:quoteLabel(parent).slice(0,180)}:{}),
+      ...(images.length?{images}:{}),...(message.type==='voice'&&content.text&&!content.sticker?{voice:true}:{}),
+      storyTime:root().storyTime||'',createdAt:new Date().toISOString()};
+     g.messages.push(saved);newBatch[position]=saved.id;
     }
     g.messages=g.messages.slice(-180);
    });
-   state.status=messages.length?'已收到 '+messages.length+' 条群聊回复':'成员本轮没有回复';
-  }catch(error){state.status='生成失败：'+String(error.message||error);}
+  }catch(error){if(scope()===meta)api.notifyInteraction?.('生成失败：'+String(error.message||error),'error');}
   finally{state.busy=false;if(scope()===meta)render();}
  }
  async function handleClick(e){
@@ -233,14 +280,12 @@ export function createGroupsModule(api){
    state.tool=state.tool===act?'':act;render();
   }
   else if(act==='sticker'){
-   const sticker=(api.stickerLibrary?.()||[]).find(p=>p.id===id);
+   const sticker=(api.stickerLibrary?.()||[]).find(item=>item.id===id);
    if(sticker&&state.active){
-    try{await mutate(all=>{
-     const g=all.find(p=>p.id===state.active);if(!g)return;
-     g.messages.push({id:uid(),from:'user',text:'[表情包：'+sticker.label+']',
-      sticker:true,images:[sticker.image],storyTime:root().storyTime||'',createdAt:new Date().toISOString()});
-     g.messages=g.messages.slice(-180);
-    });state.tool='';render();}
+    const draft=state.draft.trim();
+    const extra=draft?{stickerImages:[sticker.image],stickerName:sticker.label}
+     :{sticker:true,images:[sticker.image],stickerName:sticker.label};
+    try{await sendGroupMessage(state.active,draft||'[表情包：'+sticker.label+']',extra);}
     catch(error){status('发送表情包失败：'+String(error.message||error),true);}
    }
   }
@@ -256,6 +301,16 @@ export function createGroupsModule(api){
   }
   else if(act==='quote'){state.quoteId=id;render();host()?.querySelector('[data-group-input="message"]')?.focus();}
   else if(act==='cancel-quote'){state.quoteId='';render();}
+  else if(act==='recall'){
+   try{
+    await mutate(all=>{
+     const g=all.find(item=>item.id===state.active);
+     if(g)api.recallPhoneMessage(g.messages||[],id,'user');
+    });
+    if(state.quoteId===id)state.quoteId='';
+    render();
+   }catch(error){status('撤回消息失败：'+String(error.message||error),true);}
+  }
   else if(act==='copy-records'){
    const group=groups().find(g=>g.id===state.active);
    try{await navigator.clipboard.writeText(groupRecords(group));status('群聊记录已复制');}

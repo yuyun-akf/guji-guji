@@ -59,16 +59,16 @@ test('a forwarded Qunxing post is an independent text and picture snapshot',()=>
  assert.equal(snapshot({...post,image:'https://example.org/private.jpg'}).image,'');
 });
 test('private photo and sticker tags can be recognized only by allowed catalogue IDs',()=>{
- const start=code.indexOf('function parseStickerReply('),end=code.indexOf('function visibleStickerText(',start);
+ const start=code.indexOf('function parseMessageStickers('),end=code.indexOf('function visibleStickerText(',start);
  assert.ok(start>=0&&end>start);
  const parse=new Function('splitPhoneReply',code.slice(start,end)+'return parseStickerReply;')(
   text=>String(text).trim()?[String(text).trim()]:[]);
  const sticker={id:'s-cat',label:'猫咪开心',image:'data:image/png;base64,AAAA'};
  const photo={id:'p-char',title:'服装照',image:'data:image/jpeg;base64,BBBB'};
  const messages=parse('你好[[sticker:s-cat]][[photo:p-char]][[photo:other]][[sticker:fake]]',{},[sticker],[photo]);
- assert.deepEqual(messages.map(m=>m.text),['你好','[表情包：猫咪开心]','[图片] 服装照']);
- assert.equal(messages[1].sticker,true);
- assert.deepEqual(messages[2].images,[photo.image]);
+ assert.deepEqual(messages.map(m=>m.text),['你好']);
+ assert.deepEqual(messages[0].stickerImages,[sticker.image]);
+ assert.deepEqual(messages[0].images,[photo.image]);
 });
 test('multi-photo chat and pre-send preview preserve the existing single-photo field',()=>{
  assert.match(code,/data-lp="chatImageInput" multiple/);

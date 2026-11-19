@@ -69,13 +69,13 @@ test('character selects only catalog stickers; history and JSON preserve image w
     const prompt=api.stickerPrompt(catalog);
     assert.ok(prompt.includes('s-happy'));assert.ok(!prompt.includes(image));
     const messages=api.parseStickerReply('收到啦[[sticker:s-happy]][PHONE_NEXT]一起玩吧[[sticker:invented]]',{},catalog);
-    assert.deepEqual(Array.from(messages,m=>m.text),['收到啦','[表情包：开心]','一起玩吧']);
-    assert.equal(messages[1].image,image);
+    assert.deepEqual(Array.from(messages,m=>m.text),['收到啦','一起玩吧']);
+    assert.deepEqual(Array.from(messages[0].stickerImages),[image]);
     const data={messages:messages.map(m=>({...m,from:'character'}))};
-    assert.equal(typeof api.buildPrompt(data)[1].content,'string');
+    assert.equal(typeof api.buildPrompt(data)[0].content,'string');
     const backup=api.exportChatPayload({},data);
     const imported=api.parseChatImport(JSON.stringify(backup));
-    assert.equal(imported[1].image,image);assert.equal(imported[1].sticker,true);assert.equal(imported[1].stickerName,'开心');
+    assert.deepEqual(Array.from(imported[0].stickerImages),[image]);assert.equal(imported[0].stickerName,'开心');
     assert.equal(api.visibleStickerText({from:'user',text:'[表情包：非常长的内容说明和配文]',sticker:true,image},null,null),'');
     assert.equal(api.visibleStickerText({from:'character',text:'[表情包：角色用的备注]',sticker:true,image},null,null),'');
     assert.equal(api.visibleStickerText({from:'character',text:'普通聊天'},null,null),'普通聊天');
@@ -173,7 +173,7 @@ test('player and character exchange stickers through normal host generation',asy
     assert.equal(messages.length,1);assert.equal(messages[0].sticker,true);
     assert.equal(options,undefined,'发送后不能自动生成角色回复');
     const reply=box.api.parseStickerReply('好呀[[sticker:s-happy]]',{},box.api.stickerLibrary());
-    assert.equal(reply[1].image,image,'角色在模型回复时选择已有表情包，才生成图片消息');
+    assert.equal(reply[0].stickerImages[0],image,'角色在模型回复时选择已有表情包，才生成图片消息');
 });
 
 test('scan reads only current char/persona and explicitly selected book; excludes self and writing rules',async()=>{
