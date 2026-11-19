@@ -68,7 +68,6 @@ test('Moments can accumulate five comments from overlapping speakers',()=>{
  apply({}, {},post,['a','b'],actions);
  assert.equal(post.comments.length,5);
  assert.equal(post.comments[2].replyTo,post.comments[0].id);
- assert.match(index,/writePostWithReactions&&\(created\.comments\|\|\[\]\)\.length<5/);
  assert.match(index,/line\.textContent='♥ '\+likeCount/);
 });
 

@@ -383,7 +383,7 @@ test('autonomous post and reactions share one generation request',async()=>{
     const {ctx,data}=socialStory();let calls=0;
     data.socialConfig={moments:{mode:'fixed',days:7},momentInteractions:true};
     data.contactLinks={'npc:b|primary':true,'npc:c|primary':true};
-    ctx.generateRaw=async()=>{calls++;return JSON.stringify({post:'角色甲分享一张落日照',actions:[
+    ctx.generateRaw=async()=>{calls++;return JSON.stringify({post:'今天拍了张落日照',actions:[
         {actorId:'npc:b',kind:'comment',text:'这个角度真不错'},
         {actorId:'npc:c',kind:'like'}]});};
     const box=runtime(ctx);
@@ -394,7 +394,7 @@ test('autonomous post and reactions share one generation request',async()=>{
     const saved=ctx.chatMetadata.st_little_phone_v1;
     assert.equal(calls,1,'post generation and all eligible reactions must use the same API call');
     const created=saved.moments.at(-1);
-    assert.equal(created.text,'角色甲分享一张落日照');
+    assert.equal(created.text,'今天拍了张落日照');
     assert.equal(created.comments.length,1);
     assert.equal(created.likes.length,1);
     assert.ok(saved.momentInteractionSeen.includes(created.id),'the scheduled interaction ticker must not charge again');
@@ -418,16 +418,19 @@ test('new moment notifications and mutual-link settings appear in the rendered t
     assert.equal(cfg.momentInteractions,false,'automatic paid interaction must default off');
 });
 
-test('autonomous character moments create unread Discover notifications without changing private messages',async()=>{
-    const {ctx}=socialStory();
-    ctx.generateRaw=async()=> '今天阳光真好';
+test('scheduled autonomous moments with zero reactions still save and create unread notifications',async()=>{
+    const {ctx,data}=socialStory();
+    data.socialConfig={moments:{mode:'fixed',days:7}};
+    data.socialSchedule={moments:{nextDue:Date.now()-1,cursor:0}};
+    ctx.generateRaw=async()=>JSON.stringify({post:'今天阳光真好',actions:[]});
     const box=runtime(ctx);
     const tick=vm.runInContext('tickAutonomousActivity',box);
     const before=ctx.chatMetadata.st_little_phone_v1.moments.length;
-    await tick('moments');
+    await tick();
     const now=ctx.chatMetadata.st_little_phone_v1;
     assert.equal(now.moments.length,before+1);
     assert.equal(now.moments.at(-1).authorId,'primary');
+    assert.equal(now.moments.at(-1).text,'今天阳光真好');
     assert.equal(now.unreadMoments,1);
     assert.equal(now.messages[0].text,'主角旧消息');
     assert.equal(now.conversations['npc:c'].messages[0].text,'网友旧消息');

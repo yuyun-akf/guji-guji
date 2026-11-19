@@ -1287,7 +1287,7 @@ export function createWeiboModule(api) {
    const q=data(),seen=new Set(),all=[...state.posts.home,
     ...q.posts.filter(p=>p.zone!=='nearby'&&(p.actions?.owned||p.autoPublished)).slice(-15).reverse()];
    for(const p of all)if(p?.id&&!seen.has(p.id)){seen.add(p.id);n.weiboFeed.append(card(p,false));}
-   if(!seen.size)n.weiboFeed.append(el('p','lp-wb-empty','点击下方按钮，查看故事世界的最新动态'));
+   if(!seen.size)n.weiboFeed.append(el('p','lp-wb-empty','点击下方按钮，查看世界的最新动态'));
   }else if(state.tab==='discover'){
    renderAccountSearch(n.weiboHot);
    n.weiboHot.append(heading('世界热搜','公共话题与热门讨论'));

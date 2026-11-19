@@ -3747,7 +3747,7 @@ function formatQunxingScan(ctx,result){
 async function loadWeiboController(){
  if(weiboController)return weiboController;
  if(weiboLoadPromise)return weiboLoadPromise;
- weiboLoadPromise=import('./weibo.js?v=0.36.4&persona=1').then(module=>{
+ weiboLoadPromise=import('./weibo.js?v=0.36.6&persona=1').then(module=>{
   weiboController=module.createWeiboModule({
    context,getNodes:()=>nodes,readRootData,writeData,readData,
    phoneGenerate:(ctx,options,data)=>phoneGenerate(ctx,{...options,task:options?.task||'weibo'},data),
@@ -5262,10 +5262,9 @@ async function tickAutonomousActivity(manualChannel='') {
                 prompt:[...buildPrompt(data,ctx,contact).slice(-10),{role:'user',content:'【系统触发：主动发消息时机】可以自主决定是否联系 user。'}]
             },data);
         }else{
-            const writePostWithReactions=batchActors.length>0;
             answer=await generateWithTimeout(ctx,{
                 task:'autonomy',systemPrompt:system+'\n\n【角色朋友圈】写一条此角色愿意公开的朋友圈动态，不代替玩家发言，不虚构重大事件；不想发布只输出 [SKIP]。此前已发布的同一人物朋友圈：'+JSON.stringify(previousMoments).slice(0,4300)+'。必须延续其中明确的事实：借来的宠物不能突然变成自己养的，物品所有权和相识过程不得无故改变。如有合适的本人日常或公开相册图片、以及相关世界素材，可在朋友圈正文末尾添加 [[photo:照片ID]]，只能使用以下ID：'+publicPhotos.map(p=>p.id+'（'+(p.description||p.title||'照片')+'）').join('；')+'。'+
-                    (writePostWithReactions?'\n\n'+momentBatchTask(ctx,plannedPost,batchActors,{writePost:true})+'\n本次自动发布如有可信联系人可互动，至少生成一条自然评论，允许额外点赞；互动不得由未知角色凭空参与。':'不超过120字。'),
+                    (batchActors.length?'\n\n'+momentBatchTask(ctx,plannedPost,batchActors,{writePost:true}):'不超过120字。'),
                 prompt:[{role:'user',content:'【系统触发：朋友圈发布时机】请按角色性格自行决定。'}]
             },data);
         }
@@ -5309,11 +5308,6 @@ async function tickAutonomousActivity(manualChannel='') {
             fresh.moments.push(created);
             const reactions=parsed?applyMomentBatch(ctx,fresh,created,batchActors,parsed.actions):0;
             if(parsed?.likeCount!=null)created.likeCount=Math.max(created.likes?.length||0,parsed.likeCount);
-            if(writePostWithReactions&&(created.comments||[]).length<5){
-             recordActivity('角色朋友圈','模型未返回至少五句有效评论，本次动态未保存','info');
-             if(manualChannel&&nodes?.autonomyStatus)nodes.autonomyStatus.textContent='动态生成的有效评论不足五句，本次未保存';
-             return;
-            }
             if(batchActors.length)fresh.momentInteractionSeen=[...new Set([...(fresh.momentInteractionSeen||[]),created.id])].slice(-150);
             fresh.moments=fresh.moments.slice(-100);
             const viewing=root?.classList.contains('lp-open')&&activeScreen==='discover';
