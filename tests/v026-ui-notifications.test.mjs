@@ -106,14 +106,18 @@ test('notification appears over ST page and phone, and can be turned off from Me
  assert.match(index,/data-lp="messageBannerToggle"/);
  assert.match(css,/lp-inline-notification\.lp-message-banner/);
 });
-test('wand icon samples colorful enabled host peers rather than a disabled gray item',()=>{
+test('wand entry uses native host menu markup without styling overrides',()=>{
  const start=index.indexOf('function installWandEntry()');
  const end=index.indexOf('function restoreDefaultThemeFromHost',start);
  assert.ok(start>0&&end>start);
  const body=index.slice(start,end);
- assert.match(body,/const peers=/);
- assert.match(body,/peerButton\.disabled/);
- assert.match(body,/sort\(\(x,y\)=>y\.score-x\.score\)/);
+ assert.match(body,/container\.className = 'extension_container'/);
+ assert.match(body,/const button = document\.createElement\('div'\)/);
+ assert.match(body,/button\.className = 'list-group-item flex-container flexGap5 gujiguji-wand-button'/);
+ assert.match(body,/const icon = document\.createElement\('div'\)/);
+ assert.match(body,/icon\.className = '[^']*extensionsMenuExtensionButton'/);
+ assert.doesNotMatch(body,/getComputedStyle|\.style\b|querySelectorAll/);
+ assert.doesNotMatch(css,/gujiguji-wand-(?:entry|button)/);
 });
 
 

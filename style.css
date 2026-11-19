@@ -671,20 +671,6 @@
 #st-little-phone-root .lp-worldbook-group{margin:12px 0 20px;padding:9px;border:1px solid var(--lp-border);border-radius:12px;background:var(--lp-ice);}
 #st-little-phone-root .lp-worldbook-group h3{font-size:14px;margin:4px 5px 10px;color:var(--lp-navy);}
 
-#gujiguji-wand-entry .gujiguji-wand-button {
-  width: 100%;
-  border: 0;
-  color: inherit;
-  background: transparent;
-  text-align: left;
-  cursor: pointer;
-}
-
-#gujiguji-wand-entry .gujiguji-wand-button:focus-visible {
-  outline: 2px solid var(--lp-slate);
-  outline-offset: 2px;
-}
-
 @media (max-width: 480px) {
   #st-little-phone-root .lp-panel {
     left: 50%;

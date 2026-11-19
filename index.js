@@ -1274,7 +1274,7 @@ async function loadAlbumController(){
 async function loadGroupsController(){
  if(groupsController)return groupsController;
  if(groupsLoadPromise)return groupsLoadPromise;
- groupsLoadPromise=import('./groups.js?v=0.38.0').then(mod=>{
+ groupsLoadPromise=import('./groups.js?v=0.38.1').then(mod=>{
   groupsController=mod.createGroupsModule({context,getNodes:()=>nodes,readRootData,writeData,galleryPeople,
    isPhoneFriend,contactCharacter,phoneGenerate,stripModelReasoning,notifyInteraction,openSharedPost,encodeAvatarPhoto,
    stickerLibrary:()=>stickerLibrary(context()),stickerPrompt,chooseStickerCandidates,parseMessageStickers,renderLegacyPhoneSticker,
@@ -8225,84 +8225,28 @@ function installWandEntry() {
     const container = document.createElement('div');
     container.id = WAND_ENTRY_ID;
     container.className = 'extension_container';
-    const button = document.createElement('button');
-    button.type = 'button';
+    // Use the same elements as SillyTavern's built-in magic-wand entries.
+    const button = document.createElement('div');
     button.className = 'list-group-item flex-container flexGap5 gujiguji-wand-button';
+    button.setAttribute('role', 'button');
+    button.setAttribute('tabindex', '0');
     button.setAttribute('aria-label', '打开咕叽咕机');
-    const icon = document.createElement('span');
+    const icon = document.createElement('div');
     icon.className = 'fa-solid fa-mobile-screen-button extensionsMenuExtensionButton';
     icon.setAttribute('aria-hidden', 'true');
     const title = document.createElement('span');
     title.textContent = '咕叽咕机';
     button.append(icon, title);
-    // Host menu labels and icons may have different computed theme colors.
-    const adoptHostWandColor=()=>{
-      if(typeof window.getComputedStyle!=='function')return;
-      // Do not copy colors from the last item blindly: it may be muted/disabled.
-      // Select the most vividly themed enabled icon so the entry matches the actual ST skin.
-      const saturation=color=>{
-        const values=String(color||'').match(/[\d.]+/g)?.slice(0,3).map(Number)||[];
-        return values.length===3?Math.max(...values)-Math.min(...values):0;
-      };
-      const peers=[...(typeof menu.querySelectorAll==='function'?menu.querySelectorAll('.extension_container'):[])]
-       .filter(e=>e!==container&&!container.contains?.(e))
-       .map(e=>{
-        const peerIcon=e.querySelector('.extensionsMenuExtensionButton');
-        const peerButton=peerIcon?.closest('button,.list-group-item')||e.querySelector('button,.list-group-item');
-        if(!peerButton||peerButton.disabled||peerButton.getAttribute('aria-disabled')==='true')return null;
-        const style=window.getComputedStyle(peerIcon||peerButton);
-        const buttonStyle=window.getComputedStyle(peerButton);
-        let pseudoColor='';
-        try{if(peerIcon)pseudoColor=window.getComputedStyle(peerIcon,'::before')?.color||'';}catch{}
-        if(style.display==='none'||buttonStyle.display==='none'||Number(style.opacity)<.65)return null;
-        return {peerIcon,peerButton,pseudoColor,
-         score:Math.max(saturation(style.color),saturation(pseudoColor),saturation(buttonStyle.color)*.85)};
-       }).filter(Boolean).sort((x,y)=>y.score-x.score);
-      const peer=peers[0];
-      if(!peer)return;
-      const label=[...peer.peerButton.children].find(e=>e!==peer.peerIcon&&!e.contains?.(peer.peerIcon))||peer.peerButton;
-      const peerButtonStyle=window.getComputedStyle(peer.peerButton);
-      const labelStyle=window.getComputedStyle(label);
-      const iconStyle=peer.peerIcon?window.getComputedStyle(peer.peerIcon):labelStyle;
-      const paint=(element,key,value)=>{
-       if(value&&value!=='transparent'&&value!=='rgba(0, 0, 0, 0)')
-        element.style.setProperty(key,value,'important');
-      };
-      // Some SillyTavern themes color FontAwesome's ::before rather than
-      // the actual icon node. Sample that accent before inheriting gray labels.
-      const swatches=[peer.pseudoColor,iconStyle.color,labelStyle.color,peerButtonStyle.color]
-       .filter(value=>typeof value==='string'&&value.length>0)
-       .sort((a,b)=>saturation(b)-saturation(a));
-      const accent=swatches[0]||peerButtonStyle.color;
-      if(saturation(accent)>12){
-       paint(button,'color',accent);
-       paint(title,'color',accent);
-       paint(icon,'color',accent);
-      }else{
-       paint(button,'color',peerButtonStyle.color);
-       paint(title,'color',labelStyle.color);
-       paint(icon,'color',iconStyle.color);
-      }
-      for(const k of ['font-size','font-family','font-weight','line-height','letter-spacing'])
-       paint(button,k,peerButtonStyle.getPropertyValue(k));
-      // A translucent or grayscale ancestor otherwise keeps everything gray.
-      paint(container,'opacity','1');
-      paint(container,'filter','none');
-      paint(button,'opacity','1');
-      paint(button,'filter','none');
-      paint(title,'opacity','1');
-      paint(icon,'opacity','1');
-    };
+    button.addEventListener('click', openPhone);
+    button.addEventListener('keydown', event => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        // SillyTavern also dispatches a click for menu entries on Enter.
+        event.stopPropagation();
+        button.click();
+    });
     container.append(button);
     menu.append(container);
-    adoptHostWandColor();
-    if(typeof requestAnimationFrame==='function')requestAnimationFrame(adoptHostWandColor);
-    button.addEventListener('pointerenter',adoptHostWandColor);
-    button.addEventListener('focus',adoptHostWandColor);
-    menu.addEventListener('pointerenter',adoptHostWandColor);
-    // Also sample once after SillyTavern's theme styles finish applying.
-    setTimeout(adoptHostWandColor,350);
-    button.addEventListener('click', openPhone);
     wandEntry = container;
     recordActivity('启动入口', '魔法棒菜单已注册「咕叽咕机」。', 'success');
     return true;

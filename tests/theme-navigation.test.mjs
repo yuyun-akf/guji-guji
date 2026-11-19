@@ -90,5 +90,4 @@ test('wallet diamonds stay inside icon canvas and settings gear uses concentric 
  assert.match(index,/wallet:'<path d="M12 2\.5 15 5\.5/);
  assert.match(index,/settings:'<circle cx="12" cy="12" r="7\.3"/);
  assert.match(index,/settings:'<circle cx="12" cy="12" r="7\.3"\/><circle cx="12" cy="12" r="3\.15"/);
- assert.match(index,/adoptHostWandColor/);
 });

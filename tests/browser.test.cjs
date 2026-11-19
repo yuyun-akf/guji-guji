@@ -6,6 +6,67 @@ const path = require('node:path');
 const { chromium } = require('playwright');
 const root = path.resolve(__dirname, '..');
 
+test('magic-wand entry follows live host themes and opens by keyboard', async () => {
+    const browser = await chromium.launch({ headless: true,
+        ...(process.env.GUJI_BROWSER_PATH ? { executablePath: process.env.GUJI_BROWSER_PATH } : {}) });
+    try {
+        const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+        await page.route('http://guji.test/**', route => {
+            const file = new URL(route.request().url()).pathname.slice(1);
+            if (['bootstrap.js', 'index.js', 'style.css'].includes(file)) {
+                return route.fulfill({ path: path.join(root, file) });
+            }
+            if (file) return route.fulfill({ status: 404 });
+            return route.fulfill({ contentType: 'text/html', body: `<!doctype html>
+                <style>
+                    :root { --SmartThemeBodyColor: #8d97b2; --icon-color: #7581a2; }
+                    :root.changed { --SmartThemeBodyColor: #96735c; --icon-color: #a6826b; }
+                    #extensionsMenu > .extension_container > div { color: var(--SmartThemeBodyColor); }
+                    #extensionsMenu > .extension_container > div > .extensionsMenuExtensionButton::before {
+                        content: '●'; color: var(--icon-color);
+                    }
+                    #extensionsMenu > .extension_container.alert > div,
+                    #extensionsMenu > .extension_container.alert > div > .extensionsMenuExtensionButton::before { color: red; }
+                </style>
+                <link rel="stylesheet" href="/style.css">
+                <div id="extensionsMenu">
+                    <div class="extension_container" id="native-entry">
+                        <div class="list-group-item flex-container flexGap5">
+                            <div class="extensionsMenuExtensionButton"></div><span>翻译聊天</span>
+                        </div>
+                    </div>
+                    <div class="extension_container alert">
+                        <div class="list-group-item flex-container flexGap5">
+                            <div class="extensionsMenuExtensionButton"></div><span>其他扩展</span>
+                        </div>
+                    </div>
+                </div>` });
+        });
+        await page.goto('http://guji.test/');
+        await page.evaluate(async () => {
+            const ctx = { extensionSettings: {}, chatMetadata: {} };
+            window.SillyTavern = { getContext: () => ctx };
+            const boot = await import('/bootstrap.js');
+            await boot.onActivate();
+        });
+        const entry = page.locator('.gujiguji-wand-button');
+        await entry.waitFor();
+        const colorsFor = element => [getComputedStyle(element.querySelector('span')).color,
+            getComputedStyle(element.querySelector('.extensionsMenuExtensionButton'), '::before').color];
+        const nativeEntry = page.locator('#native-entry .list-group-item');
+        const before = await nativeEntry.evaluate(colorsFor);
+        assert.deepEqual(await entry.evaluate(colorsFor), before);
+        await page.evaluate(() => document.documentElement.classList.add('changed'));
+        const after = await nativeEntry.evaluate(colorsFor);
+        assert.notDeepEqual(after, before);
+        assert.deepEqual(await entry.evaluate(colorsFor), after);
+        await entry.press('Enter');
+        assert.equal(await page.locator('dialog').evaluate(node => node.open), true);
+    } finally {
+        await browser.close();
+    }
+});
+
 test('browser startup, delayed menu, lifecycle, old data and v0.7 UI', async () => {
     const browser = await chromium.launch({ headless: true,
         ...(process.env.GUJI_BROWSER_PATH ? { executablePath: process.env.GUJI_BROWSER_PATH } : {}) });
