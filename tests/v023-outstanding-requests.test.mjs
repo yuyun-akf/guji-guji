@@ -46,7 +46,7 @@ test('settings no longer contain the duplicate run-log entry or inactive API app
  for(const label of ['chat','weibo','takeout','autonomy','memory'])assert.match(list,new RegExp('value="'+label+'"'));
  for(const label of ['calendar','wallet','shopping','theme','settings','diagnostics'])assert.doesNotMatch(list,new RegExp('value="'+label+'"'));
  assert.doesNotMatch(index,/settingsOpenDiagnostics/);
- assert.match(index,/独立的「运行日志」App/);
+ assert.match(index,/手机桌面的「运行日志」/);
 });
 
 test('API sites are grouped by URL and key rather than displayed as model presets',()=>{

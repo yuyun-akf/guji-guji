@@ -55,13 +55,14 @@ function memoryHarness(intervalDays=1,contacts=false){
  return {controller,ctx,nodes,read:()=>data,set:(fn)=>fn(data),
   calls:()=>modelCalls,payloads,respond:value=>{response=value;}};
 }
-test('the desktop and Settings open the same independent memory app',()=>{
+test('the desktop opens the independent memory app and Settings offers a tutorial',()=>{
  const settings=html.split('data-lp-screen="memory"')[0];
  const groups=[...settings.matchAll(/data-settings-category="([^"]+)"/g)].map(x=>x[1]);
- assert.deepEqual(groups,['system','api','chat','presets','data']);
- assert.match(settings,/data-lp-open="memory"/);
+ assert.deepEqual(groups,['system','api','chat','presets','tutorial']);
+ assert.doesNotMatch(settings,/data-lp-open="memory"/);
+ assert.match(settings,/data-settings-nav="tutorial"[^>]*><span>使用教程/);
  assert.match(index,/key:'memory',screen:'memory',name:'往昔'/);
- assert.match(index,/memory:memoryReturnScreen/);
+ assert.match(index,/memory:'home'/);
  for(const name of ['lockEnabled','clockMode','floatingLauncher','apiTask','apiMode','apiProfile','apiTest',
   'presetSource','worldBookList','messageStyle','phoneMemoryInterval','phoneMemoryList','readMainlineMemory'])
   assert.ok(html.includes('data-lp="'+name+'"'),name);

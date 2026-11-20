@@ -4,7 +4,7 @@
  */
 const DIAG_ID = 'gujiguji-bootstrap-diagnostic';
 const ROOT_ID = 'st-little-phone-root';
-const VERSION = '0.38.1';
+const VERSION = '0.38.2';
 const MANIFEST_URL = 'https://raw.githubusercontent.com/yuyun-akf/guji-guji/main/manifest.json';
 
 let mainPromise = null;
@@ -128,7 +128,7 @@ async function loadMain() {
     const token = lifecycle;
     if (!mainPromise) {
         report('B1', '入口脚本已运行，开始加载主模块');
-        mainPromise = import('./index.js?v=0.38.1').then(module => {
+        mainPromise = import('./index.js?v=0.38.2').then(module => {
             mainModule = module;
             return module;
         }).catch(error => {

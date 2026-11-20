@@ -113,12 +113,27 @@ export function createPhoneMemoryModule(api){
   const opened=new Set(Array.from(list.querySelectorAll?.('details[open]')||[],el=>el.dataset.memoryId));
   list.replaceChildren();
   if(n.phoneMemoryMore)n.phoneMemoryMore.hidden=matched.length<=limit;
-  if(!visible.length){const p=document.createElement('p');p.textContent=entries.length?'没有匹配的记忆':'暂无记忆';list.append(p);return;}
+  if(n.phoneMemoryCount){
+   n.phoneMemoryCount.hidden=!matched.length;
+   n.phoneMemoryCount.textContent=matched.length+' 条记忆';
+  }
+  if(!visible.length){
+   const empty=document.createElement('div');empty.className='lp-memory-empty';
+   const heading=document.createElement('strong');
+   heading.textContent=entries.length?'没有匹配的记忆':'暂无记忆';
+   const hint=document.createElement('p');
+   hint.textContent=entries.length?'试试其他关键词或会话。':'写下第一条记忆，或整理已有的聊天。';
+   empty.append(heading,hint);list.append(empty);return;
+  }
   for(const e of visible){
    const card=document.createElement('details');card.className='lp-memory-entry';card.dataset.memoryId=e.id;card.open=opened.has(e.id);
    const summary=document.createElement('summary');
    const dates=e.from&&e.from!==e.to?e.from+' 至 '+e.to:e.to||'';
-   summary.textContent=[names.get(e.contactId),dates,e.pinned?'置顶':'',e.count?e.count+' 条聊天':''].filter(Boolean).join(' · ');
+   const title=document.createElement('strong');title.className='lp-memory-contact';title.textContent=names.get(e.contactId);
+   const meta=document.createElement('span');meta.className='lp-memory-meta';
+   meta.textContent=[e.pinned?'置顶':'',dates,e.count?e.count+' 条聊天':''].filter(Boolean).join(' · ');
+   const preview=document.createElement('span');preview.className='lp-memory-preview';preview.textContent=e.text;
+   summary.append(title,meta,preview);
    const text=document.createElement('p');text.textContent=e.text;text.className='lp-memory-text';
    const actions=document.createElement('div');actions.className='lp-memory-actions';
    const controls=[['编辑','edit'],['删除','delete']];

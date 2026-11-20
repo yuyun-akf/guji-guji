@@ -1109,7 +1109,11 @@ async function copyThemeSelectors(){
 
 /* 人物相册随角色卡保存；现代世界相册跨所有角色卡共享。 */
 const ALBUM_IMAGE_RE=/^data:image\/(?:jpeg|png|webp|gif);base64,/;
-const MODERN_WORLD_FOLDERS=['风景','家居','美食','游戏','角色图','表情包'];
+const MODERN_WORLD_FOLDERS=['室外','室内','美食','游戏','角色图','表情包'];
+const LEGACY_WORLD_FOLDERS=new Map([['风景','室外'],['家居','室内']]);
+function worldAlbumFolderName(name) {
+ return LEGACY_WORLD_FOLDERS.get(name)||name;
+}
 function characterPhotos(ctx=context()){
  const key=qunxingAccountCardKey(ctx);
  const photos=ctx?.extensionSettings?.[SETTINGS_KEY]?.characterPhotoAlbums?.[key];
@@ -1129,7 +1133,10 @@ function saveCharacterPhotos(photos,ctx=context()){
 }
 function worldPhotos(ctx=context()){
  const photos=ctx?.extensionSettings?.[SETTINGS_KEY]?.worldPhotoAlbums?.modern;
- return Array.isArray(photos)?photos.filter(p=>p&&typeof p.id==='string'&&ALBUM_IMAGE_RE.test(p.image||'')).slice(0,150):[];
+ return Array.isArray(photos)?photos.filter(p=>p&&typeof p.id==='string'&&ALBUM_IMAGE_RE.test(p.image||'')).slice(0,150).map(p=>{
+  const folder=worldAlbumFolderName(p.folder||MODERN_WORLD_FOLDERS[0]);
+  return folder===p.folder?p:{...p,folder};
+ }):[];
 }
 function saveWorldPhotos(photos,ctx=context()){
  if(!ctx?.extensionSettings||typeof ctx.saveSettingsDebounced!=='function')throw Error('酒馆扩展设置不可用');
@@ -1143,13 +1150,13 @@ function saveWorldPhotos(photos,ctx=context()){
 }
 function worldAlbumFolders(ctx=context()){
  const list=ctx?.extensionSettings?.[SETTINGS_KEY]?.worldAlbumFolders?.modern;
- return [...new Set([...MODERN_WORLD_FOLDERS,...(Array.isArray(list)?list:[])])]
+ return [...new Set([...MODERN_WORLD_FOLDERS,...(Array.isArray(list)?list.map(worldAlbumFolderName):[])])]
   .filter(name=>typeof name==='string'&&name.length<=20).slice(0,35);
 }
 function saveWorldAlbumFolders(list,ctx=context()){
  if(!ctx?.extensionSettings||typeof ctx.saveSettingsDebounced!=='function')throw Error('无法保存世界子相册');
  const setting=ctx.extensionSettings[SETTINGS_KEY]||={};
- setting.worldAlbumFolders={...(setting.worldAlbumFolders||{}),modern:[...new Set([...MODERN_WORLD_FOLDERS,...list])].slice(0,35)};
+ setting.worldAlbumFolders={...(setting.worldAlbumFolders||{}),modern:[...new Set([...MODERN_WORLD_FOLDERS,...list.map(worldAlbumFolderName)])].slice(0,35)};
  ctx.saveSettingsDebounced();
 }
 function albumCoverKey(owner,folder='',ctx=context()){
@@ -1157,7 +1164,9 @@ function albumCoverKey(owner,folder='',ctx=context()){
   'card:'+qunxingAccountCardKey(ctx)+':'+String(owner)+':'+String(folder||'root');
 }
 function albumCoverFor(owner,folder='',ctx=context()){
- const id=ctx?.extensionSettings?.[SETTINGS_KEY]?.albumCovers?.[albumCoverKey(owner,folder,ctx)];
+ const covers=ctx?.extensionSettings?.[SETTINGS_KEY]?.albumCovers;
+ const legacyFolder=owner==='world'?[...LEGACY_WORLD_FOLDERS].find(([,name])=>name===folder)?.[0]:null;
+ const id=covers?.[albumCoverKey(owner,folder,ctx)]||(legacyFolder&&covers?.[albumCoverKey(owner,legacyFolder,ctx)]);
  if(!id)return '';
  const collection=owner==='world'?worldPhotos(ctx):characterPhotos(ctx);
  return collection.find(p=>p.id===id&&typeof p.image==='string')?.image||'';
@@ -1252,7 +1261,7 @@ async function identifyAlbumPhotos(images,names,isSticker=false,ctx=context()){
 async function loadAlbumController(){
  if(albumController)return albumController;
  if(albumLoadPromise)return albumLoadPromise;
- albumLoadPromise=import('./album.js?v=0.36.4').then(mod=>{
+ albumLoadPromise=import('./album.js?v=0.38.2').then(mod=>{
   albumController=mod.createAlbumModule({context,getNodes:()=>nodes,
    sharedPhotos:()=>characterPhotos(),saveSharedPhotos:saveCharacterPhotos,
    safetyWarningDisabled:()=>context()?.extensionSettings?.[SETTINGS_KEY]?.albumSafetyWarningDisabled===true,
@@ -1261,7 +1270,7 @@ async function loadAlbumController(){
     (ctx.extensionSettings[SETTINGS_KEY]||={}).albumSafetyWarningDisabled=Boolean(disabled);
     ctx.saveSettingsDebounced();
    },
-   worldPhotos,saveWorldPhotos,legacyStickers:legacyAlbumStickers,
+   worldPhotos,saveWorldPhotos,worldAlbumFolderName,legacyStickers:legacyAlbumStickers,
    deleteLegacyStickersFrom:deleteLegacyStickersFrom,deleteLegacySticker,worldFolders:worldAlbumFolders,saveWorldFolders:saveWorldAlbumFolders,
    coverFor:albumCoverFor,saveCover:saveAlbumCover,
    identifyPhotos:identifyAlbumPhotos,albumScope:()=>qunxingAccountCardKey(context()),
@@ -1274,7 +1283,7 @@ async function loadAlbumController(){
 async function loadGroupsController(){
  if(groupsController)return groupsController;
  if(groupsLoadPromise)return groupsLoadPromise;
- groupsLoadPromise=import('./groups.js?v=0.38.1').then(mod=>{
+ groupsLoadPromise=import('./groups.js?v=0.38.2').then(mod=>{
   groupsController=mod.createGroupsModule({context,getNodes:()=>nodes,readRootData,writeData,galleryPeople,
    isPhoneFriend,contactCharacter,phoneGenerate,stripModelReasoning,notifyInteraction,openSharedPost,encodeAvatarPhoto,
    stickerLibrary:()=>stickerLibrary(context()),stickerPrompt,chooseStickerCandidates,parseMessageStickers,renderLegacyPhoneSticker,
@@ -3965,7 +3974,7 @@ async function loadTakeoutController(){
 async function loadPhoneMemoryController(){
  if(memoryController)return memoryController;
  if(memoryLoadPromise)return memoryLoadPromise;
- memoryLoadPromise=import('./memory.js?v=0.37.0').then(module=>{
+ memoryLoadPromise=import('./memory.js?v=0.38.2').then(module=>{
   memoryController=module.createPhoneMemoryModule({
    context,getNodes:()=>nodes,readRootData,recordError,recordActivity,
    writeData:(ctx,data)=>writeData(ctx,data,{savePhoneMemory:true}),
@@ -3985,7 +3994,7 @@ async function loadPhoneMemoryController(){
  return memoryLoadPromise;
 }
 const SETTINGS_SECTIONS={system:'系统设置',api:'API 连接',presets:'预设与世界书',
- chat:'聊天方式',data:'数据与诊断'};
+ chat:'聊天方式',tutorial:'使用教程'};
 function showSettingsCategory(category=''){
  settingsCategory=Object.prototype.hasOwnProperty.call(SETTINGS_SECTIONS,category)?category:'';
  const menu=nodes?.settingsMenu;
@@ -4208,7 +4217,6 @@ function saveInteractionMotion(){
  notifyInteraction('交互动画已保存','success');
 }
 let groupsReturnScreen='chatList';
-let memoryReturnScreen='home';
 let roleFriendsReturnScreen='me';
 const phoneScrollPositions=new Map();
 let phoneScrollChatMetadata=null;
@@ -4298,7 +4306,7 @@ function setScreen(screen, options={}) {
     }
     nodes.back.hidden = screen === 'home'||screen==='lock';
     if(nodes.close)nodes.close.hidden=true;
-    const titles = {album:'相册',groups:'群聊',sharePicker:'分享动态',shareViewer:'动态详情',lock:'锁屏',home:'咕叽咕机',weibo:'群星',wallet:'吱付宝',shopping:'购物',takeout:'外卖',chat:'',chatList:'咕叽聊',contacts:'咕叽聊',discover:'咕叽聊',me:'咕叽聊',meProfile:'我的资料',meSettings:'咕叽聊设置',roleFriends:'角色好友列表',momentHistory:'历史朋友圈',momentCompose:'发布朋友圈',chatRecords:'管理聊天记录',contactManage:'管理联系人资料',requests:'新的朋友',profile:'联系人资料',profileRole:'角色设定',addNpc:'添加 NPC',discoverNpc:'发现故事人物',chatOptions:'聊天设置',settings:'设置',diagnostics:'运行日志',calendar:'日历',theme:'主题',memory:'往昔',presetPicker:'选择预设条目',worldPicker:'选择世界书条目' };
+    const titles = {album:'相册',groups:'群聊',sharePicker:'分享动态',shareViewer:'动态详情',lock:'锁屏',home:'咕叽咕机',weibo:'群星',wallet:'吱付宝',shopping:'购物',takeout:'外卖',chat:'',chatList:'咕叽聊',contacts:'咕叽聊',discover:'咕叽聊',me:'咕叽聊',meProfile:'我的资料',meSettings:'咕叽聊设置',roleFriends:'角色好友列表',momentHistory:'历史朋友圈',momentCompose:'发布朋友圈',chatRecords:'管理聊天记录',contactManage:'管理联系人资料',requests:'新的朋友',profile:'联系人资料',profileRole:'角色设定',addNpc:'添加联系人',discoverNpc:'发现故事人物',chatOptions:'聊天设置',settings:'设置',diagnostics:'运行日志',calendar:'日历',theme:'主题',memory:'往昔',presetPicker:'选择预设条目',worldPicker:'选择世界书条目' };
     nodes.title.textContent = screen === 'chat' ? contactDisplayName(context()) : titles[screen];
     nodes.chatMenu.hidden = screen !== 'chat';
     if(nodes.albumOptions)nodes.albumOptions.hidden=screen!=='album';
@@ -4314,7 +4322,6 @@ function setScreen(screen, options={}) {
     }
     if (screen === 'diagnostics') renderDiagnostics();
     if(screen==='memory'&&previous!==screen){
-        memoryReturnScreen=previous==='settings'?'settings':'home';
         const metadata=context()?.chatMetadata;
         loadContextSettings();
         void loadPhoneMemoryController().then(module=>{
@@ -4393,6 +4400,7 @@ function updateBusy() {
     nodes.send.disabled = busy || !isFriend;
     nodes.input.disabled = busy || !isFriend;
     nodes.time.disabled = busy || !ready;
+    if(nodes.addPrimaryFriend)nodes.addPrimaryFriend.disabled=busy||!ready;
     if(nodes.timeJumpApply)nodes.timeJumpApply.disabled=busy||!ready;
     if(nodes.timeJumpPanel)nodes.timeJumpPanel.querySelectorAll('button[data-jump-unit]').forEach(button=>{button.disabled=busy||!ready;});
     nodes.send.textContent = '发送';
@@ -6464,7 +6472,7 @@ function renderChatLists(ctx,char,data) {
    threads.push({key,when:timestamp(last),row:phoneThreadWrap(row,key,pins.includes(key)),order:threads.length});
   }
   if(state==='friends')nodes.contactsList.append(makeListContact(person,view,FRIEND_LABELS[state],()=>switchContact(id,'profile'),label));
-  else nodes.storyPeopleList.append(makeListContact(person,view,'',()=>switchContact(id,'profile'),label));
+  else if(id!==PRIMARY_CONTACT_ID)nodes.storyPeopleList.append(makeListContact(person,view,'',()=>switchContact(id,'profile'),label));
   if(state==='incoming'||state==='outgoing'){
    if(state==='incoming'){
     const group=document.createElement('div');group.className='lp-request-entry';
@@ -7828,7 +7836,12 @@ function render() {
     if(activeScreen==='wallet')renderWallet(ctx);
     nodes.subtitle.textContent = '';
     nodes.homeCharacter.textContent = primary ? resolvePhonePlaceholders('与 {{char}} 相伴 '+storyCompanionDays(data)+' 天',ctx,primary) : '等待进入角色存档';
-    nodes.viewPrimaryContact.textContent=resolvePhonePlaceholders('查看 {{char}} 的资料与联系方式',ctx,primary);
+    nodes.addPrimaryContactCard.hidden=!primary;
+    const primaryState=primary?friendshipState(readData(ctx,PRIMARY_CONTACT_ID)):null;
+    nodes.viewPrimaryContact.textContent=primary?contactDisplayName(ctx,PRIMARY_CONTACT_ID):'';
+    nodes.primaryContactState.textContent=FRIEND_LABELS[primaryState]||'';
+    nodes.addPrimaryFriend.hidden=!['stranger','incoming','outgoing'].includes(primaryState);
+    nodes.addPrimaryFriend.textContent=primaryState==='stranger'?'添加好友':'查看申请';
     nodes.homeTime.textContent = String(data?.storyTime||localDateTime()).slice(11,16);
     if(activeScreen!=='calendar')nodes.time.value = data?.storyTime || localDateTime();
     if(data)updateTimeJumpUI(data);
@@ -8012,12 +8025,12 @@ function rememberFriendship(data, nextState, notice) {
     if (notice) data.messages.push(makeMessage('system', notice, data.storyTime));
 }
 
-async function changeFriendship(nextState, notice) {
+async function changeFriendship(nextState, notice, contactId=activeContactId) {
     if (!mounted || busy || !FRIEND_STATES.has(nextState)) return false;
     const ctx = context();
     if (!selectedCharacter(ctx)) return false;
     const session = captureSession(ctx);
-    const data = structuredClone(readData(ctx));
+    const data = structuredClone(readData(ctx,contactId));
     if (friendshipState(data) === nextState) return false;
     rememberFriendship(data, nextState, notice);
     const job = startBusy('friend');
@@ -8079,11 +8092,11 @@ async function reviewOutgoingRequest() {
     }
 }
 
-async function handleFriendAction(action) {
+async function handleFriendAction(action,contactId=activeContactId) {
     if (!mounted || busy) return;
     const ctx = context();
     if (!selectedCharacter(ctx)) return;
-    const state = friendshipState(readData(ctx));
+    const state = friendshipState(readData(ctx,contactId));
     if (action === 'remove' && state === 'friends') {
         if (window.confirm('确定删除好友吗？历史聊天会保留，之后可以重新添加。')) {
             await changeFriendship('stranger', '你已删除好友，历史消息仍然保留。');
@@ -8095,8 +8108,9 @@ async function handleFriendAction(action) {
     } else if (action === 'unblock' && state === 'blocked') {
         await changeFriendship('stranger', '你已解除拉黑，可以重新添加好友。');
     } else if (action === 'incoming-manual' && state === 'stranger') {
-        if(!window.confirm(resolvePhonePlaceholders('补录对方发给 {{user}} 的好友申请？',ctx)))return;
-        if(await changeFriendship('incoming', '对方向你发送了好友申请，等待你同意或拒绝。'))setScreen('requests');
+        const question=activeScreen==='addNpc'?'让 {{char}} 发来好友申请？你可以在「新的朋友」里同意或拒绝。':'补录对方发给 {{user}} 的好友申请？';
+        if(!window.confirm(resolvePhonePlaceholders(question,ctx,contactCharacter(ctx,contactId))))return;
+        if(await changeFriendship('incoming', '对方向你发送了好友申请，等待你同意或拒绝。',contactId))setScreen('requests');
     } else if (action === 'convert-incoming' && state === 'outgoing') {
         if(!window.confirm('将旧版「我申请对方」记录改为「对方向我申请」？不会直接通过好友申请。'))return;
         if(await changeFriendship('incoming', '对方向你发送了好友申请，等待你同意或拒绝。'))setScreen('requests');
@@ -8476,7 +8490,7 @@ function makeUI() {
           <div class="lp-list-body">
             <button type="button" class="lp-list-action" data-lp-open="requests"><span>✉</span><span>新的朋友</span><span data-lp="requestBadge" class="lp-friend-request-badge" hidden></span></button>
             <button type="button" class="lp-list-action" data-lp-open="groups"><span>＋</span><span>创建／查看群聊</span></button>
-            <button type="button" class="lp-list-action" data-lp-open="addNpc"><span>＋</span><span>添加好友／故事人物</span></button>
+            <button type="button" class="lp-list-action" data-lp-open="addNpc"><span>＋</span><span>添加联系人</span></button>
             <div class="lp-list-heading">好友</div>
             <div data-lp="contactsList"></div>
 
@@ -8646,19 +8660,24 @@ function makeUI() {
             <button type="button" data-lp="npcSaveCandidates">添加勾选的 NPC</button>
           </div>
         </section>
-        <section class="lp-screen lp-chatlist" data-lp-screen="addNpc" aria-label="添加 NPC" hidden>
+        <section class="lp-screen lp-chatlist" data-lp-screen="addNpc" aria-label="添加联系人" hidden>
           <div class="lp-list-body lp-npc-editor">
-            <h2>添加故事中的人物</h2>
-            <button type="button" class="lp-npc-discover-button" data-lp="viewPrimaryContact">查看角色资料与联系方式</button>
+            <div class="lp-add-primary" data-lp="addPrimaryContactCard" hidden>
+              <div class="lp-add-primary-info">
+                <span>当前角色</span>
+                <button type="button" data-lp="viewPrimaryContact" aria-label="查看当前角色资料"></button>
+                <span data-lp="primaryContactState"></span>
+              </div>
+              <button type="button" data-lp="addPrimaryFriend" hidden>添加好友</button>
+            </div>
             <div data-lp="storyPeopleList"></div>
             <button type="button" class="lp-npc-discover-button" data-lp-open="discoverNpc">从角色设定／世界书扫描人物</button>
-            <p class="lp-npc-note">也可以在下方手动创建人物；两种方式都会进入当前存档的联系人系统。</p>
+            <h2>手动创建 NPC</h2>
             <label>姓名<input data-lp="npcName" type="text" maxlength="60" placeholder="NPC 姓名" /></label>
             <label>人物关系<input data-lp="npcRelation" type="text" maxlength="180" placeholder="填写人物关系" /></label>
             <label>人物设定<textarea data-lp="npcDescription" maxlength="3500" rows="6" placeholder="填写或粘贴角色卡、世界书里的 NPC 设定"></textarea></label>
             <button type="button" data-lp="addNpcSave">创建联系人</button>
             <div class="lp-inline-status" data-lp="npcStatus" role="status" aria-live="polite"></div>
-            <p class="lp-npc-note">可手动填写，也可从上方扫描入口发现人物。扫描结果须核对并确认；不会自动成为好友。</p>
           </div>
         </section>
         <section class="lp-screen lp-profile" data-lp-screen="profile" aria-label="联系人个人主页" hidden>
@@ -8822,9 +8841,8 @@ function makeUI() {
               <button type="button" class="lp-settings-nav" data-settings-nav="api"><span>API 连接<small>全局默认、各应用独立配置、已存连接</small></span><b>›</b></button>
               <button type="button" class="lp-settings-nav" data-settings-nav="presets"><span>预设与世界书<small>预设选择、世界书条目与触发</small></span><b>›</b></button>
               <button type="button" class="lp-settings-nav" data-settings-nav="chat"><span>聊天方式<small>消息显示与分条行为</small></span><b>›</b></button>
-              <button type="button" class="lp-settings-nav" data-lp-open="memory"><span>往昔<small>手机记忆与正文互通</small></span><b>›</b></button>
               <button type="button" class="lp-settings-nav lp-settings-nav-disabled" disabled aria-disabled="true" title="世界观切换"><span>世界观<small>世界观切换</small></span><b>›</b></button>
-              <button type="button" class="lp-settings-nav" data-settings-nav="data"><span>数据说明<small>存档与资料保存范围</small></span><b>›</b></button>
+              <button type="button" class="lp-settings-nav" data-settings-nav="tutorial"><span>使用教程<small>从添加联系人开始，了解各应用怎么用</small></span><b>›</b></button>
             </div>
           </div>
           <div class="lp-settings-category" data-settings-category="system" hidden>
@@ -8909,24 +8927,51 @@ function makeUI() {
           <button type="button" class="lp-settings-link" data-lp="saveSelections">保存预设与世界书配置</button><button type="button" class="lp-settings-link" data-lp="restoreAutoSelections">恢复自动同步</button>
           <div class="lp-settings-status" data-lp="selectionSaveStatus" role="status" aria-live="polite"></div>
           </div>
-          <div class="lp-settings-category" data-settings-category="data" hidden>
-          <h2>数据说明</h2>
-          <p class="lp-settings-hint">群星账号与相册按角色卡共享，聊天、群聊及互动记录按当前故事存档保存。</p>
-          <p class="lp-settings-hint">需要查看报错或请求记录时，请返回桌面打开独立的「运行日志」App。聊天导入导出在咕叽聊的聊天设置中操作。</p>
+          <div class="lp-settings-category lp-tutorial" data-settings-category="tutorial" hidden>
+            <details class="lp-tutorial-card" open>
+              <summary>第一次使用</summary>
+              <ol>
+                <li>在酒馆打开单人角色聊天存档，从魔法棒菜单进入「咕叽咕机」。</li>
+                <li>打开「咕叽聊 → 通讯录 → 添加联系人」，点当前角色旁的「添加好友」，然后在「新的朋友」同意申请。也可以从角色设定和世界书检索 NPC，或手动创建。</li>
+                <li>打开会话后，可以连续发送几条消息，再点「生成」请角色回复。生成默认沿用酒馆连接，也可以在「设置 → API 连接」为各应用单独配置。</li>
+              </ol>
+            </details>
+            <details class="lp-tutorial-card">
+              <summary>咕叽聊与朋友圈</summary>
+              <p>长按消息可引用、撤回或管理，点击语音气泡查看文字。私聊里的「＋ → 电话」可模拟拨号，通讯录里可以创建群聊。朋友圈在咕叽聊底栏，点右上角相机发布图文。角色自主私聊和发动态可在「我 → 设置」配置。</p>
+            </details>
+            <details class="lp-tutorial-card">
+              <summary>往昔与正文互通</summary>
+              <p>从手机桌面打开「往昔」，点「总结未整理的聊天」生成会话记忆，或点「写记忆」手动记录。记忆可按会话筛选、搜索、编辑和置顶。在「记忆设置」调整自动总结、读取正文及记忆注入。</p>
+            </details>
+            <details class="lp-tutorial-card">
+              <summary>手机上的其他应用</summary>
+              <ul>
+                <li><strong>群星</strong>可浏览、关注角色和生成帖子。<strong>相册</strong>可管理照片和聊天表情包。</li>
+                <li><strong>吱付宝</strong>可查看余额和账单。<strong>购物</strong>与<strong>外卖</strong>可在故事内创建订单。</li>
+                <li><strong>日历</strong>可查看和调整剧情时间，<strong>主题</strong>可换壁纸、配色和桌面布局。</li>
+              </ul>
+            </details>
+            <details class="lp-tutorial-card">
+              <summary>存档与排查</summary>
+              <p>群星账号与人物相册按角色卡共享，世界相册跨角色卡共享，聊天、群聊及互动记录按故事存档保存。聊天记录可以在会话的「聊天设置 → 管理聊天记录」导入或导出。遇到生成失败，可打开手机桌面的「运行日志」。</p>
+            </details>
           </div>
           <div class="lp-settings-status" data-lp="settingsStatus" role="status" aria-live="polite"></div>
-          <p class="lp-settings-hint">咕叽咕机 · v0.32.0</p>
+          <p class="lp-settings-hint">咕叽咕机 · v0.38.2</p>
         </section>
         <section class="lp-screen lp-settings lp-memory-screen" data-lp-screen="memory" aria-label="往昔" hidden>
           <div class="lp-memory-toolbar">
-            <button type="button" class="lp-settings-link lp-memory-primary" data-lp="phoneMemoryRun">总结未整理的聊天</button>
-            <button type="button" class="lp-settings-link" data-lp="phoneMemoryAdd">写记忆</button>
+            <button type="button" class="lp-settings-link lp-memory-primary" data-lp="phoneMemoryAdd">写记忆</button>
+            <button type="button" class="lp-settings-link" data-lp="phoneMemoryRun">总结未整理的聊天</button>
           </div>
           <div class="lp-memory-progress" role="status" aria-live="polite" data-lp="phoneMemoryStatus"></div>
           <button type="button" class="lp-settings-link" data-lp="phoneMemoryStop" hidden>完成这批后停止</button>
           <details class="lp-memory-preferences" data-lp="phoneMemoryPrefs">
-            <summary>总结设置与正文互通</summary>
+            <summary><span aria-hidden="true">${phoneIconMarkup('settings')}</span>记忆设置</summary>
             <div class="lp-memory-preference-fields">
+              <section class="lp-memory-preference-group" aria-label="总结">
+              <h3>总结</h3>
               <label class="lp-entry-option"><input data-lp="phoneMemoryEnabled" type="checkbox" /> 自动总结</label>
               <label class="lp-field">总结间隔
                 <select data-lp="phoneMemoryInterval">
@@ -8939,6 +8984,8 @@ function makeUI() {
               <label class="lp-entry-option"><input data-lp="phoneMemoryInjectMainline" type="checkbox" /> 将往昔记忆注入正文</label>
               <button type="button" class="lp-settings-link" data-lp="phoneMemorySave">保存总结设置</button>
               <button type="button" class="lp-settings-link" data-lp="phoneMemoryRebuild">从头补总结</button>
+              </section>
+              <section class="lp-memory-preference-group" aria-label="正文互通">
               <h3>正文互通</h3>
               <label class="lp-entry-option"><input type="checkbox" data-lp="readMainlineMemory" checked /> 读取正文记忆</label>
               <label class="lp-field">记忆来源<select data-lp="memorySource">
@@ -8951,12 +8998,9 @@ function makeUI() {
               <label class="lp-entry-option"><input type="checkbox" data-lp="phoneToMainline" /> 将近期手机聊天记录注入正文</label>
               <label class="lp-entry-option"><input type="checkbox" data-lp="eventBridge" checked /> 同步已确认的交易、好友状态等事件</label>
               <button type="button" class="lp-settings-link" data-lp="saveContextSettings">保存正文互通设置</button>
+              </section>
             </div>
           </details>
-          <div class="lp-memory-filters">
-            <select data-lp="phoneMemoryFilter" aria-label="按会话筛选"><option value="">全部会话</option></select>
-            <input type="search" data-lp="phoneMemorySearch" placeholder="搜索记忆" aria-label="搜索记忆" />
-          </div>
           <section class="lp-memory-entry" data-lp="phoneMemoryEditor" aria-label="编辑记忆" hidden>
             <label class="lp-field">会话<select data-lp="phoneMemoryOwner"></select></label>
             <textarea data-lp="phoneMemoryText" maxlength="2800" placeholder="写下要记住的事" aria-label="记忆内容"></textarea>
@@ -8965,6 +9009,14 @@ function makeUI() {
               <button type="button" data-lp="phoneMemoryEditClose">取消</button>
             </div>
           </section>
+          <div class="lp-memory-filters">
+            <label class="lp-memory-search">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 4 4"/></svg>
+              <input type="search" data-lp="phoneMemorySearch" placeholder="搜索记忆" aria-label="搜索记忆" />
+            </label>
+            <select data-lp="phoneMemoryFilter" aria-label="按会话筛选"><option value="">全部会话</option></select>
+          </div>
+          <div class="lp-memory-count" data-lp="phoneMemoryCount" role="status" aria-live="polite" hidden></div>
           <div data-lp="phoneMemoryList" class="lp-memory-list"></div>
           <button type="button" class="lp-settings-link" data-lp="phoneMemoryMore" hidden>查看更多</button>
         </section>
@@ -9223,11 +9275,11 @@ function mount() {
         'weiboGenerate','weiboFeedback','weiboFeed','weiboHot','weiboNearby','weiboCompose','weiboMe','weiboDetail','weiboTabs','weiboComposeText','weiboPublish','weiboDetailBack','weiboRefreshBox',
         'desktopSortList','clockMode','clockRate','clockContinueClosed','clockCustomFields','clockSave','lockEnabled','lockSaveEnabled','notification','inlineNotification','calendarPrev','calendarNext','calendarHeading','calendarViews','calendarGrid','calendarSelected','calendarSummary','calendarSelectedTime','calendarStoryToday','calendarRealToday','calendarSaveTime','calendarExactSave',
         'momentsPost', 'momentsText', 'momentsFeed', 'momentFeedback','momentsPreview','momentImageUpload','momentRemovePhoto','momentCamera','momentComposer','momentCoverImage','momentCoverUpload','momentCoverName','momentCoverAvatar','roleFriendsOwner','roleFriendsContent','roleFriendsStatus','momentHistoryOpen','momentHistoryMode','momentHistoryOwnerLabel','momentHistoryOwner','momentHistoryTime','momentHistoryText','momentHistoryPhoto','momentHistoryPhotoPreview','momentHistoryRemovePhoto','momentHistoryManual','momentHistoryInstructions','momentHistoryCount','momentHistoryGenerate','momentHistoryStatus','momentHistoryList','myBio','myBioEdit','profileBio','profileBioEdit','contactMomentList','myAvatarUpload','myAvatarFallback','myAvatarStatus','myIdentity', 'myNameEdit', 'myAvatar', 'myPersona', 'messageBannerToggle','messageBannerStatus','autoMessagesMode','autoMessagesDays','autoMomentsMode','autoMomentsDays','relationAutoSync','phoneInPast','characterRequests','momentInteractions','autonomyStatus','autonomyFeedback','saveAutonomy','rescanRelations','testAutonomy', 'stickerUpload','stickerPackUpload', 'stickerStatus', 'stickerLibrary',
-        'friendLabel', 'friendActions','profileAvatar','profileAvatarAction','profileAvatarSheet','profileChooseAvatar','profileAvatarCancel','profileRoleDialog','profileRoleOpen','profileRoleClose','profileRoleTitle','profileTabDetails','profileTabRelation','profileDetailsPane','profileRelationPane','profileRelationNames','relationAuto','relationManual','relationManualFields','relationChoice','relationChoiceGrid','relationDirectionFields','relationDirectionChar','relationDirectionUser','relationDirectionCharText','relationDirectionUserText','relationCustomLabel','relationCustom','relationDetails','relationCurrent','relationStatus','relationSave','relationDetect','profileName','profileDescription','contactEvidence','contactExchange','contactLinks','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcAiScanButton','npcClearScanButton','npcScanState','npcCandidates','npcSaveCandidates','storyPeopleList','viewPrimaryContact','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
+        'friendLabel', 'friendActions','profileAvatar','profileAvatarAction','profileAvatarSheet','profileChooseAvatar','profileAvatarCancel','profileRoleDialog','profileRoleOpen','profileRoleClose','profileRoleTitle','profileTabDetails','profileTabRelation','profileDetailsPane','profileRelationPane','profileRelationNames','relationAuto','relationManual','relationManualFields','relationChoice','relationChoiceGrid','relationDirectionFields','relationDirectionChar','relationDirectionUser','relationDirectionCharText','relationDirectionUserText','relationCustomLabel','relationCustom','relationDetails','relationCurrent','relationStatus','relationSave','relationDetect','profileName','profileDescription','contactEvidence','contactExchange','contactLinks','contactRemark','saveContactRemark','deleteNpc','npcName','npcRelation','npcDescription','addNpcSave','npcStatus','profileStatus','npcWorldSelect','npcScanButton','npcAiScanButton','npcClearScanButton','npcScanState','npcCandidates','npcSaveCandidates','storyPeopleList','viewPrimaryContact','addPrimaryContactCard','primaryContactState','addPrimaryFriend','recentChats','contactsList','requestsList','requestBadge','chatError','chatMenu',
         'goProfile','exportChat','copyChat','importChat','clearChat','deleteChat','avatarCharFile','resetCharAvatar',
         'friendSetup', 'friendSave', 'floatingLauncher', 'status', 'settingsStatus',
         'settingsMenu','apiTask','apiProfile','apiProfileModel','apiProfileModelManual','apiReloadModels','apiProfileFields','apiProfileHint','apiTest',
-        'phoneMemoryEnabled','phoneMemoryInterval','phoneMemoryInjectMainline','phoneMemorySchedule','phoneMemoryStatus','phoneMemorySave','phoneMemoryRun','phoneMemoryList','phoneMemoryAdd','phoneMemoryStop','phoneMemoryRebuild','phoneMemoryPrefs','phoneMemoryFilter','phoneMemorySearch','phoneMemoryEditor','phoneMemoryOwner','phoneMemoryText','phoneMemoryEditSave','phoneMemoryEditClose','phoneMemoryMore',
+        'phoneMemoryEnabled','phoneMemoryInterval','phoneMemoryInjectMainline','phoneMemorySchedule','phoneMemoryStatus','phoneMemorySave','phoneMemoryRun','phoneMemoryList','phoneMemoryCount','phoneMemoryAdd','phoneMemoryStop','phoneMemoryRebuild','phoneMemoryPrefs','phoneMemoryFilter','phoneMemorySearch','phoneMemoryEditor','phoneMemoryOwner','phoneMemoryText','phoneMemoryEditSave','phoneMemoryEditClose','phoneMemoryMore',
         'shoppingContent','shoppingTabs','takeoutContent','takeoutTabs','walletBalance','walletPending','walletBills','walletAdjustInput','walletSaveBalance','walletToChat','walletStatus',
         'presetSource','presetInfo','presetEntries','worldBookList','worldSelectionSummary','worldEntries','presetSearch','worldSearch','presetPickerTitle','worldPickerTitle','openPresetPicker','openWorldPicker','saveSelections','restoreAutoSelections','savePresetPicker','saveWorldPicker','selectionSaveStatus','readMainlineMemory','memorySource','phoneToMainline','eventBridge','saveContextSettings','apiInfo','apiMode','apiUrl','apiModel','apiKey','apiKeyState','customApiFields','saveApi','messageStyle','saveMessageStyle','themeFont','themeWallpaper','themeResetWallpaper','themePreset','themeCustomColors','themeSaveColors','themeWallpaperPreview','themeDesktopEffect','interactionMotion','interactionFeedback','themeBindWallpaper','themeName','themeSaveNamed','themeRename','themeDelete','themeExport','themeImport','themeFeedback','themeCssFile','themeCssReset','themeCssStatus','themeFontFile','themeDesktopIconSize','themeDesktopGap','themeBubbleRadius','themeIconTarget','themeIconFile','themeIconReset','themeFloatingIconFile','themeFloatingIconReset','themeCopySelectors',
         'diagnostics', 'diagnosticState', 'copyDiagnostics', 'clearDiagnostics',
@@ -9405,7 +9457,7 @@ function mount() {
         if(activeScreen==='groups'&&groupsController?.back())return;
         if(activeScreen==='shareViewer'){setScreen(sharedPostOrigin||'chat');return;}
         setScreen({
-          wallet:'home',shopping:'home',takeout:'home',weibo:'home',album:'home',memory:memoryReturnScreen,groups:groupsReturnScreen,sharePicker:'weibo',chat:'chatList',
+          wallet:'home',shopping:'home',takeout:'home',weibo:'home',album:'home',memory:'home',groups:groupsReturnScreen,sharePicker:'weibo',chat:'chatList',
           contacts:'chatList',discover:'chatList',me:'chatList',
           profile:profileReturnScreen,profileRole:'profile',contactManage:'chatOptions',chatRecords:'chatOptions',meProfile:'me',meSettings:'me',roleFriends:roleFriendsReturnScreen,momentHistory:'me',momentCompose:'discover',
           requests:'contacts',addNpc:'contacts',
@@ -9570,6 +9622,11 @@ function mount() {
     nodes.friendSave.addEventListener('click', saveManualFriendship);
     nodes.addNpcSave.addEventListener('click',()=>void addNpcContact());
     nodes.viewPrimaryContact.addEventListener('click',()=>switchContact(PRIMARY_CONTACT_ID,'profile'));
+    nodes.addPrimaryFriend.addEventListener('click',()=>{
+        const state=friendshipState(readData(context(),PRIMARY_CONTACT_ID));
+        if(state==='stranger')void handleFriendAction('incoming-manual',PRIMARY_CONTACT_ID);
+        else if(state==='incoming'||state==='outgoing')setScreen('requests');
+    });
     nodes.npcScanButton.addEventListener('click',()=>void scanNpcUI('rules'));
     nodes.npcAiScanButton.addEventListener('click',()=>void scanNpcUI('ai'));
     nodes.npcClearScanButton.addEventListener('click',confirmClearNpcScan);

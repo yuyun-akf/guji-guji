@@ -5,7 +5,7 @@ export function createAlbumModule(api){
  const host=()=>api.getNodes()?.albumContent;
  const people=()=>api.galleryPeople();
  const worldId='world';
- const defaultFolders=['风景','家居','美食','游戏','角色图','表情包'];
+ const defaultFolders=['室外','室内','美食','游戏','角色图','表情包'];
  const characterFolders=[['public','公开相册'],['daily','日常相册'],['private','私密相册']];
  const validImage=s=>typeof s==='string'&&/^data:image\/(?:jpeg|png|webp|gif);base64,/.test(s);
  const world=()=>state.owner===worldId;
@@ -13,7 +13,8 @@ export function createAlbumModule(api){
  const ownerName=()=>world()?'世界相册':people().find(p=>p.id===state.owner)?.name||'人物相册';
  const labelOf=id=>world()?id:characterFolders.find(x=>x[0]===id)?.[1]||id;
  const legacyFolder=p=>p.folder||(p.access==='public'?'public':p.access==='private'?'daily':'daily');
- const photoFolder=p=>world()?(p.folder||'风景'):legacyFolder(p);
+ const worldFolder=name=>api.worldAlbumFolderName?.(name)||name;
+ const photoFolder=p=>world()?worldFolder(p.folder||defaultFolders[0]):legacyFolder(p);
  const ownerPhotos=()=>world()?[...(api.worldPhotos?.()||[]),...(api.legacyStickers?.()||[])]:
   (api.sharedPhotos?.()||[]).filter(p=>p.owner===state.owner||(p.ownerName===ownerName()&&p.owner!=='user'));
  const photos=()=>ownerPhotos().filter(p=>photoFolder(p)===state.folder&&validImage(p.image));
@@ -63,9 +64,9 @@ export function createAlbumModule(api){
   const template={
    schema:'gujiguji-album-v1',version:1,
    instruction:'复制本模板交给 AI 填写 photos。图片文件放在 ZIP 的 images/ 文件夹并保留相对路径；也可上传 manifest.json 和图片文件，名称必须对应。不要编造 ownerId 或 folder。',
-   owners:owners.map(o=>({...o,folders:o.id==='world'?api.worldFolders?.()||[]:characterFolders.map(f=>({id:f[0],label:f[1]}))})),
+   owners:owners.map(o=>({...o,folders:o.id==='world'?api.worldFolders?.()||defaultFolders:characterFolders.map(f=>({id:f[0],label:f[1]}))})),
    photos:[{file:'images/001.png',ownerId:state.owner||'world',
-    folder:state.owner==='world'?'风景':'public',title:'示例照片名称',description:'具体可见内容',usage:''}]
+    folder:!state.owner||world()?defaultFolders[0]:'public',title:'示例照片名称',description:'具体可见内容',usage:''}]
   };
   const text=JSON.stringify(template,null,2),url=URL.createObjectURL(new Blob([text],{type:'application/json;charset=utf-8'}));
   const a=el('a');a.href=url;a.download='咕叽咕机相册导入模板.json';document.body.append(a);a.click();a.remove();
@@ -143,10 +144,12 @@ export function createAlbumModule(api){
   const pool=[...entries.entries()].filter(([name])=>/\.(?:png|jpg|jpeg|webp|gif)$/i.test(name));
   const images=[],labels=[],fileObjects=[],mapping=[];
   for(const p of manifest.photos){
-   const owner=p.ownerId||state.owner,folder=p.folder||state.folder||'public';
+   const owner=p.ownerId||state.owner;
+   const folderName=p.folder||state.folder||(owner==='world'?defaultFolders[0]:'public');
+   const folder=owner==='world'?worldFolder(folderName):folderName;
    const ownerObj=people().find(person=>person.id===owner);
    if(owner!=='world'&&!ownerObj)throw Error('未知人物 ownerId：'+owner);
-   const validFolders=owner==='world'?api.worldFolders?.()||[]:characterFolders.map(x=>x[0]);
+   const validFolders=owner==='world'?api.worldFolders?.()||defaultFolders:characterFolders.map(x=>x[0]);
    if(!validFolders.includes(folder))throw Error('未知相册分类：'+folder);
    const filePath=String(p.file||'').replace(/^\.\//,'').replaceAll('\\','/');
    if(!filePath||filePath.split('/').includes('..'))throw Error('图片路径无效');
@@ -294,7 +297,7 @@ export function createAlbumModule(api){
       for(const person of [{id:'world',name:'世界相册'},...people()]){const option=el('option','',person.name);option.value=person.id;ownerSelect.append(option);}
       ownerSelect.value=info.owner;
       const folderSelect=el('select');folderSelect.dataset.albumReview='folder';folderSelect.dataset.albumIndex=String(index);
-      for(const item of (info.owner==='world'?api.worldFolders?.()||[]:characterFolders.map(x=>x[0]))){
+      for(const item of (info.owner==='world'?api.worldFolders?.()||defaultFolders:characterFolders.map(x=>x[0]))){
        const option=el('option','',item);option.value=item;folderSelect.append(option);
       }
       folderSelect.value=info.folder;
@@ -525,7 +528,7 @@ export function createAlbumModule(api){
    const owner=pending.mapping?val('owner'):pending.owner;
    const folder=pending.mapping?val('folder'):pending.folder;
    if(owner!=='world'&&!people().some(p=>p.id===owner))throw Error('无效的目标人物：'+owner);
-   const valid=owner==='world'?api.worldFolders?.()||[]:characterFolders.map(x=>x[0]);
+   const valid=owner==='world'?api.worldFolders?.()||defaultFolders:characterFolders.map(x=>x[0]);
    if(!valid.includes(folder))throw Error('无效的目标分类：'+folder);
    return {id:'ph-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,10),
     owner,ownerName:owner==='world'?'世界相册':people().find(p=>p.id===owner)?.name||'人物相册',folder,
@@ -612,7 +615,11 @@ export function createAlbumModule(api){
   if(type==='returnToImport'){state.level='import';state.pending=null;render();return true;}
   if(type==='newFolder'){
    const name=window.prompt('输入世界相册子相册名称（不超过20字）','');
-   if(name?.trim()){const list=[...folders()];if(!list.includes(name.trim())){await api.saveWorldFolders([...list,name.trim().slice(0,20)]);hint('子相册已添加');}}
+   if(name?.trim()){
+    const folder=worldFolder(name.trim().slice(0,20)),list=folders();
+    if(list.includes(folder))return hint('已有同名子相册',true);
+    await api.saveWorldFolders([...list,folder]);hint('子相册已添加');
+   }
    return true;
   }
   if(type==='exportTemplate'){exportAlbumTemplate();return true;}
@@ -661,7 +668,7 @@ export function createAlbumModule(api){
    const i=event.target.dataset.albumIndex,owner=event.target.value;
    const next=host()?.querySelector('[data-album-review="folder"][data-album-index="'+i+'"]');
    if(next){next.replaceChildren();
-    const options=owner==='world'?api.worldFolders?.()||[]:characterFolders.map(x=>x[0]);
+    const options=owner==='world'?api.worldFolders?.()||defaultFolders:characterFolders.map(x=>x[0]);
     for(const item of options){const option=el('option','',labelOf(item));option.value=item;next.append(option);}
    }
    return true;

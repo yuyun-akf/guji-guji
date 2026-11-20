@@ -11,9 +11,9 @@ test('module syntax and bootstrap version agree with the manifest',()=>{
  const manifest=JSON.parse(read('manifest.json'));
  assert.ok(bootstrap.includes("const VERSION = '"+manifest.version+"'"));
  assert.ok(bootstrap.includes("index.js?v="+manifest.version+"'"));
- assert.ok(index.includes('memory.js?v=0.37.0'));
+ assert.ok(index.includes('memory.js?v=0.38.2'));
  assert.ok(index.includes('weibo.js?v=0.36.6&'));
- assert.ok(index.includes('album.js?v=0.36.4'));
+ assert.ok(index.includes('album.js?v=0.38.2'));
  assert.ok(index.includes('groups.js?v='+manifest.version));
  for(const source of [index,album,groups,read('weibo.js'),read('memory.js'),bootstrap])
   assert.doesNotThrow(()=>new Function(source.replace(/^export /gm,'')));

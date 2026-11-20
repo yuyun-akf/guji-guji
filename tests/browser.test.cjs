@@ -6,6 +6,103 @@ const path = require('node:path');
 const { chromium } = require('playwright');
 const root = path.resolve(__dirname, '..');
 
+test('contact setup, tutorial, memory, and legacy world album open from their normal entry points', async () => {
+    const browser = await chromium.launch({ headless: true,
+        ...(process.env.GUJI_BROWSER_PATH ? { executablePath: process.env.GUJI_BROWSER_PATH } : {}) });
+    try {
+        const page = await browser.newPage({ viewport: { width: 360, height: 800 }, reducedMotion: 'reduce' });
+        page.setDefaultTimeout(7000);
+        const errors = [];
+        page.on('pageerror', error => errors.push(error.message));
+        await page.route('http://guji.test/**', route => {
+            const file = new URL(route.request().url()).pathname.slice(1);
+            if (['bootstrap.js', 'index.js', 'memory.js', 'album.js', 'style.css'].includes(file)) {
+                return route.fulfill({ path: path.join(root, file) });
+            }
+            if (file) return route.fulfill({ status: 404 });
+            return route.fulfill({ contentType: 'text/html', body: '<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="/style.css"><div id="extensionsMenu"></div>' });
+        });
+        await page.goto('http://guji.test/');
+        await page.evaluate(async () => {
+            const picture = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+            const ctx = { characterId: 0, chatId: 'test-story', name1: '玩家',
+                characters: [{ name: '角色甲', data: {} }], chat: [], chatMetadata: {},
+                extensionSettings: { gujiguji: {
+                    lock: { enabled: false }, desktopOrder: ['chat', 'settings', 'memory', 'album'],
+                    albumSafetyWarningDisabled: true,
+                    worldAlbumFolders: { modern: ['风景', '家居', '室外'] },
+                    worldPhotoAlbums: { modern: [
+                        { id: 'park', folder: '风景', title: '旧公园照片', image: picture },
+                        { id: 'room', folder: '家居', title: '旧室内照片', image: picture + '#room' },
+                    ] },
+                    albumCovers: { 'world:modern:风景': 'room' },
+                } },
+                saveMetadata: async () => {}, saveSettingsDebounced() {} };
+            window.SillyTavern = { getContext: () => ctx };
+            await (await import('/bootstrap.js')).onActivate();
+        });
+        const control = key => page.locator('[data-lp="' + key + '"]');
+        const screen = key => page.locator('[data-lp-screen="' + key + '"]');
+        const openIn = (from, to) => screen(from).locator('[data-lp-open="' + to + '"]');
+        await page.locator('.gujiguji-wand-button').click();
+        await openIn('home', 'chatList').click();
+        await openIn('chatList', 'contacts').click();
+        await openIn('contacts', 'addNpc').click();
+        assert.equal(await control('title').innerText(), '添加联系人');
+        assert.equal(await control('viewPrimaryContact').innerText(), '角色甲');
+        page.once('dialog', dialog => dialog.accept());
+        await control('addPrimaryFriend').click();
+        await screen('requests').getByRole('button', { name: '同意', exact: true }).click();
+        await page.waitForFunction(() => SillyTavern.getContext().chatMetadata.st_little_phone_v1.friendship.state === 'friends');
+        for (let i = 0; i < 3; i++) await control('back').click();
+        await openIn('home', 'settings').click();
+        assert.equal(await openIn('settings', 'memory').count(), 0);
+        await screen('settings').getByRole('button', { name: /使用教程/ }).click();
+        assert.equal(await control('title').innerText(), '使用教程');
+        await control('back').click();
+        await control('back').click();
+        await openIn('home', 'memory').click();
+        await screen('memory').getByText('暂无记忆', { exact: true }).waitFor();
+        const search = await control('phoneMemorySearch').locator('..').boundingBox();
+        const filter = await control('phoneMemoryFilter').boundingBox();
+        assert.deepEqual([search.y, search.height], [filter.y, filter.height]);
+        await control('phoneMemoryAdd').click();
+        await control('phoneMemoryText').fill('下周一起看展。');
+        await control('phoneMemoryEditSave').click();
+        await control('phoneMemoryList').getByText('下周一起看展。', { exact: true }).first().waitFor();
+        await control('back').click();
+        await openIn('home', 'album').click();
+        await page.locator('[data-album-action="owner"][data-album-id="world"]').click();
+        const folder = id => page.locator('[data-album-action="folder"][data-album-id="' + id + '"]');
+        assert.equal(await folder('室外').count(), 1);
+        assert.equal(await folder('风景').count(), 0);
+        assert.match(await folder('室外').innerText(), /室外\s*1 张/);
+        assert.match(await folder('室内').innerText(), /室内\s*1 张/);
+        assert.match(await folder('室外').locator('img').getAttribute('src'), /#room$/);
+        await folder('室外').click();
+        await screen('album').getByText('旧公园照片', { exact: true }).waitFor();
+        await control('back').click();
+        await folder('室内').click();
+        await screen('album').getByText('旧室内照片', { exact: true }).waitFor();
+        await control('back').click();
+        await page.locator('[data-album-action="import"]').click();
+        const manifest = { schema: 'gujiguji-album-v1', version: 1, photos: [
+            { ownerId: 'world', folder: '家居', file: 'room.gif', title: '旧模板照片' },
+        ] };
+        await page.locator('[data-album-field="files"]').setInputFiles([
+            { name: 'manifest.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(manifest)) },
+            { name: 'room.gif', mimeType: 'image/gif', buffer: Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64') },
+        ]);
+        await page.locator('[data-album-action="upload"]').click();
+        const selectedFolder = page.locator('[data-album-review="folder"]');
+        await selectedFolder.waitFor();
+        assert.equal(await selectedFolder.inputValue(), '室内');
+        assert.deepEqual(errors, []);
+    } finally {
+        await browser.close();
+    }
+});
+
 test('magic-wand entry follows live host themes and opens by keyboard', async () => {
     const browser = await chromium.launch({ headless: true,
         ...(process.env.GUJI_BROWSER_PATH ? { executablePath: process.env.GUJI_BROWSER_PATH } : {}) });
