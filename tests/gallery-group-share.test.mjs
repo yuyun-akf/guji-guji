@@ -59,7 +59,7 @@ test('a forwarded Qunxing post is an independent text and picture snapshot',()=>
  assert.equal(snapshot({...post,image:'https://example.org/private.jpg'}).image,'');
 });
 test('private photo and sticker tags can be recognized only by allowed catalogue IDs',()=>{
- const start=code.indexOf('function parseMessageStickers('),end=code.indexOf('function visibleStickerText(',start);
+ const start=code.indexOf('function parseMessageStickers('),end=code.indexOf('function visiblePhoneMessageText(',start);
  assert.ok(start>=0&&end>start);
  const parse=new Function('splitPhoneReply',code.slice(start,end)+'return parseStickerReply;')(
   text=>String(text).trim()?[String(text).trim()]:[]);

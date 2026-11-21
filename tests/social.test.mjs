@@ -11,7 +11,7 @@ function runtime(ctx={}) {
         Blob,Response,DecompressionStream,TextDecoder,Uint8Array,DataView,
         window:{SillyTavern:{getContext:()=>ctx}}, document:{querySelector:()=>null,createElement:()=>({innerHTML:'',id:''}),visibilityState:'visible'}};
     vm.createContext(box);
-    vm.runInContext(source+`\nglobalThis.api={currentPersona,personaNames,stickerLibrary,saveSticker,saveStickerLibrary,stickerPrompt,parseStickerReply,visibleStickerText,importStickerAssets,parseStickerCatalogCsv,zipStickerEntries,uploadStickerPack,buildPrompt,parseChatImport,exportChatPayload,scanNpcSources,newData,postMoment,sendUserMessage,beginFilePicker,finishFilePicker,filePickerReturning,makeUI};`,box);
+    vm.runInContext(source+`\nglobalThis.api={currentPersona,personaNames,stickerLibrary,saveSticker,saveStickerLibrary,stickerPrompt,parseStickerReply,visiblePhoneMessageText,importStickerAssets,parseStickerCatalogCsv,zipStickerEntries,uploadStickerPack,buildPrompt,parseChatImport,exportChatPayload,scanNpcSources,newData,postMoment,sendUserMessage,beginFilePicker,finishFilePicker,filePickerReturning,makeUI};`,box);
     return box;
 }
 
@@ -76,9 +76,29 @@ test('character selects only catalog stickers; history and JSON preserve image w
     const backup=api.exportChatPayload({},data);
     const imported=api.parseChatImport(JSON.stringify(backup));
     assert.deepEqual(Array.from(imported[0].stickerImages),[image]);assert.equal(imported[0].stickerName,'开心');
-    assert.equal(api.visibleStickerText({from:'user',text:'[表情包：非常长的内容说明和配文]',sticker:true,image},null,null),'');
-    assert.equal(api.visibleStickerText({from:'character',text:'[表情包：角色用的备注]',sticker:true,image},null,null),'');
-    assert.equal(api.visibleStickerText({from:'character',text:'普通聊天'},null,null),'普通聊天');
+    assert.equal(api.visiblePhoneMessageText({from:'user',text:'[表情包：非常长的内容说明和配文]',sticker:true,image},null,null),'');
+    assert.equal(api.visiblePhoneMessageText({from:'character',text:'[表情包：角色用的备注]',sticker:true,image},null,null),'');
+    assert.equal(api.visiblePhoneMessageText({from:'character',text:'普通聊天'},null,null),'普通聊天');
+});
+
+test('photo bubbles hide generated labels and descriptions, while the model still receives them',()=>{
+    const {api}=runtime();
+    const photo='data:image/jpeg;base64,QUJD';
+    const sent={id:'sent',from:'user',text:'[图片]',images:[photo]};
+    const [generated]=api.parseStickerReply('[[photo:p1]]',{},[],[{id:'p1',description:'一张窗边的照片',image:photo}]);
+    const received={id:'received',from:'character',...generated};
+    for(const message of [sent,received,{from:'character',text:'［图片］ 另一张照片',image:photo}])
+        assert.equal(api.visiblePhoneMessageText(message,null,null),'');
+    assert.equal(api.visiblePhoneMessageText({...sent,text:'随手拍的'},null,null),'随手拍的');
+    assert.equal(api.visiblePhoneMessageText({...sent,text:'[图片] 我手打的配文',photoCaption:true},null,null),'[图片] 我手打的配文');
+    assert.equal(api.visiblePhoneMessageText({from:'user',text:'[图片] 暂无附件'},null,null),'[图片] 暂无附件');
+    const prompt=api.buildPrompt({messages:[sent,received]});
+    assert.match(prompt[0].content[0].text,/\[图片\]/);
+    assert.match(prompt[1].content[0].text,/一张窗边的照片/);
+    assert.equal(prompt[1].content[1].image_url.url,photo);
+    assert.equal(api.parseChatImport(JSON.stringify(api.exportChatPayload({},{
+        messages:[{...sent,text:'[图片] 我手打的配文',photoCaption:true}]
+    })))[0].photoCaption,true);
 });
 
 test('user pressing a sticker sends the image as user, not as the character',async()=>{

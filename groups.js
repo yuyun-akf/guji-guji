@@ -13,9 +13,9 @@ export function createGroupsModule(api){
  const button=(label,action,id='')=>{const b=el('button','lp-group-button',label);b.type='button';b.dataset.groupAction=action;if(id)b.dataset.groupId=id;return b;};
  const who=id=>id==='user'?(api.userPhoneName?.()||'我'):api.galleryPeople().find(x=>x.id===id)?.name||'已退出成员';
  const groupTitle=g=>g.remark||g.name||'群聊';
- const quoteText=message=>api.messageQuoteText?.(message)||String(message.text||'[图片]');
+ const quoteText=(message,hidePhotoDescription=false)=>api.messageQuoteText?.(message,hidePhotoDescription)||String(message.text||'[图片]');
  const recallText=message=>(message.from==='user'?'你':who(message.from))+'撤回了一条消息';
- const quoteLabel=message=>message.recalledAt?quoteText(message):who(message.from)+'：'+quoteText(message);
+ const quoteLabel=(message,hidePhotoDescription=false)=>message.recalledAt?quoteText(message):who(message.from)+'：'+quoteText(message,hidePhotoDescription);
  function groupRecords(g){return (g.messages||[]).map(m=>m.recalledAt?recallText(m):quoteLabel(m)).join('\n');}
  function groupHeader(t){api.setGroupTitle?.(t||'群聊');}
  function status(text,error=false){state.status='';api.notifyInteraction?.(text,error?'error':'success');render();}
@@ -99,11 +99,12 @@ export function createGroupsModule(api){
     const face=el('img','lp-group-sender-avatar');face.src=src||'/img/ai4.png';face.alt=who(msg.from);
     const body=el('div','lp-message-body');
     if(!mine)body.append(el('small','lp-group-sender-name',who(msg.from)));
-    const parent=msg.replyTo&&messageMap.get(msg.replyTo),quote=parent?quoteLabel(parent):msg.replyQuote;
+    const parent=msg.replyTo&&messageMap.get(msg.replyTo),quote=parent?quoteLabel(parent,true):msg.replyQuote;
     const bubble=el('div','lp-bubble lp-group-bubble'+(msg.sticker&&!quote?' lp-sticker-only':''));
     if(quote)bubble.append(el('div','lp-inline-quote',quote.slice(0,180)));
-    if(msg.voice)bubble.append(api.renderVoiceMessage(msg.text));
-    else if(msg.text&&!msg.sticker)bubble.append(el('span','lp-group-message-text',msg.text));
+    const text=api.visiblePhoneMessageText?.(msg)??(msg.sticker?'':msg.text);
+    if(msg.voice)bubble.append(api.renderVoiceMessage(text));
+    else if(text)bubble.append(el('span','lp-group-message-text',text));
     if(msg.sharePost){
      const quote=el('div','lp-group-share');quote.append(el('strong','',msg.sharePost.author||'群星'),el('p','',msg.sharePost.text||''));
      if(msg.sharePost.image){const image=el('img');image.src=msg.sharePost.image;image.alt='群星分享图片';quote.append(image);}
@@ -124,7 +125,7 @@ export function createGroupsModule(api){
    target.append(feed);
    const compose=el('div','lp-group-composer lp-group-chat-compose');
    const targetMsg=messageMap.get(state.quoteId);
-   if(targetMsg&&!targetMsg.recalledAt){const quote=el('div','lp-group-compose-quote','引用 '+quoteLabel(targetMsg).slice(0,95));
+   if(targetMsg&&!targetMsg.recalledAt){const quote=el('div','lp-group-compose-quote','引用 '+quoteLabel(targetMsg,true).slice(0,95));
     quote.append(button('×','cancel-quote'));compose.append(quote);}
    const controls=el('div','lp-group-composer-controls');
    const emoji=button('☺','emoji');emoji.classList.add('lp-tool-btn','lp-group-tool-btn');

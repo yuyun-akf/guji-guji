@@ -1283,11 +1283,11 @@ async function loadAlbumController(){
 async function loadGroupsController(){
  if(groupsController)return groupsController;
  if(groupsLoadPromise)return groupsLoadPromise;
- groupsLoadPromise=import('./groups.js?v=0.38.2').then(mod=>{
+ groupsLoadPromise=import('./groups.js?v=0.38.3').then(mod=>{
   groupsController=mod.createGroupsModule({context,getNodes:()=>nodes,readRootData,writeData,galleryPeople,
    isPhoneFriend,contactCharacter,phoneGenerate,stripModelReasoning,notifyInteraction,openSharedPost,encodeAvatarPhoto,
    stickerLibrary:()=>stickerLibrary(context()),stickerPrompt,chooseStickerCandidates,parseMessageStickers,renderLegacyPhoneSticker,
-   messageQuoteText,canRecallMessage,recallPhoneMessage,renderVoiceMessage,
+   messageQuoteText,visiblePhoneMessageText,canRecallMessage,recallPhoneMessage,renderVoiceMessage,
    refreshChatList:()=>{if(mounted&&nodes&&selectedCharacter(context()))renderChatLists(context(),contactCharacter(context()),readData(context()));},
    userPhoneName:()=>phoneUserDisplayName(context()),
    memberRelationship:id=>phoneRelationshipPrompt(context(),id),
@@ -3644,15 +3644,20 @@ function splitPhoneReply(text, data) {
     if (buffer) result.push(buffer.trim());
     return result.filter(Boolean).slice(0,5);
 }
-function messageQuoteText(message) {
+function isAutomaticPhotoText(message) {
+    const hasPhoto=message.image||(Array.isArray(message.images)&&message.images.some(Boolean));
+    return hasPhoto&&!message.photoCaption&&/^\s*(?:\[图片\]|［图片］)(?:\s|$)/.test(message.text||'');
+}
+function messageQuoteText(message,hidePhotoDescription=false) {
     if(message.recalledAt)return '原消息已撤回';
     if(message.callState)return '[语音通话]';
     if(message.voice)return '[语音] '+message.text;
+    if(hidePhotoDescription&&isAutomaticPhotoText(message))return '[图片]';
     return String(message.text||(message.sticker||message.stickerImages?.length?'[表情包]':'[图片]'));
 }
-function phoneQuotePreview(message,byId) {
+function phoneQuotePreview(message,byId,hidePhotoDescription=false) {
     const parent=message.replyTo&&byId.get(message.replyTo);
-    return parent?messageQuoteText(parent):message.replyQuote||'';
+    return parent?messageQuoteText(parent,hidePhotoDescription):message.replyQuote||'';
 }
 function canRecallMessage(message,sender) {
     return Boolean(message&&!message.recalledAt&&message.from===sender&&!message.paymentId&&!message.paymentReceiptId&&!message.callState);
@@ -4904,8 +4909,9 @@ function applyCharacterChatMessages(data,parts,ctx,char,targets) {
     }
     return {sent,changed};
 }
-function visibleStickerText(message,ctx,char) {
-    return message?.sticker?'':resolvePhonePlaceholders(message?.text||'',ctx,char);
+function visiblePhoneMessageText(message) {
+    if(!message||message.sticker||isAutomaticPhotoText(message))return '';
+    return message.text||'';
 }
 function renderStickerLibrary() {
     if(!nodes?.stickerLibrary||!nodes?.emojiPanel)return;
@@ -7021,9 +7027,9 @@ async function resetAvatar(side) {
 function exportChatPayload(ctx,data) {
     return {format:'gujiguji-chat',version:1,character:getCharacterName(selectedCharacter(ctx)),exportedAt:new Date().toISOString(),
         messages:data.messages.map(({id,from,text,storyTime,createdAt,image,images,sharePost,sticker,stickerName,stickerImages,
-            replyTo,replyQuote,voice,callSpeech,callState,connectedAt,endedAt,recalledAt})=>({
+            replyTo,replyQuote,voice,callSpeech,callState,connectedAt,endedAt,recalledAt,photoCaption})=>({
             id,from,text,storyTime,createdAt,image,images,sharePost,sticker,stickerName,stickerImages,
-            replyTo,replyQuote,voice,callSpeech,callState,connectedAt,endedAt,recalledAt,
+            replyTo,replyQuote,voice,callSpeech,callState,connectedAt,endedAt,recalledAt,photoCaption,
         }))};
 }
 function parseChatImport(raw) {
@@ -7043,6 +7049,7 @@ function parseChatImport(raw) {
         const stickerImages=Array.isArray(m.stickerImages)?m.stickerImages.filter(validStickerImage).slice(0,5):[];
         const sharePost=m.sharePost&&typeof m.sharePost==='object'?makeShareSnapshot(m.sharePost):null;
         return {...row,...(image?{image}:{}),...(images.length?{images}:{}),...(sharePost?.text?{sharePost}:{}),
+            ...((image||images.length)&&m.photoCaption===true?{photoCaption:true}:{}),
             ...((image||stickerImages.length)&&m.sticker===true?{sticker:true}:{}),
             ...((m.sticker===true||stickerImages.length)?{stickerName:String(m.stickerName||'').slice(0,180)}:{}),
             ...(stickerImages.length?{stickerImages}:{}),...(m.voice===true?{voice:true}:{}),...(m.callSpeech===true?{callSpeech:true}:{}),
@@ -7167,7 +7174,7 @@ async function handleMessageOperation(action) {
         try{saveSticker(image,label);renderStickerLibrary();setStatus('已收藏表情包');}catch(e){setStatus(e.message,'error');}
     } else if(action==='quote'){
         quotedMessageId=msg.id;
-        nodes.quotedText.textContent='引用：'+resolvePhonePlaceholders(messageQuoteText(msg).slice(0,100),ctx,contactCharacter(ctx));
+        nodes.quotedText.textContent='引用：'+resolvePhonePlaceholders(messageQuoteText(msg,true).slice(0,100),ctx,contactCharacter(ctx));
         nodes.quotedPreview.hidden=false;
         nodes.input.focus();
     } else if(action==='edit'){
@@ -7297,7 +7304,8 @@ async function sendImageFiles(files,caption='') {
             if(!sameSession(session))return;
         }
         if(sameSession(session)){
-            await sendUserMessage(caption.trim().slice(0,500)||'[图片]', '', null, {images:encoded});
+            const text=caption.trim().slice(0,500);
+            await sendUserMessage(text||'[图片]', '', null, {images:encoded,...(text?{photoCaption:true}:{})});
             discardChatPhotoDraft();
         }
     }catch(error){if(sameSession(session))setStatus(recordError('发送照片',error),'error');}
@@ -7738,10 +7746,11 @@ function renderMessages(data){
   const bubble=document.createElement('div');bubble.className='lp-bubble'+(payment?' lp-payment-shell':'');
   if(message.sticker&&!message.replyTo&&!message.replyQuote)bubble.classList.add('lp-sticker-only');
   const located=!payment?locationCard(message.text):null;
+  const text=resolvePhonePlaceholders(visiblePhoneMessageText(message),ctx,character);
   if(message.callState)bubble.append(renderPhoneCall(message));
-  else if(message.voice)bubble.append(renderVoiceMessage(visibleStickerText(message,ctx,character)));
+  else if(message.voice)bubble.append(renderVoiceMessage(text));
   else if(located){bubble.classList.add('lp-location-shell');bubble.append(located);}
-  else bubble.textContent=visibleStickerText(message,ctx,character);
+  else bubble.textContent=text;
   if(message.sharePost){
    const p=message.sharePost;bubble.textContent='';
    const view=document.createElement('button');view.type='button';view.className='lp-shared-post';view.dataset.shareMessageId=message.id;
@@ -7754,7 +7763,7 @@ function renderMessages(data){
   if(payment){
    bubble.replaceChildren(walletRenderCard(payment,receipt));
   }
-  const quoted=phoneQuotePreview(message,byId);
+  const quoted=phoneQuotePreview(message,byId,true);
   if(quoted){
    const quote=document.createElement('div');quote.className='lp-inline-quote';
    quote.textContent=resolvePhonePlaceholders(quoted.slice(0,180),ctx,character);bubble.prepend(quote);
@@ -8958,7 +8967,7 @@ function makeUI() {
             </details>
           </div>
           <div class="lp-settings-status" data-lp="settingsStatus" role="status" aria-live="polite"></div>
-          <p class="lp-settings-hint">咕叽咕机 · v0.38.2</p>
+          <p class="lp-settings-hint">咕叽咕机 · v0.38.3</p>
         </section>
         <section class="lp-screen lp-settings lp-memory-screen" data-lp-screen="memory" aria-label="往昔" hidden>
           <div class="lp-memory-toolbar">

@@ -12,6 +12,7 @@ class Element {
         this.classList={add(){}};
     }
     append(...nodes){this.children.push(...nodes);}
+    prepend(...nodes){this.children.unshift(...nodes);}
     replaceChildren(...nodes){this.children=nodes;}
     setAttribute(){}
     addEventListener(){}
@@ -20,7 +21,8 @@ class Element {
             ...this.children.flatMap(child=>child.nodes?.(name)||[])];
     }
 }
-const document={createElement:tag=>new Element(tag),createTextNode:text=>({textContent:text})};
+const document={createElement:tag=>new Element(tag),createTextNode:text=>({textContent:text}),
+    createDocumentFragment:()=>new Element('fragment')};
 
 function runtime(){
     const ctx={characterId:0,chatId:'test',name1:'访客',characters:[{name:'组员甲',data:{}}],
@@ -33,11 +35,17 @@ function runtime(){
     vm.runInContext(code('index.js')+`
         mounted=true;activeScreen='chat';
         nodes={input:{value:'',dispatchEvent(){}},emojiPanel:{},morePanel:{},messageActions:{},diagnosticState:{},status:{dataset:{}}};
+        const drawChat=renderMessages;
         render=()=>{};renderMessages=()=>{};updateBusy=()=>{};
         globalThis.api={newData,readData,captureSession,runReply,updatePhoneCall,sendUserMessage,
             handleMessageOperation,renderVoiceMessage,renderPhoneCall,buildPrompt,
             exportChatPayload,parseChatImport,canRecallMessage,recallPhoneMessage,
-            messageQuoteText,parseMessageStickers,canGenerateChatReply,renderLegacyPhoneSticker,
+            messageQuoteText,visiblePhoneMessageText,parseMessageStickers,canGenerateChatReply,renderLegacyPhoneSticker,
+            drawChat:data=>{
+                root={classList:{contains:()=>true}};nodes.messages=document.createElement('div');
+                drawChat(data);
+                return nodes.messages;
+            },
             selectMessage:id=>{selectedMessageId=id;}};
     `,box);
     const api=box.api;
@@ -106,6 +114,30 @@ test('phone calls record ringing, connected conversation, hang-up and refusal',a
     const restored=api.parseChatImport(JSON.stringify(api.exportChatPayload(ctx,api.readData(ctx))));
     assert.equal(restored.at(-1).callState,'declined');
     assert.ok(restored.find(message=>message.id===outgoing.id).endedAt);
+});
+
+test('photo messages display only their images and authored captions in private and group bubbles',()=>{
+    const {api,ctx}=runtime();
+    const photo='data:image/jpeg;base64,QUJD';
+    const messages=[
+        {id:'a',from:'user',text:'[图片]',images:[photo]},
+        {id:'b',from:'primary',text:'[图片] 照片内容描述',image:photo},
+        {id:'c',from:'user',text:'随手拍的',images:[photo],replyTo:'b'}
+    ];
+    const data={...api.readData(ctx),messages:messages.map(m=>m.from==='primary'?{...m,from:'character'}:m)};
+    const privateChat=api.drawChat(data);
+    assert.deepEqual(privateChat.nodes('lp-bubble').map(b=>b.textContent??''),['','','随手拍的']);
+    assert.equal(privateChat.nodes('lp-chat-image').length,3);
+    assert.equal(privateChat.nodes('lp-inline-quote')[0].textContent,'[图片]');
+    const host=new Element('section');
+    const create=new Function('document',code('groups.js')+'\nreturn createGroupsModule;')(document);
+    const groups=create({...api,context:()=>ctx,getNodes:()=>({groupsContent:host}),
+        readRootData:()=>({groupChats:[{id:'g',members:['primary'],messages}]}),
+        galleryPeople:()=>[{id:'primary',name:'组员甲'}],isPhoneFriend:()=>true});
+    groups.open({groupId:'g'});
+    assert.deepEqual(host.nodes('lp-group-message-text').map(b=>b.textContent),['随手拍的']);
+    assert.equal(host.nodes('lp-group-photo').length,3);
+    assert.equal(host.nodes('lp-inline-quote')[0].textContent,'组员甲：[图片]');
 });
 
 test('group roles quote any earlier valid member and can only recall their own messages',async()=>{
